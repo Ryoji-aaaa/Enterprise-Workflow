@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { CircleX } from "lucide-react";
 
-import { LogoutForm } from "@/components/logout-form";
+import { AccountStatusCard } from "@/components/account-status-card";
 import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +17,10 @@ export default async function UnavailablePage() {
   }
 
   return (
-    <main className="page">
-      <section className="card">
-        <h1>利用できないアカウントです</h1>
-        <p>このアカウントではワークフローアプリを利用できません。</p>
-        <LogoutForm />
-      </section>
-    </main>
+    <AccountStatusCard
+      description="このアカウントではワークフローアプリを利用できません。"
+      icon={CircleX}
+      title="利用できないアカウントです"
+    />
   );
 }

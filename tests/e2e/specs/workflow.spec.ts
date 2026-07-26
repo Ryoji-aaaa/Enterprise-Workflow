@@ -80,14 +80,17 @@ test("未認証ユーザーをログイン画面へリダイレクトする", as
   await expect(page.getByText(userEmail)).toHaveCount(0);
 });
 
-test("一般ユーザーがログインして業務情報を表示できる", async ({ page }) => {
+test("一般ユーザーがログインしてモックダッシュボードを表示できる", async ({ page }) => {
   await login(page, userEmail, userPassword);
 
   await expect(page).toHaveURL(/\/top$/);
-  await expect(page.getByText("ようこそ、開発一般ユーザーさん")).toBeVisible();
-  await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
-  await expect(page.getByText("開発部", { exact: true })).toBeVisible();
-  await expect(page.getByText("一般ユーザー", { exact: true })).toBeVisible();
+  await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "モック文字８", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "モック文字９", exact: true }),
+  ).toBeVisible();
 
   const authenticationCookies = (await page.context().cookies()).filter((cookie) =>
     /better-auth.*(?:session|account_data)/.test(cookie.name),
@@ -99,6 +102,11 @@ test("一般ユーザーがログインして業務情報を表示できる", as
   const meResponse = await page.request.get("/api/backend/me");
   expect(meResponse.status()).toBe(200);
   const meBody = (await meResponse.json()) as Record<string, unknown>;
+  expect(meBody).toMatchObject({
+    email: userEmail,
+    displayName: "開発一般ユーザー",
+    roles: ["USER"],
+  });
   expect(meBody).not.toHaveProperty("accessToken");
   expect(meBody).not.toHaveProperty("refreshToken");
   expect(meBody).not.toHaveProperty("idToken");
@@ -111,18 +119,24 @@ test("一般ユーザーがログインして業務情報を表示できる", as
   );
 });
 
-test("管理者ユーザーの業務ロールをDBから表示する", async ({ page }) => {
+test("管理者ユーザーの名前を表示して業務ロールをBFFから取得する", async ({ page }) => {
   await login(page, adminEmail, adminPassword);
 
   await expect(page).toHaveURL(/\/top$/);
-  await expect(page.getByText("ようこそ、開発管理者さん")).toBeVisible();
-  await expect(page.getByText(adminEmail, { exact: true })).toBeVisible();
-  await expect(page.getByText("管理者", { exact: true })).toBeVisible();
+  await expect(page.getByText("開発管理者", { exact: true })).toBeVisible();
+
+  const meResponse = await page.request.get("/api/backend/me");
+  expect(meResponse.status()).toBe(200);
+  expect(await meResponse.json()).toMatchObject({
+    email: adminEmail,
+    displayName: "開発管理者",
+    roles: ["ADMIN"],
+  });
 });
 
 test("ログアウト後は認証済みページを再利用できない", async ({ page }) => {
   await login(page, userEmail, userPassword);
-  await expect(page.getByText("ようこそ、開発一般ユーザーさん")).toBeVisible();
+  await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
 
   const logoutResponsePromise = page.waitForResponse((response) =>
     response.url().includes("/api/auth/logout"),
