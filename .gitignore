@@ -1,0 +1,24 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+.next/
+coverage/
+
+# Backend
+target/
+
+# End-to-end tests
+playwright-report/
+test-results/
+keycloak/generated/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

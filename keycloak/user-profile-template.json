@@ -1,0 +1,75 @@
+{
+  "attributes": [
+    {
+      "name": "username",
+      "displayName": "Username",
+      "validations": {
+        "length": {
+          "min": 3,
+          "max": 255
+        },
+        "username-prohibited-characters": {},
+        "up-username-not-idn-homograph": {}
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "email",
+      "displayName": "Email",
+      "validations": {
+        "email": {},
+        "length": {
+          "max": 255
+        },
+        "pattern": {
+          "pattern": "${ALLOWED_EMAIL_REGEX}",
+          "error-message": "Email must use the approved company domain."
+        }
+      },
+      "annotations": {
+        "inputType": "email"
+      },
+      "required": {},
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "firstName",
+      "displayName": "First name",
+      "validations": {
+        "length": {
+          "max": 255
+        },
+        "person-name-prohibited-characters": {}
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin"]
+      },
+      "multivalued": false
+    },
+    {
+      "name": "lastName",
+      "displayName": "Last name",
+      "validations": {
+        "length": {
+          "max": 255
+        },
+        "person-name-prohibited-characters": {}
+      },
+      "permissions": {
+        "view": ["admin", "user"],
+        "edit": ["admin"]
+      },
+      "multivalued": false
+    }
+  ],
+  "groups": []
+}

@@ -1,0 +1,164 @@
+name: ${COMPOSE_PROJECT_NAME:-workflow}
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NODE_VERSION: ${NODE_VERSION:-24.18.0}
+    environment:
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-ワークフローシステム}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-replace-with-at-least-32-random-characters}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8180/realms/workflow}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-replace-with-client-secret}
+    ports:
+      - "3000:3000"
+    networks:
+      - public-network
+      - application-network
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        JAVA_VERSION: ${JAVA_VERSION:-21}
+        MAVEN_VERSION: ${MAVEN_VERSION:-3.9.16}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${WORKFLOW_DB_NAME:-workflow}
+      SPRING_DATASOURCE_USERNAME: ${WORKFLOW_DB_USER:-workflow}
+      SPRING_DATASOURCE_PASSWORD: ${WORKFLOW_DB_PASSWORD:-replace-with-workflow-db-password}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8180/realms/workflow}
+      KEYCLOAK_INTERNAL_ISSUER: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/${KEYCLOAK_REALM:-workflow}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
+      ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-sdcj.co.jp}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@workflow.local}
+    networks:
+      - application-network
+      - database-network
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-18.4}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-replace-with-postgres-admin-password}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      WORKFLOW_DB_NAME: ${WORKFLOW_DB_NAME:-workflow}
+      WORKFLOW_DB_USER: ${WORKFLOW_DB_USER:-workflow}
+      WORKFLOW_DB_PASSWORD: ${WORKFLOW_DB_PASSWORD:-replace-with-workflow-db-password}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-replace-with-keycloak-db-password}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - database-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.7.0}
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-replace-with-keycloak-db-password}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-replace-with-admin-password}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${KEYCLOAK_EXTERNAL_URL:-http://localhost:8180}
+    volumes:
+      - ./keycloak/generated/import:/opt/keycloak/data/import:ro
+      - ./keycloak/scripts/healthcheck.sh:/opt/keycloak/healthcheck.sh:ro
+    ports:
+      - "8180:8080"
+    healthcheck:
+      test: ["CMD", "bash", "/opt/keycloak/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - public-network
+      - database-network
+
+  keycloak-init:
+    image: workflow-keycloak-init:${KEYCLOAK_VERSION:-26.7.0}
+    build:
+      context: .
+      dockerfile: keycloak/init.Dockerfile
+    profiles:
+      - init
+    environment:
+      ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-sdcj.co.jp}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-replace-with-admin-password}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-workflow}
+      DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
+      DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
+      DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
+    volumes:
+      - ./keycloak/scripts/configure-keycloak.sh:/opt/workflow/configure-keycloak.sh:ro
+      - ./keycloak/scripts/verify-keycloak.sh:/opt/workflow/verify-keycloak.sh:ro
+    entrypoint: []
+    command:
+      - /opt/workflow/configure-keycloak.sh
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      - public-network
+
+  mailpit:
+    image: axllent/mailpit:${MAILPIT_VERSION:-v1.30.5}
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider http://127.0.0.1:8025/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks:
+      - public-network
+      - application-network
+
+  e2e:
+    profiles:
+      - test
+    build:
+      context: ./tests/e2e
+      args:
+        PLAYWRIGHT_VERSION: ${PLAYWRIGHT_VERSION:-1.62.0}
+    environment:
+      BASE_URL: http://frontend:3000
+      KEYCLOAK_URL: http://keycloak:8080
+      MAILPIT_URL: http://mailpit:8025
+    networks:
+      - public-network
+      - application-network
+
+volumes:
+  postgres-data:
+
+networks:
+  public-network:
+  application-network:
+    internal: true
+  database-network:
+    internal: true

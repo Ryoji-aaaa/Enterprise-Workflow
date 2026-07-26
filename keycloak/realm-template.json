@@ -1,0 +1,107 @@
+{
+  "realm": "${KEYCLOAK_REALM}",
+  "displayName": "Workflow",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "${KEYCLOAK_CLIENT_ID}",
+      "name": "Workflow Web",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "${BETTER_AUTH_URL}/api/auth/callback/keycloak"
+      ],
+      "webOrigins": [
+        "${BETTER_AUTH_URL}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${BETTER_AUTH_URL}/login"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "basic",
+        "email"
+      ],
+      "protocolMappers": [
+        {
+          "name": "workflow-client-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "${KEYCLOAK_CLIENT_ID}",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "${DEV_ADMIN_EMAIL}",
+      "email": "${DEV_ADMIN_EMAIL}",
+      "firstName": "開発管理者",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEV_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "${DEV_USER_EMAIL}",
+      "email": "${DEV_USER_EMAIL}",
+      "firstName": "開発一般ユーザー",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEV_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "${DEV_PENDING_EMAIL}",
+      "email": "${DEV_PENDING_EMAIL}",
+      "firstName": "未登録テストユーザー",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEV_PENDING_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
