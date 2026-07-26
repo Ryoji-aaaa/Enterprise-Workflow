@@ -7,6 +7,7 @@ Keycloakで認証し、Next.jsのBFFを経由してSpring Bootから業務ユー
 
 実装中です。現在の詳細な実装計画と受け入れ条件は
 [`init_tasks.md`](./init_tasks.md)を参照してください。
+実装済み仕様は使用技術別に[`docs`](./docs/README.md)へ記録しています。
 
 ## Prerequisites
 
