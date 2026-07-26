@@ -78,4 +78,22 @@ if contains_service keycloak; then
     /opt/workflow/verify-keycloak.sh
 fi
 
+if contains_service backend; then
+  echo "Checking Spring Boot Actuator health..."
+  "${COMPOSE[@]}" exec -T backend \
+    bash /workspace/scripts/healthcheck.sh
+
+  unauthenticated_status="$(
+    "${COMPOSE[@]}" exec -T backend \
+      curl --silent --show-error \
+        --output /dev/null \
+        --write-out '%{http_code}' \
+        http://localhost:8080/api/me
+  )"
+  [[ "${unauthenticated_status}" == "401" ]] || {
+    echo "Expected unauthenticated /api/me to return HTTP 401, got ${unauthenticated_status}." >&2
+    exit 1
+  }
+fi
+
 echo "Requested service checks passed: ${requested_services[*]}"

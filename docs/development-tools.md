@@ -31,6 +31,8 @@ Git管理対象外とする。
 | `make phase1-check` | リポジトリ骨格とCompose構文の確認 |
 | `make phase2-check` | PostgreSQLとMailpitの起動・検証 |
 | `make phase3-check` | Keycloakの生成、起動、設定、検証 |
+| `make test-backend` | Docker testステージでSpring BootのJUnitを実行 |
+| `make phase4-check` | backendのテスト、起動、Actuator・依存サービス検証 |
 | `make verify` | 起動中サービスのhealth確認 |
 | `make down` | コンテナ停止。ボリュームは保持 |
 | `make reset` | ボリュームを含む開発環境の再作成 |

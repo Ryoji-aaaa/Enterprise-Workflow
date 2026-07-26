@@ -5,7 +5,7 @@ COMPOSE := docker compose
 
 .PHONY: help setup init build up down restart logs ps clean reset \
 	test test-backend test-frontend test-e2e verify keycloak-config \
-	phase1-check phase2-check phase3-check
+	phase1-check phase2-check phase3-check phase4-check
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -53,7 +53,13 @@ reset: ## Recreate prototype volumes and initialize all services
 test: test-backend test-frontend test-e2e ## Run all automated tests
 
 test-backend: ## Run Spring Boot tests
-	$(COMPOSE) run --rm backend ./mvnw test
+	docker build \
+		--build-arg JAVA_VERSION=$${JAVA_VERSION:-21} \
+		--build-arg MAVEN_VERSION=$${MAVEN_VERSION:-3.9.16} \
+		--build-arg TEST_RUN_ID=$$(date +%s%N) \
+		--target test \
+		--tag workflow-backend-test \
+		backend
 
 test-frontend: ## Run frontend lint and type checks
 	$(COMPOSE) run --rm frontend npm run check
@@ -79,3 +85,8 @@ phase2-check: ## Start and verify PostgreSQL and Mailpit
 
 phase3-check: keycloak-config ## Start and verify Keycloak realm configuration
 	./scripts/phase3-check.sh
+
+phase4-check: test-backend keycloak-config ## Test and verify the Spring Boot business API
+	$(COMPOSE) build backend
+	$(COMPOSE) up -d --wait postgres mailpit keycloak backend
+	./scripts/verify.sh postgres mailpit keycloak backend

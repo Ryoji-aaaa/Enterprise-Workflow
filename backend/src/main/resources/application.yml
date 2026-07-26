@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: workflow-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/workflow}
+    username: ${SPRING_DATASOURCE_USERNAME:workflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:replace-with-workflow-db-password}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  sql:
+    init:
+      mode: always
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER:http://localhost:8180/realms/workflow}
+          jwk-set-uri: ${KEYCLOAK_INTERNAL_ISSUER:http://keycloak:8080/realms/workflow}/protocol/openid-connect/certs
+  mail:
+    host: ${MAIL_HOST:mailpit}
+    port: ${MAIL_PORT:1025}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+workflow:
+  security:
+    issuer: ${KEYCLOAK_ISSUER:http://localhost:8180/realms/workflow}
+    client-id: ${KEYCLOAK_CLIENT_ID:workflow-web}
+    allowed-email-domain: ${ALLOWED_EMAIL_DOMAIN:sdcj.co.jp}
+    identity-provider: keycloak
+  notification:
+    from: ${MAIL_FROM:no-reply@workflow.local}
+    cooldown: ${ACCESS_REQUEST_NOTIFICATION_COOLDOWN:15m}
+  seed:
+    enabled: true
+    admin-email: ${DEV_ADMIN_EMAIL:example.admin1@sdcj.co.jp}
+    user-email: ${DEV_USER_EMAIL:example.user1@sdcj.co.jp}

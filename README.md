@@ -47,6 +47,13 @@ make verify
 
 各コマンドの一覧は`make help`で確認できます。
 
+Spring Bootの単体・結合テストとPhase 4統合検証は次で実行できます。
+
+```bash
+make test-backend
+make phase4-check
+```
+
 ## Planned local URLs
 
 - Application: http://localhost:3000

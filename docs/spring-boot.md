@@ -1,0 +1,102 @@
+# Spring Boot仕様
+
+## 採用技術
+
+- Java 21
+- Maven 3.9.16
+- Spring Boot 4.1.0
+- Spring MVC
+- Spring Security OAuth2 Resource Server
+- Spring Data JPA
+- PostgreSQL Driver
+- Spring Boot Mail
+- Spring Boot Actuator
+- JUnit 6、MockMvc、Spring Security Test、H2
+
+依存関係とテストはDocker内で実行し、JavaとMavenをホストへ導入しない。
+Spring Bootコンテナの8080番ポートはホストへ公開しない。
+
+## Resource Server
+
+`/api/**`はBearer JWTを必須とする。署名鍵はDocker内部のKeycloak JWK Set endpoint
+から取得し、tokenのissuerはブラウザが受け取る外部issuer
+`http://localhost:8180/realms/workflow`と照合する。
+
+Resource Serverの署名・有効期限検証後、業務層で次を再検証する。
+
+- `iss`が設定値と一致する
+- `sub`が存在する
+- `email`が存在する
+- `email_verified`が`true`
+- emailが`ALLOWED_EMAIL_DOMAIN`と完全一致する
+- `aud`または`azp`が`workflow-web`と一致する
+
+JWT、Client Secret、パスワードはログへ出力しない。業務権限はJWTやKeycloak Roleではなく
+PostgreSQLの`app_users.business_role`から取得する。
+
+## API
+
+### `GET /api/me`
+
+登録済みかつ有効な業務ユーザーに、次の情報を返す。
+
+```json
+{
+  "id": "UUID",
+  "externalSubject": "OIDC subject",
+  "email": "example.user1@sdcj.co.jp",
+  "displayName": "開発一般ユーザー",
+  "department": {
+    "name": "開発部"
+  },
+  "roles": ["USER"]
+}
+```
+
+- JWTなし・署名不正・issuer不正: HTTP 401
+- emailクレーム不正、許可ドメイン外、Client不一致: HTTP 403
+- DB未登録: HTTP 403、`APPLICATION_USER_NOT_REGISTERED`
+- DB上で無効: HTTP 403、`APPLICATION_USER_DISABLED`
+
+エラーは内部例外やJWTを含めず、`code`と利用者向け`message`だけを返す。
+
+### `GET /actuator/health`
+
+認証なしで利用できる。公開するActuator endpointはhealthだけとし、詳細情報は返さない。
+
+## 業務データ
+
+`schema.sql`を毎起動時に実行するが、すべて`CREATE TABLE IF NOT EXISTS`であり、
+既存データを削除しない。HibernateのDDL生成は通常実行時に無効化する。
+
+### `app_users`
+
+利用可否、表示名、部署、`USER`または`ADMIN`の業務ロールを管理する。
+`issuer + external_subject`とemailに一意制約を持つ。
+
+開発用の管理者と一般ユーザーはemailで事前登録する。初回の正規JWT受信時に、
+署名済みかつemail verifiedのemailを照合して`issuer + subject`を一度だけ紐付ける。
+紐付け後は`issuer + subject`を利用者識別子とする。
+
+### `access_requests`
+
+Keycloakには存在するが`app_users`に存在しない社内ユーザーを記録する。
+`issuer + external_subject`で一意とし、再アクセス時は同じ行の最終日時と回数を更新する。
+APIが403を返して外側のトランザクションが終了しても記録が残るよう、独立した
+トランザクションで保存する。
+
+## Mailpit通知
+
+未登録ユーザーの初回アクセス時、DB上の有効な`ADMIN`全員へSMTP通知する。
+通知には表示名、email、subject、issuer、初回・最終日時、アクセス回数を含める。
+
+同じ利用者への通知は既定で15分抑制する。SMTP失敗時もアクセス要求を保存し、
+警告ログを残してHTTP 403を維持する。
+
+## テスト
+
+`make test-backend`はDocker buildの専用testステージで毎回JUnitを実行する。
+内部ネットワークを外部接続可能へ変更せず、Maven依存の取得はbuildネットワーク内に限定する。
+
+結合テストでは、JWTなし、不正issuer、email不備、許可ドメイン外、Client不一致、
+登録済み、無効、未登録、冪等更新、通知抑制、メール失敗を検証する。

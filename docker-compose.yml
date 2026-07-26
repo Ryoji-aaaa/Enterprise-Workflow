@@ -23,6 +23,7 @@ services:
   backend:
     build:
       context: ./backend
+      target: development
       args:
         JAVA_VERSION: ${JAVA_VERSION:-21}
         MAVEN_VERSION: ${MAVEN_VERSION:-3.9.16}
@@ -37,6 +38,22 @@ services:
       MAIL_HOST: ${MAIL_HOST:-mailpit}
       MAIL_PORT: ${MAIL_PORT:-1025}
       MAIL_FROM: ${MAIL_FROM:-no-reply@workflow.local}
+      ACCESS_REQUEST_NOTIFICATION_COOLDOWN: ${ACCESS_REQUEST_NOTIFICATION_COOLDOWN:-15m}
+      DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
+      DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
+    healthcheck:
+      test: ["CMD", "bash", "/workspace/scripts/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
     networks:
       - application-network
       - database-network

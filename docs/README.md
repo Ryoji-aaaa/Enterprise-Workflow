@@ -11,6 +11,7 @@
 | コンテナ | [Docker Compose](docker-compose.md) | サービス、ネットワーク、永続化、healthcheck |
 | データベース | [PostgreSQL](postgresql.md) | DBとロールの分離、初期化、接続制限 |
 | 認証 | [Keycloak / OpenID Connect](keycloak.md) | Realm、Client、User Profile、初期化・検証 |
+| バックエンド | [Spring Boot](spring-boot.md) | Resource Server、業務ユーザー、未登録通知、API |
 | 開発運用 | [Make / Shell](development-tools.md) | ホスト依存、主要コマンド、検証スクリプト |
 
 今後のPhaseで技術を追加した場合も、実装と同じコミット単位で本ディレクトリを更新する。

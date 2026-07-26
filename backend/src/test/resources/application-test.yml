@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:workflow;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  sql:
+    init:
+      mode: never
+  mail:
+    host: localhost
+    port: 3025
+
+workflow:
+  security:
+    issuer: http://localhost:8180/realms/workflow
+    client-id: workflow-web
+    allowed-email-domain: sdcj.co.jp
+    identity-provider: keycloak
+  notification:
+    from: no-reply@workflow.local
+    cooldown: 15m
+  seed:
+    enabled: false
+    admin-email: example.admin1@sdcj.co.jp
+    user-email: example.user1@sdcj.co.jp
+
+management:
+  health:
+    mail:
+      enabled: false

@@ -18,7 +18,7 @@
 | `keycloak-init` | `curlimages/curl:8.17.0`を基にビルド | なし | Admin REST APIによる設定・検証 |
 | `mailpit` | `axllent/mailpit:v1.30.5` | `8025:8025` | 開発用メール確認 |
 | `frontend` | Phase 5で実装 | `3000:3000` | Next.js BFF |
-| `backend` | Phase 4で実装 | なし | Spring Boot業務API |
+| `backend` | Java 21 / Maven 3.9.16でビルド | なし | Spring Boot業務API |
 | `e2e` | Phase 7で実装 | なし | Playwright |
 
 `keycloak-init`は`init`プロファイルに属する一時サービスである。
