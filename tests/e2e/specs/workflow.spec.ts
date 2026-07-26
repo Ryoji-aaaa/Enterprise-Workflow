@@ -72,7 +72,7 @@ async function searchNotificationCount(): Promise<number> {
   }
 }
 
-test("シナリオ1: 未ログインではTopページを表示しない", async ({ page }) => {
+test("未認証ユーザーをログイン画面へリダイレクトする", async ({ page }) => {
   await page.goto("/top");
 
   await expect(page).toHaveURL(/\/login$/);
@@ -80,7 +80,7 @@ test("シナリオ1: 未ログインではTopページを表示しない", async
   await expect(page.getByText(userEmail)).toHaveCount(0);
 });
 
-test("シナリオ2: 一般ユーザーがログインして業務情報を表示できる", async ({ page }) => {
+test("一般ユーザーがログインして業務情報を表示できる", async ({ page }) => {
   await login(page, userEmail, userPassword);
 
   await expect(page).toHaveURL(/\/top$/);
@@ -88,9 +88,30 @@ test("シナリオ2: 一般ユーザーがログインして業務情報を表�
   await expect(page.getByText(userEmail, { exact: true })).toBeVisible();
   await expect(page.getByText("開発部", { exact: true })).toBeVisible();
   await expect(page.getByText("一般ユーザー", { exact: true })).toBeVisible();
+
+  const authenticationCookies = (await page.context().cookies()).filter((cookie) =>
+    /better-auth.*(?:session|account_data)/.test(cookie.name),
+  );
+  expect(authenticationCookies.some((cookie) => /session/.test(cookie.name))).toBeTruthy();
+  expect(authenticationCookies.some((cookie) => /account_data/.test(cookie.name))).toBeTruthy();
+  expect(authenticationCookies.every((cookie) => cookie.httpOnly)).toBeTruthy();
+
+  const meResponse = await page.request.get("/api/backend/me");
+  expect(meResponse.status()).toBe(200);
+  const meBody = (await meResponse.json()) as Record<string, unknown>;
+  expect(meBody).not.toHaveProperty("accessToken");
+  expect(meBody).not.toHaveProperty("refreshToken");
+  expect(meBody).not.toHaveProperty("idToken");
+
+  const topResponse = await page.request.get("/top");
+  expect(topResponse.status()).toBe(200);
+  expect(topResponse.headers()["cache-control"]).toContain("no-store");
+  expect(await topResponse.text()).not.toMatch(
+    /accessToken|refreshToken|idToken|eyJ[A-Za-z0-9_-]+\./,
+  );
 });
 
-test("シナリオ3: 管理者ユーザーの業務ロールをDBから表示する", async ({ page }) => {
+test("管理者ユーザーの業務ロールをDBから表示する", async ({ page }) => {
   await login(page, adminEmail, adminPassword);
 
   await expect(page).toHaveURL(/\/top$/);
@@ -99,11 +120,16 @@ test("シナリオ3: 管理者ユーザーの業務ロールをDBから表示す
   await expect(page.getByText("管理者", { exact: true })).toBeVisible();
 });
 
-test("シナリオ4: ログアウト後はTopページへ戻れない", async ({ page }) => {
+test("ログアウト後は認証済みページを再利用できない", async ({ page }) => {
   await login(page, userEmail, userPassword);
   await expect(page.getByText("ようこそ、開発一般ユーザーさん")).toBeVisible();
 
+  const logoutResponsePromise = page.waitForResponse((response) =>
+    response.url().includes("/api/auth/logout"),
+  );
   await page.getByRole("button", { name: "ログアウト", exact: true }).click();
+  const logoutResponse = await logoutResponsePromise;
+  expect(logoutResponse.headers()["cache-control"]).toContain("no-store");
   await page.waitForURL((url) => url.pathname === "/login" || url.origin === keycloakUrl);
   if (new URL(page.url()).origin === keycloakUrl) {
     await page.getByRole("button", { name: "Logout", exact: true }).click();
@@ -113,9 +139,13 @@ test("シナリオ4: ログアウト後はTopページへ戻れない", async ({
   await page.goto("/top");
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByText(userEmail)).toHaveCount(0);
+  const expiredAuthenticationCookies = (await page.context().cookies()).filter((cookie) =>
+    /better-auth.*(?:session|account_data)/.test(cookie.name),
+  );
+  expect(expiredAuthenticationCookies.every((cookie) => cookie.value.length === 0)).toBeTruthy();
 });
 
-test("シナリオ5・6: 未登録ユーザーを記録し通知を重複送信しない", async ({
+test("未登録ユーザーを記録し通知を重複送信しない", async ({
   page,
 }) => {
   await login(page, pendingEmail, pendingPassword);
@@ -132,10 +162,20 @@ test("シナリオ5・6: 未登録ユーザーを記録し通知を重複送信�
   const secondRepeat = await page.request.get("/api/backend/me");
   expect(firstRepeat.status()).toBe(403);
   expect(secondRepeat.status()).toBe(403);
+  const pendingBody = (await secondRepeat.json()) as Record<string, unknown>;
+  expect(pendingBody).not.toHaveProperty("accessToken");
+  expect(pendingBody).not.toHaveProperty("refreshToken");
+  expect(pendingBody).not.toHaveProperty("idToken");
   await expect.poll(searchNotificationCount).toBe(1);
+
+  await page.goto("/unavailable");
+  await expect(page.getByText("このアカウントではワークフローアプリを利用できません")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(
+    /accessToken|refreshToken|idToken|Bearer|backend:8080|Exception|stack/,
+  );
 });
 
-test("シナリオ7: Spring Bootへホストから直接接続できない", async ({
+test("Spring Bootへホストから直接接続できない", async ({
   request,
 }) => {
   const connectionError = await request
@@ -146,7 +186,7 @@ test("シナリオ7: Spring Bootへホストから直接接続できない", asy
   expect(connectionError).not.toBeNull();
 });
 
-test("シナリオ8: 未認証のBFFリクエストは401になる", async ({ request }) => {
+test("未認証のBFFリクエストは401になる", async ({ request }) => {
   const response = await request.get("/api/backend/me");
 
   expect(response.status()).toBe(401);
