@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { MePanel } from "@/app/top/me-panel";
-import { LogoutForm } from "@/components/logout-form";
 import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +15,5 @@ export default async function TopPage() {
     redirect("/login");
   }
 
-  return (
-    <main className="page">
-      <section className="card">
-        <MePanel />
-        <LogoutForm />
-      </section>
-    </main>
-  );
+  return <MePanel />;
 }

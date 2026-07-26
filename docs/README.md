@@ -12,6 +12,7 @@
 ## 実装仕様
 
 - Frontend: [Next.js・Better Auth](frontend/nextjs-better-auth.md)
+- Frontend UI: [shadcn/ui・Tailwind CSS](frontend/shadcn-tailwind.md)
 - Backend: [Spring Boot](backend/spring-boot.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /

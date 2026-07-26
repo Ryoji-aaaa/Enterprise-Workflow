@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { Clock3 } from "lucide-react";
 
-import { LogoutForm } from "@/components/logout-form";
+import { AccountStatusCard } from "@/components/account-status-card";
 import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +17,11 @@ export default async function UnregisteredPage() {
   }
 
   return (
-    <main className="page">
-      <section className="card">
-        <h1>利用申請を受け付けました</h1>
-        <p>このアカウントはワークフローアプリに登録されていません。</p>
-        <p>管理者へ利用申請を通知しました。登録完了後に再度ログインしてください。</p>
-        <LogoutForm />
-      </section>
-    </main>
+    <AccountStatusCard
+      description="このアカウントはワークフローアプリに登録されていません。"
+      detail="管理者へ利用申請を通知しました。登録完了後に再度ログインしてください。"
+      icon={Clock3}
+      title="利用申請を受け付けました"
+    />
   );
 }

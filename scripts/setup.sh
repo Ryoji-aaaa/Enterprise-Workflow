@@ -7,7 +7,7 @@ readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 
 cd "${PROJECT_DIRECTORY}"
 
-required_commands=(bash curl docker envsubst git jq make rg)
+required_commands=(bash curl docker envsubst git grep jq make)
 missing_commands=()
 
 for command_name in "${required_commands[@]}"; do

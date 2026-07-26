@@ -2,9 +2,12 @@
 
 Next.jsをBFF、Spring Bootを業務API、KeycloakをOpenID Connect Provider、
 PostgreSQLを業務データストアとするワークフローアプリのローカル開発用プロトタイプです。
+FrontendのUI基盤にはTailwind CSSとshadcn/uiを使用します。
 ブラウザへアクセストークンを公開せず、業務権限はPostgreSQLで管理します。
 
 構成と設計判断の詳細は[技術文書索引](docs/README.md)を参照してください。
+UI基盤の構成は[shadcn/ui・Tailwind CSS仕様](docs/frontend/shadcn-tailwind.md)に
+記載しています。
 
 ## アーキテクチャ概要
 
@@ -23,7 +26,7 @@ Spring BootとPostgreSQLはホストへポートを公開しません。Next.js�
 - Docker EngineとDocker Compose plugin
 - GNU Make
 - Git
-- `curl`、`jq`、`openssl`、`envsubst`、`rg`
+- `curl`、`jq`、`openssl`、`envsubst`、`grep`
 - 利用ポート: `3000`、`8180`、`8025`
 
 Ubuntu/WSL2では`./scripts/install-host-dependencies.sh`でホスト依存を導入できます。

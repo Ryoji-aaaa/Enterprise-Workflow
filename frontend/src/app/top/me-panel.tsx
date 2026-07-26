@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { MockDashboard } from "@/app/top/mock-dashboard";
 import type { CurrentUser } from "@/lib/backend-client";
 
 type State =
@@ -13,10 +14,6 @@ type State =
 type ErrorBody = {
   code?: string;
 };
-
-function roleLabel(role: string): string {
-  return role === "ADMIN" ? "管理者" : role === "USER" ? "一般ユーザー" : role;
-}
 
 export function MePanel() {
   const router = useRouter();
@@ -80,24 +77,5 @@ export function MePanel() {
   }
 
   const { user } = state;
-  return (
-    <>
-      <h1>ワークフローシステム</h1>
-      <p>ようこそ、{user.displayName}さん</p>
-      <dl className="profile">
-        <div>
-          <dt>メールアドレス</dt>
-          <dd>{user.email}</dd>
-        </div>
-        <div>
-          <dt>所属</dt>
-          <dd>{user.department?.name ?? "未設定"}</dd>
-        </div>
-        <div>
-          <dt>権限</dt>
-          <dd>{user.roles.map(roleLabel).join("、")}</dd>
-        </div>
-      </dl>
-    </>
-  );
+  return <MockDashboard displayName={user.displayName} />;
 }

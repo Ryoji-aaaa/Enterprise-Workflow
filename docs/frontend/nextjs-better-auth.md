@@ -6,10 +6,14 @@
 - Next.js 16.2.11（App Router）
 - React 19.2.4
 - Better Auth 1.6.25
+- Tailwind CSS 4.3.3
+- shadcn/ui CLI 4.15.0
 - TypeScript 5.9.3
 
 依存バージョンは`frontend/package.json`と`package-lock.json`で固定する。
 Node.jsやnpmをホストへ導入せず、依存解決、静的検査、production buildをDocker内で行う。
+UIテーマ、コンポーネント追加方針、関連設定は
+[shadcn/ui・Tailwind CSS仕様](shadcn-tailwind.md)を参照する。
 
 Next.js 16.2.11が直接固定する古いPostCSSとoptional dependencyのsharpには
 公開済みsecurity advisoryがあるため、`overrides`でPostCSS 8.5.23とsharp 0.35.3を使用する。

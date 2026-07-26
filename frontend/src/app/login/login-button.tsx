@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { LoaderCircle, LogIn } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 
 export function LoginButton() {
@@ -25,11 +28,25 @@ export function LoginButton() {
   }
 
   return (
-    <>
-      <button className="button" disabled={pending} onClick={login} type="button">
+    <div className="grid gap-3">
+      <Button
+        className="h-10 w-full text-sm"
+        disabled={pending}
+        onClick={login}
+        type="button"
+      >
+        {pending ? (
+          <LoaderCircle className="animate-spin" data-icon="inline-start" />
+        ) : (
+          <LogIn data-icon="inline-start" />
+        )}
         {pending ? "Keycloakへ移動しています…" : "ログイン"}
-      </button>
-      {error ? <p className="error" role="alert">{error}</p> : null}
-    </>
+      </Button>
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
   );
 }
