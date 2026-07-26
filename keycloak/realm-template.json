@@ -28,7 +28,7 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [
-        "${BETTER_AUTH_URL}/api/auth/callback/keycloak"
+        "${BETTER_AUTH_URL}/api/auth/oauth2/callback/keycloak"
       ],
       "webOrigins": [
         "${BETTER_AUTH_URL}"
@@ -64,7 +64,8 @@
     {
       "username": "${DEV_ADMIN_EMAIL}",
       "email": "${DEV_ADMIN_EMAIL}",
-      "firstName": "開発管理者",
+      "firstName": "開発",
+      "lastName": "管理者",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
@@ -78,7 +79,8 @@
     {
       "username": "${DEV_USER_EMAIL}",
       "email": "${DEV_USER_EMAIL}",
-      "firstName": "開発一般ユーザー",
+      "firstName": "開発",
+      "lastName": "一般ユーザー",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
@@ -92,7 +94,8 @@
     {
       "username": "${DEV_PENDING_EMAIL}",
       "email": "${DEV_PENDING_EMAIL}",
-      "firstName": "未登録テストユーザー",
+      "firstName": "未登録",
+      "lastName": "テストユーザー",
       "enabled": true,
       "emailVerified": true,
       "credentials": [

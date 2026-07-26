@@ -7,13 +7,31 @@ services:
       args:
         NODE_VERSION: ${NODE_VERSION:-24.18.0}
     environment:
+      HOSTNAME: 0.0.0.0
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-ワークフローシステム}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-replace-with-at-least-32-random-characters}
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8180/realms/workflow}
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-workflow}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-replace-with-client-secret}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      backend:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
     ports:
       - "3000:3000"
     networks:
@@ -126,6 +144,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-replace-with-admin-password}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-workflow}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
       DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}

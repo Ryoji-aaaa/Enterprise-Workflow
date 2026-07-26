@@ -143,16 +143,35 @@ jq --exit-status '
   .[0].attributes["pkce.code.challenge.method"] == "S256"
 ' --arg client_id "${KEYCLOAK_CLIENT_ID}" "${client_body}" >/dev/null
 
+jq --exit-status \
+  --arg callback_url "${BETTER_AUTH_URL}/api/auth/oauth2/callback/keycloak" \
+  --arg web_origin "${BETTER_AUTH_URL}" \
+  '
+    .[0].redirectUris == [$callback_url] and
+    .[0].webOrigins == [$web_origin]
+  ' "${client_body}" >/dev/null
+
 for user_spec in \
-  "${DEV_ADMIN_EMAIL}:${admin_user_body}" \
-  "${DEV_USER_EMAIL}:${user_body}" \
-  "${DEV_PENDING_EMAIL}:${pending_user_body}"; do
+  "${DEV_ADMIN_EMAIL}:開発:管理者:${admin_user_body}" \
+  "${DEV_USER_EMAIL}:開発:一般ユーザー:${user_body}" \
+  "${DEV_PENDING_EMAIL}:未登録:テストユーザー:${pending_user_body}"; do
   expected_email="${user_spec%%:*}"
-  user_file="${user_spec#*:}"
-  jq --exit-status --arg email "${expected_email}" '
+  remaining_spec="${user_spec#*:}"
+  expected_first_name="${remaining_spec%%:*}"
+  remaining_spec="${remaining_spec#*:}"
+  expected_last_name="${remaining_spec%%:*}"
+  user_file="${remaining_spec#*:}"
+  jq --exit-status \
+    --arg email "${expected_email}" \
+    --arg first_name "${expected_first_name}" \
+    --arg last_name "${expected_last_name}" \
+    '
     length == 1 and
     .[0].username == $email and
     .[0].email == $email and
+    .[0].firstName == $first_name and
+    .[0].lastName == $last_name and
+    .[0].requiredActions == [] and
     .[0].emailVerified == true and
     .[0].enabled == true
   ' "${user_file}" >/dev/null

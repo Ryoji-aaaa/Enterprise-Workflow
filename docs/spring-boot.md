@@ -5,6 +5,7 @@
 - Java 21
 - Maven 3.9.16
 - Spring Boot 4.1.0
+- Spring Security 7.1.0
 - Spring MVC
 - Spring Security OAuth2 Resource Server
 - Spring Data JPA
@@ -100,3 +101,9 @@ APIが403を返して外側のトランザクションが終了しても記録�
 
 結合テストでは、JWTなし、不正issuer、email不備、許可ドメイン外、Client不一致、
 登録済み、無効、未登録、冪等更新、通知抑制、メール失敗を検証する。
+
+## 公式資料
+
+- [Spring Security 7.1 Resource Server JWT](https://docs.spring.io/spring-security/reference/7.1/servlet/oauth2/resource-server/jwt.html)
+
+実際に解決されている7.1.0の公式仕様を基準とする。

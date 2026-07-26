@@ -6,12 +6,18 @@ readonly KEYCLOAK_INTERNAL_URL="http://keycloak:8080"
 readonly TOKEN_URL="${KEYCLOAK_INTERNAL_URL}/realms/master/protocol/openid-connect/token"
 readonly REALM_URL="${KEYCLOAK_INTERNAL_URL}/admin/realms/${KEYCLOAK_REALM}"
 readonly USER_PROFILE_URL="${REALM_URL}/users/profile"
+readonly OAUTH_CALLBACK_URL="${BETTER_AUTH_URL}/api/auth/oauth2/callback/keycloak"
 
 for variable_name in \
   KEYCLOAK_ADMIN \
   KEYCLOAK_ADMIN_PASSWORD \
   KEYCLOAK_REALM \
-  ALLOWED_EMAIL_DOMAIN; do
+  KEYCLOAK_CLIENT_ID \
+  BETTER_AUTH_URL \
+  ALLOWED_EMAIL_DOMAIN \
+  DEV_ADMIN_EMAIL \
+  DEV_USER_EMAIL \
+  DEV_PENDING_EMAIL; do
   eval "variable_value=\${${variable_name}:-}"
   if [ -z "${variable_value}" ]; then
     echo "Required variable ${variable_name} is not set." >&2
@@ -30,6 +36,12 @@ token_body="$(mktemp)"
 response_headers="$(mktemp)"
 response_body="$(mktemp)"
 realm_body="$(mktemp)"
+client_list="$(mktemp)"
+client_payload="$(mktemp)"
+client_result="$(mktemp)"
+user_list="$(mktemp)"
+user_payload="$(mktemp)"
+user_result="$(mktemp)"
 profile_initial="$(mktemp)"
 profile_required="$(mktemp)"
 profile_required_result="$(mktemp)"
@@ -42,6 +54,12 @@ cleanup() {
     "${response_headers}" \
     "${response_body}" \
     "${realm_body}" \
+    "${client_list}" \
+    "${client_payload}" \
+    "${client_result}" \
+    "${user_list}" \
+    "${user_payload}" \
+    "${user_result}" \
     "${profile_initial}" \
     "${profile_required}" \
     "${profile_required_result}" \
@@ -132,6 +150,77 @@ admin_put() {
 }
 
 admin_get "${REALM_URL}" "${realm_body}"
+admin_get \
+  "${REALM_URL}/clients?clientId=${KEYCLOAK_CLIENT_ID}" \
+  "${client_list}"
+
+jq --exit-status --arg client_id "${KEYCLOAK_CLIENT_ID}" '
+  length == 1 and .[0].clientId == $client_id
+' "${client_list}" >/dev/null
+
+jq \
+  --arg callback_url "${OAUTH_CALLBACK_URL}" \
+  --arg web_origin "${BETTER_AUTH_URL}" \
+  --arg logout_uri "${BETTER_AUTH_URL}/login" \
+  '
+    .[0]
+    | .redirectUris = [$callback_url]
+    | .webOrigins = [$web_origin]
+    | .attributes["post.logout.redirect.uris"] = $logout_uri
+  ' "${client_list}" >"${client_payload}"
+jq empty "${client_payload}"
+
+client_uuid="$(jq --exit-status --raw-output '.[0].id' "${client_list}")"
+admin_put "${REALM_URL}/clients/${client_uuid}" "${client_payload}"
+admin_get "${REALM_URL}/clients/${client_uuid}" "${client_result}"
+jq --exit-status \
+  --arg callback_url "${OAUTH_CALLBACK_URL}" \
+  --arg web_origin "${BETTER_AUTH_URL}" \
+  '
+    .redirectUris == [$callback_url] and
+    .webOrigins == [$web_origin]
+  ' "${client_result}" >/dev/null
+
+configure_user_name() {
+  email="$1"
+  first_name="$2"
+  last_name="$3"
+
+  admin_get \
+    "${REALM_URL}/users?username=${email}&exact=true" \
+    "${user_list}"
+  jq --exit-status --arg email "${email}" '
+    length == 1 and .[0].username == $email
+  ' "${user_list}" >/dev/null
+
+  jq \
+    --arg first_name "${first_name}" \
+    --arg last_name "${last_name}" \
+    '
+      .[0]
+      | .firstName = $first_name
+      | .lastName = $last_name
+      | .requiredActions = []
+    ' "${user_list}" >"${user_payload}"
+  jq empty "${user_payload}"
+
+  user_uuid="$(jq --exit-status --raw-output '.[0].id' "${user_list}")"
+  admin_put "${REALM_URL}/users/${user_uuid}" "${user_payload}"
+  admin_get "${REALM_URL}/users/${user_uuid}" "${user_result}"
+  jq --exit-status \
+    --arg first_name "${first_name}" \
+    --arg last_name "${last_name}" \
+    '
+      .firstName == $first_name and
+      .lastName == $last_name and
+      .requiredActions == []
+    ' "${user_result}" >/dev/null
+}
+
+configure_user_name "${DEV_ADMIN_EMAIL}" "開発" "管理者"
+configure_user_name "${DEV_USER_EMAIL}" "開発" "一般ユーザー"
+configure_user_name "${DEV_PENDING_EMAIL}" "未登録" "テストユーザー"
+
 admin_get "${USER_PROFILE_URL}" "${profile_initial}"
 
 jq '

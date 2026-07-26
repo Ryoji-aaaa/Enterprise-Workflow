@@ -5,7 +5,7 @@ COMPOSE := docker compose
 
 .PHONY: help setup init build up down restart logs ps clean reset \
 	test test-backend test-frontend test-e2e verify keycloak-config \
-	phase1-check phase2-check phase3-check phase4-check
+	phase1-check phase2-check phase3-check phase4-check phase5-check
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -90,3 +90,6 @@ phase4-check: test-backend keycloak-config ## Test and verify the Spring Boot bu
 	$(COMPOSE) build backend
 	$(COMPOSE) up -d --wait postgres mailpit keycloak backend
 	./scripts/verify.sh postgres mailpit keycloak backend
+
+phase5-check: ## Test the database-less Better Auth and BFF login flow
+	./scripts/phase5-check.sh
