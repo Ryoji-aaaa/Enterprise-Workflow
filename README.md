@@ -7,6 +7,11 @@ Keycloakで認証し、Next.jsのBFFを経由してSpring Bootから業務ユー
 詳細な実装計画と受け入れ条件は[`init_tasks.md`](./init_tasks.md)、技術別の仕様は
 [`docs`](./docs/README.md)を参照してください。
 
+この構成はローカル開発用プロトタイプです。本番投入前に必要なsecret管理、TLS、
+開発用seed・Mailpitの除外、監視、バックアップと、KeycloakからEntra IDへ移行する
+場合の変更点は[`docs/production-readiness.md`](docs/production-readiness.md)に
+まとめています。
+
 ## 前提条件
 
 - Windows 11 / WSL2

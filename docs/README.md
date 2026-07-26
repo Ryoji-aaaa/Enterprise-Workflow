@@ -15,6 +15,7 @@
 | 開発運用 | [Make / Shell](development-tools.md) | ホスト依存、主要コマンド、検証スクリプト |
 | frontend | [Next.js / Better Auth](nextjs-better-auth.md) | ステートレスOIDC、BFF、画面遷移、ログアウト |
 | E2E | [Playwright](playwright.md) | ブラウザシナリオ、Mailpit・DB事後検証、成果物 |
+| 本番移行 | [本番移行・Entra ID](production-readiness.md) | IdP移行箇所、本番前のセキュリティ変更 |
 
 ## Phase 6
 
@@ -24,5 +25,9 @@
 
 - [Playwright仕様](playwright.md)
 - [Phase 7完了報告書](phase7-completion-report.md)
+
+## Phase 8
+
+- [Phase 8最終報告書](phase8-final-report.md)
 
 今後のPhaseで技術を追加した場合も、実装と同じコミット単位で本ディレクトリを更新する。
