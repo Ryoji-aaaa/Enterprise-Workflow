@@ -205,7 +205,7 @@ if contains_service frontend; then
     exit 1
   }
   if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
-    "${frontend_id}" | rg -i '^(DATABASE|DB_|POSTGRES)'; then
+    "${frontend_id}" | grep -Ei '^(DATABASE|DB_|POSTGRES)'; then
     echo "Frontend container contains database connection environment variables." >&2
     exit 1
   fi
