@@ -28,8 +28,8 @@ Self RegistrationはRealm設定で無効化する。KeycloakのRealm RoleやClie
 
 | 種別 | ユーザー名 | Keycloak | Workflow DB |
 | --- | --- | --- | --- |
-| 管理者 | `example.admin1@sdcj.co.jp` | 登録済み | Phase 4でADMINとして登録 |
-| 一般 | `example.user1@sdcj.co.jp` | 登録済み | Phase 4でUSERとして登録 |
+| 管理者 | `example.admin1@sdcj.co.jp` | 登録済み | ADMINとして登録 |
+| 一般 | `example.user1@sdcj.co.jp` | 登録済み | USERとして登録 |
 | 未登録テスト | `example.pending1@sdcj.co.jp` | 登録済み | 登録しない |
 
 全ユーザーは有効かつemail verifiedである。サンプルパスワードはローカル開発専用である。
@@ -50,7 +50,7 @@ Keycloak 26.7.0では、GET結果に存在しない`unmanagedAttributePolicy`へ
 
 ## Admin REST APIによる初期化と検証
 
-Phase 3では`kcadm.sh`を使用しない。`admin-cli`のPassword Grantは管理初期化専用の
+`kcadm.sh`は使用しない。`admin-cli`のPassword Grantは管理初期化専用の
 一時コンテナ内に限定し、アプリケーション認証には使用しない。
 
 - `configure-keycloak.sh`: User ProfileのGETとPUT

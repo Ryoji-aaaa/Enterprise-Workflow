@@ -53,7 +53,7 @@ issuerとsubjectがKeycloakから変わるため、切替前に既存ユーザ�
 
 - Composeの`keycloak`、`keycloak-init`とKeycloak用DB bootstrap
 - Realm template、User Profile設定、開発ユーザー自動作成
-- Keycloak固有のPhase検証
+- Keycloak固有の設定・検証処理
 - PlaywrightのKeycloakログイン画面操作
 
 E2EではEntra IDの実tenantへ常時依存させるか、CI専用tenantとテストユーザーを用意する。
