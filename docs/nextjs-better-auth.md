@@ -63,7 +63,21 @@ last nameを設定し、初回ログイン時のプロフィール補完画面�
 
 `/top`はServer ComponentでBetter Auth sessionを検証する。sessionがない場合は
 `/login`へ戻す。利用者情報はBetter Authのprofileを直接表示せず、BFFが取得した
-Spring Bootの`GET /api/me`結果を表示する。
+Spring Bootの`GET /api/me`結果を表示する。レスポンスは`no-store`であり、logout後の
+ブラウザ戻る操作でも認証済み画面をcacheから再利用しない。
+
+未登録403では`/unregistered`、その他の利用不可403では`/unavailable`へ遷移する。
+どちらの画面にもJWT、token、内部URL、例外、stack traceを表示しない。
+
+## ログアウト
+
+`POST /api/auth/logout`は、Better Authのsign-outをサーバー側で実行し、受信した
+Better Auth session/account Cookieとchunk Cookieを`Max-Age=0`で明示的に失効させる。
+その後、ブラウザをKeycloakのlogout endpointへリダイレクトする。
+
+KeycloakにはClient IDと登録済みpost logout redirect URIだけを渡し、access token、
+refresh token、ID tokenをURLへ含めない。Keycloak logout後は`/login`へ戻る。
+logoutレスポンスは`no-store`かつ`Clear-Site-Data: "cache"`とする。
 
 ## BFF
 
@@ -74,7 +88,7 @@ Spring Bootの`GET /api/me`結果を表示する。
 3. Docker内部の`BACKEND_INTERNAL_URL`へアクセス
 4. `Authorization: Bearer`ヘッダーをSpring Bootへだけ付与
 5. 5秒でtimeout
-6. 401、未登録403、その他403、5xxを画面用結果へ変換
+6. 401、未登録403、その他403、5xx、接続失敗、timeoutを画面用結果へ変換
 7. tokenや内部例外をレスポンス・ログへ出力しない
 
 token更新時にBetter Authが返すSet-CookieはRoute Handlerからブラウザへ引き継ぐ。
@@ -86,12 +100,20 @@ sessionStorageへ渡さない。
 `make phase5-check`はDockerボリュームを削除せず、次を確認する。
 
 - frontendのlint、TypeScript、production build
-- Keycloak Authorization Code Flowによる一般ユーザーログイン
-- callback後の`/top`遷移
+- 一般ユーザーと管理者の表示名、email、所属、業務権限
+- 未登録ユーザーの403と専用画面
+- 利用不可画面に内部情報が含まれないこと
+- Keycloak Authorization Code Flowによる3ユーザーのログイン
+- callback後の`/top`遷移とKeycloak logout
+- logout時のCookie失効と、logout後の`/top`から`/login`へのredirect
+- 認証済みページとlogoutレスポンスが`no-store`であること
 - 暗号化されたsession/account Cookie
 - BFFでのサーバー側access token取得
 - Spring Boot `/api/me`のHTTP 200と業務ユーザー情報
+- 401、403、5xx、接続失敗、timeoutの安全な変換
 - TopページとBFFレスポンスにtoken materialが含まれないこと
+- frontendがdatabase networkやDB環境変数を持たないこと
+- backendがホストポートを持たないこと
 
 検証用curlは一時Cookie jarを使用し、パスワード、OAuth code、tokenをログへ表示しない。
 

@@ -1,13 +1,12 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { MePanel } from "@/app/top/me-panel";
 import { LogoutForm } from "@/components/logout-form";
 import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function TopPage() {
+export default async function UnavailablePage() {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -19,7 +18,8 @@ export default async function TopPage() {
   return (
     <main className="page">
       <section className="card">
-        <MePanel />
+        <h1>利用できないアカウントです</h1>
+        <p>このアカウントではワークフローアプリを利用できません。</p>
         <LogoutForm />
       </section>
     </main>

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import type { CurrentUser } from "@/lib/backend-client";
 
 type State =
   | { kind: "loading" }
   | { kind: "success"; user: CurrentUser }
-  | { kind: "unregistered" | "forbidden" | "unauthenticated" | "unavailable" };
+  | { kind: "unavailable" };
 
 type ErrorBody = {
   code?: string;
@@ -18,6 +19,7 @@ function roleLabel(role: string): string {
 }
 
 export function MePanel() {
+  const router = useRouter();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -40,11 +42,12 @@ export function MePanel() {
 
         const error = (await response.json()) as ErrorBody;
         if (response.status === 401) {
-          setState({ kind: "unauthenticated" });
+          router.replace("/login");
+          router.refresh();
         } else if (error.code === "APPLICATION_USER_NOT_REGISTERED") {
-          setState({ kind: "unregistered" });
+          router.replace("/unregistered");
         } else if (response.status === 403) {
-          setState({ kind: "forbidden" });
+          router.replace("/unavailable");
         } else {
           setState({ kind: "unavailable" });
         }
@@ -57,38 +60,10 @@ export function MePanel() {
 
     void load();
     return () => controller.abort();
-  }, []);
+  }, [router]);
 
   if (state.kind === "loading") {
     return <p>利用者情報を取得しています…</p>;
-  }
-
-  if (state.kind === "unregistered") {
-    return (
-      <>
-        <h1>利用申請を受け付けました</h1>
-        <p>このアカウントはワークフローアプリに登録されていません。</p>
-        <p>管理者へ利用申請を通知しました。登録完了後に再度ログインしてください。</p>
-      </>
-    );
-  }
-
-  if (state.kind === "forbidden") {
-    return (
-      <>
-        <h1>利用できないアカウントです</h1>
-        <p>このアカウントではワークフローアプリを利用できません。</p>
-      </>
-    );
-  }
-
-  if (state.kind === "unauthenticated") {
-    return (
-      <>
-        <h1>セッションの有効期限が切れました</h1>
-        <p>ログアウト後、再度ログインしてください。</p>
-      </>
-    );
   }
 
   if (state.kind === "unavailable") {
