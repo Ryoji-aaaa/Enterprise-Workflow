@@ -24,26 +24,15 @@
 `keycloak-init`は`init`プロファイルに属する一時サービスである。
 通常起動には含めず、設定または検証時に`docker compose run --rm`で実行する。
 
-## ネットワーク境界
-
-- `public-network`: ホスト公開が必要なfrontend、Keycloak、Mailpitと初期化サービス
-- `application-network`: frontend、backend、Mailpit間
-- `database-network`: PostgreSQLへ接続するbackendとKeycloak
-
-`application-network`と`database-network`は`internal: true`である。
-PostgreSQLとSpring Bootのポートはホストへ公開しない。
-
-`e2e`はOAuthで使う外部URLを実ブラウザと同じ`localhost:3000`、
-`localhost:8180`へ統一するため、テスト実行時だけhost networkを使用する。
-アプリケーションサービスのnetwork所属や公開ポートは変更しない。E2Eからbackendの
-ホストポートへ接続できないことと、frontend BFF経由の接続を別々に検証する。
+ネットワークの許可・禁止経路は
+[ネットワーク境界](../architecture/network-boundaries.md)を正本とする。
 
 ## 永続化
 
 PostgreSQLの`/var/lib/postgresql`だけを名前付きボリューム`postgres-data`へ保存する。
 KeycloakのRealmやユーザーもKeycloak専用DBを通じて同じボリューム内へ永続化される。
 
-通常の再起動やPhase検証ではボリュームを削除しない。`make reset`だけが明示的に
+通常の再起動や検証ではボリュームを削除しない。`make reset`だけが明示的に
 開発データを削除する破壊的操作である。
 
 ## healthcheck

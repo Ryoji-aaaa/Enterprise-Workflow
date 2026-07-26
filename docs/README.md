@@ -1,33 +1,35 @@
-# 実装仕様書
+# 技術文書
 
-このディレクトリでは、ワークフロープロトタイプの実装済み仕様を使用技術ごとに記録する。
-受け入れ条件とPhaseごとの作業順序は、リポジトリ直下の
-[`init_tasks.md`](../init_tasks.md)を正とする。
+この索引は現在の実装仕様と意思決定記録を案内します。操作方法は
+[ルートREADME](../README.md)を参照してください。
 
-## 実装済み仕様
+## アーキテクチャ
 
-| 分類 | 仕様書 | 主な内容 |
-| --- | --- | --- |
-| コンテナ | [Docker Compose](docker-compose.md) | サービス、起動順序、ネットワーク、永続化、healthcheck |
-| データベース | [PostgreSQL](postgresql.md) | DBとロールの分離、初期化、接続制限 |
-| 認証 | [Keycloak / OpenID Connect](keycloak.md) | Realm、Client、User Profile、初期化・検証 |
-| バックエンド | [Spring Boot](spring-boot.md) | Resource Server、業務ユーザー、未登録通知、API |
-| 開発運用 | [Make / Shell](development-tools.md) | ホスト依存、主要コマンド、検証スクリプト |
-| frontend | [Next.js / Better Auth](nextjs-better-auth.md) | ステートレスOIDC、BFF、画面遷移、ログアウト |
-| E2E | [Playwright](playwright.md) | ブラウザシナリオ、Mailpit・DB事後検証、成果物 |
-| 本番移行 | [本番移行・Entra ID](production-readiness.md) | IdP移行箇所、本番前のセキュリティ変更 |
+- [システム概要](architecture/system-overview.md)
+- [認証フロー](architecture/authentication-flow.md)
+- [ネットワーク境界](architecture/network-boundaries.md)
 
-## Phase 6
+## 実装仕様
 
-- [Phase 6完了報告書](phase6-completion-report.md)
+- Frontend: [Next.js・Better Auth](frontend/nextjs-better-auth.md)
+- Backend: [Spring Boot](backend/spring-boot.md)
+- Infrastructure:
+  [Docker Compose](infrastructure/docker-compose.md) /
+  [Keycloak](infrastructure/keycloak.md) /
+  [PostgreSQL](infrastructure/postgresql.md)
+- Testing: [Playwright E2E](testing/playwright.md)
+- Operations: [本番移行・production readiness](operations/production-readiness.md)
 
-## Phase 7
+## 意思決定記録
 
-- [Playwright仕様](playwright.md)
-- [Phase 7完了報告書](phase7-completion-report.md)
+- [ADR索引](decisions/README.md)
+- [ADR-0001: 認証アーキテクチャ](decisions/ADR-0001-authentication-architecture.md)
+- [ADR-0002: Better AuthのDBなしセッション](decisions/ADR-0002-stateless-better-auth-session.md)
+- [ADR-0003: Keycloak設定をAdmin REST APIへ統一](decisions/ADR-0003-keycloak-configuration-api.md)
+- [ADR-0004: User Profile設定方針](decisions/ADR-0004-user-profile-policy.md)
+- [ADR-0005: アプリケーションのネットワーク境界](decisions/ADR-0005-application-network-boundaries.md)
 
-## Phase 8
+## 履歴資料
 
-- [Phase 8最終報告書](phase8-final-report.md)
-
-今後のPhaseで技術を追加した場合も、実装と同じコミット単位で本ディレクトリを更新する。
+[初期プロトタイプ構築Plan](archive/prototype-implementation-plan.md)は履歴資料であり、
+現在の仕様や操作方法の正本ではありません。

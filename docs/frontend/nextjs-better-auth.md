@@ -97,7 +97,8 @@ sessionStorageへ渡さない。
 
 ## 検証
 
-`make phase5-check`はDockerボリュームを削除せず、次を確認する。
+`make test-frontend`、`make test-e2e`、`make verify`はDockerボリュームを削除せず、
+次を確認する。
 
 - frontendのlint、TypeScript、production build
 - 一般ユーザーと管理者の表示名、email、所属、業務権限
