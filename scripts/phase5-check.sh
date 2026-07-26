@@ -12,10 +12,14 @@ cd "${PROJECT_DIRECTORY}"
   exit 1
 }
 
+compose_project_name_override="${COMPOSE_PROJECT_NAME:-}"
 set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+if [[ -n "${compose_project_name_override}" ]]; then
+  export COMPOSE_PROJECT_NAME="${compose_project_name_override}"
+fi
 
 for variable_name in \
   DEV_ADMIN_EMAIL \

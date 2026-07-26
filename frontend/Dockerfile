@@ -36,8 +36,9 @@ FROM node:${NODE_VERSION}-alpine AS runtime
 WORKDIR /workspace
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY --from=build /workspace/public ./public
-COPY --from=build /workspace/.next/standalone ./
-COPY --from=build /workspace/.next/static ./.next/static
+COPY --from=build --chown=node:node /workspace/public ./public
+COPY --from=build --chown=node:node /workspace/.next/standalone ./
+COPY --from=build --chown=node:node /workspace/.next/static ./.next/static
 EXPOSE 3000
+USER node
 CMD ["node", "server.js"]

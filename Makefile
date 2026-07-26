@@ -11,22 +11,16 @@ help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 setup: ## Prepare local configuration and validate host dependencies
-	@command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
-	@docker compose version >/dev/null
-	@command -v git >/dev/null || { echo "git is required" >&2; exit 1; }
-	@test -f .env || { cp .env.example .env; echo "Created .env from .env.example"; }
-	@chmod +x scripts/*.sh
-	@if grep -q 'replace-with-' .env; then \
-		echo "WARNING: Replace placeholder secrets in .env before starting services."; \
-	fi
+	@./scripts/setup.sh
 
-init: setup build up verify ## Build and initialize the complete development environment
+init: setup ## Build and initialize the complete development environment
+	@./scripts/init.sh
 
 build: ## Build application container images
 	$(COMPOSE) build
 
-up: keycloak-config ## Start services and wait for their health checks
-	$(COMPOSE) up -d --wait
+up: setup ## Start services and wait for their health checks
+	@./scripts/up.sh
 
 down: ## Stop services
 	$(COMPOSE) down --remove-orphans
@@ -40,29 +34,18 @@ ps: ## Show service status
 	$(COMPOSE) ps
 
 clean: ## Stop services and remove generated build/test artifacts
-	$(COMPOSE) down --remove-orphans
-	@find frontend -maxdepth 1 -type d \( -name .next -o -name node_modules \) -prune -exec rm -rf -- {} +
-	@find backend -maxdepth 1 -type d -name target -prune -exec rm -rf -- {} +
-	@find tests/e2e -maxdepth 1 -type d \( -name playwright-report -o -name test-results \) -prune -exec rm -rf -- {} +
+	@./scripts/clean.sh
 
-reset: ## Recreate prototype volumes and initialize all services
-	@echo "WARNING: Removing prototype development volumes and data."
-	$(COMPOSE) down --volumes --remove-orphans
-	$(MAKE) init
+reset: setup ## Recreate prototype volumes and initialize all services
+	@./scripts/reset.sh
 
 test: test-backend test-frontend test-e2e ## Run all automated tests
 
 test-backend: ## Run Spring Boot tests
-	docker build \
-		--build-arg JAVA_VERSION=$${JAVA_VERSION:-21} \
-		--build-arg MAVEN_VERSION=$${MAVEN_VERSION:-3.9.16} \
-		--build-arg TEST_RUN_ID=$$(date +%s%N) \
-		--target test \
-		--tag workflow-backend-test \
-		backend
+	@./scripts/test-backend.sh
 
 test-frontend: ## Run frontend lint and type checks
-	$(COMPOSE) run --rm frontend npm run check
+	@./scripts/test-frontend.sh
 
 test-e2e: ## Run Playwright end-to-end tests
 	$(COMPOSE) run --rm e2e

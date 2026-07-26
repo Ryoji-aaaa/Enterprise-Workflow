@@ -20,5 +20,6 @@ RUN mvn --batch-mode --no-transfer-progress package -DskipTests
 FROM eclipse-temurin:${JAVA_VERSION}-jre AS runtime
 WORKDIR /app
 COPY --from=build /workspace/target/workflow-backend-*.jar app.jar
+COPY scripts/healthcheck.sh /app/healthcheck.sh
 USER 10001
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

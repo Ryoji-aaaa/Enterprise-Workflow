@@ -41,7 +41,7 @@ services:
   backend:
     build:
       context: ./backend
-      target: development
+      target: runtime
       args:
         JAVA_VERSION: ${JAVA_VERSION:-21}
         MAVEN_VERSION: ${MAVEN_VERSION:-3.9.16}
@@ -60,7 +60,7 @@ services:
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
     healthcheck:
-      test: ["CMD", "bash", "/workspace/scripts/healthcheck.sh"]
+      test: ["CMD", "bash", "/app/healthcheck.sh"]
       interval: 10s
       timeout: 5s
       retries: 30

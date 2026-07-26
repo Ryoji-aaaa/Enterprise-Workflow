@@ -19,10 +19,14 @@ mode="${1:-all}"
   exit 1
 }
 
+compose_project_name_override="${COMPOSE_PROJECT_NAME:-}"
 set -a
 # shellcheck disable=SC1091
 source "${PROJECT_DIRECTORY}/.env"
 set +a
+if [[ -n "${compose_project_name_override}" ]]; then
+  export COMPOSE_PROJECT_NAME="${compose_project_name_override}"
+fi
 
 required_variables=(
   KEYCLOAK_REALM

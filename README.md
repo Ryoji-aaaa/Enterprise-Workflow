@@ -1,89 +1,169 @@
 # Workflow prototype
 
-Keycloakで認証し、Next.jsのBFFを経由してSpring Bootから業務ユーザー情報を取得する、
-ローカル開発用ワークフローアプリのプロトタイプです。
+Keycloakで認証し、Next.jsのBFFを経由してSpring Bootから業務ユーザー情報を
+取得するローカル開発用ワークフローアプリです。ブラウザへアクセストークンを
+渡さず、Next.jsから業務DBへ直接接続しない構成です。
 
-## Status
+詳細な実装計画と受け入れ条件は[`init_tasks.md`](./init_tasks.md)、技術別の仕様は
+[`docs`](./docs/README.md)を参照してください。
 
-実装中です。現在の詳細な実装計画と受け入れ条件は
-[`init_tasks.md`](./init_tasks.md)を参照してください。
-実装済み仕様は使用技術別に[`docs`](./docs/README.md)へ記録しています。
-
-## Prerequisites
+## 前提条件
 
 - Windows 11 / WSL2
 - Ubuntu 24.04 LTS
-- Docker Engine and Docker Compose V2
+- Docker EngineとDocker Compose V2
 - GNU Make
-- Git
+- Git、curl、jq、envsubst、ripgrep
 
-ホスト側の依存関係は次のスクリプトで導入できます。
+ホスト依存コマンドは`./scripts/install-host-dependencies.sh`で導入できます。
+Node.js、Java、Mavenはコンテナ内で管理するため、ホストへの導入は不要です。
 
-```bash
-./scripts/install-host-dependencies.sh
-```
-
-Node.js、Java、Mavenなどのアプリケーション依存関係はコンテナ内で管理します。
-
-## Initial setup
+## 初回起動
 
 ```bash
+cd ~/projects/workflow
 cp .env.example .env
 make setup
-```
-
-`.env`内の`replace-with-`で始まる値は、サービスを起動する前にローカル専用の
-ランダムな値へ変更してください。`.env`はGitの管理対象外です。
-
-## Planned commands
-
-```bash
 make init
-make up
-make down
-make test
-make verify
 ```
 
-各コマンドの一覧は`make help`で確認できます。
+`make setup`は必須コマンドとDocker daemonを確認し、必要なディレクトリと
+スクリプト権限を準備します。`.env`がない場合だけ`.env.example`から作成し、
+既存の`.env`は上書きしません。
 
-Spring Bootの単体・結合テストとPhase 4統合検証は次で実行できます。
+`.env`の`replace-with-`で始まる値と開発ユーザーの`password`はサンプルです。
+隔離されたローカル開発以外で使う前に、十分な長さのランダム値へ変更してください。
+`.env`と生成済みKeycloak設定はGit管理対象外です。
+
+`make init`はイメージをbuildし、PostgreSQL、Mailpit、Keycloakの順に利用可能に
+なるまで待機した後、Realm importを維持したまま内部Admin REST APIでKeycloakを
+冪等に設定します。その後backendとfrontendを起動し、業務DB初期ユーザーと全HTTP
+エンドポイントを検証します。既存のRealm、ユーザー、DBデータがあっても再実行
+できます。
+
+## 日常操作
 
 ```bash
-make test-backend
-make phase4-check
+# 通常起動（有限時間で全サービスのhealthyを待機）
+make up
+
+# 停止（Docker volumeは保持）
+make down
+
+# 再起動
+make restart
+
+# 状態と通信境界を検証
+make verify
+
+# 状態またはログを確認
+make ps
+make logs
 ```
 
-## Planned local URLs
+起動待機の既定タイムアウトは300秒です。変更する場合は、たとえば
+`COMPOSE_WAIT_TIMEOUT=600 make up`を実行します。失敗時はhealthyにならなかった
+サービス名、コンテナ状態、直近100行のログを表示します。
 
-- Application: http://localhost:3000
-- Keycloak: http://localhost:8180
-- Mailpit: http://localhost:8025
+## 完全再構築
 
-PostgreSQL is not published to the host. The single PostgreSQL container creates
-separate `workflow` and `keycloak` databases with separate login roles. Its
-initialization scripts run only when the development volume is empty; `make reset`
-will eventually recreate that volume.
+```bash
+make reset
+```
 
-The Keycloak realm disables self-registration, implicit flow, and direct access
-grants. Its confidential OIDC client requires Authorization Code Flow with PKCE
-S256. Realm configuration is rendered from environment variables into the
-ignored `keycloak/generated/` directory before startup.
+`make reset`は通常の`make init`と異なる破壊的操作です。実行時に次の警告と対象の
+Compose project名を表示し、そのprojectの開発用volumeを削除して完全再構築します。
 
-Realmの初回作成にはstartup importを使用し、import後の設定更新と検証には
-内部ネットワーク上のKeycloak Admin REST APIを使用します。`kcadm.sh`には
-依存しません。検証スクリプトはGETのみを実行します。
+```text
+この処理は開発用のPostgreSQLおよびKeycloakデータを削除します。
+```
 
-### Known limitation
+PostgreSQLの業務データ、KeycloakのRealm・ユーザーなど、そのvolume内のデータは
+復元できません。自動検証では普段の`workflow` projectを使わず、専用の作業コピーと
+Compose project名を使用してください。`make down`はvolumeを削除しません。
 
-Keycloak 26.7.0では、GETしたUser Profile設定に
-`unmanagedAttributePolicy`が含まれていない状態から`"DISABLED"`を追加して
-PUTするとHTTP 400になることを確認しています。そのため、未管理属性ポリシーは
-Keycloakのデフォルト状態を維持し、初期化処理では存在有無と既存値を変更しません。
+## URL
 
-## Local development accounts
+```text
+Application: http://localhost:3000
+Keycloak:    http://localhost:8180
+Mailpit:     http://localhost:8025
+```
 
-以下はローカル開発専用であり、本番環境では使用しません。
+Spring BootとPostgreSQLにはホスト公開ポートがありません。通信境界は次のとおりです。
 
-- Administrator: `example.admin1@sdcj.co.jp` / `password`
-- User: `example.user1@sdcj.co.jp` / `password`
+```text
+ブラウザ → Next.js
+ブラウザ → Keycloak
+Next.js → Spring Boot
+Spring Boot → PostgreSQL
+Spring Boot → Mailpit
+Keycloak → Keycloak用DB
+```
+
+Next.jsとSpring Bootは`application-network`、Spring Boot、PostgreSQL、Keycloakは
+用途に応じて`database-network`を使用します。内部networkはDockerの`internal`
+networkです。`make verify`はCompose定義だけでなく、実コンテナの接続network、
+公開ポート、frontendからbackendへの疎通、frontendからPostgreSQLを名前解決
+できないことも確認します。
+
+## ローカルテストアカウント
+
+以下はローカル開発専用です。
+
+- 管理者: `example.admin1@sdcj.co.jp` / `password`
+- 一般ユーザー: `example.user1@sdcj.co.jp` / `password`
+- 業務DB未登録ユーザー: `example.pending1@sdcj.co.jp` / `password`
+
+一般ユーザーと管理者はログイン後にBFF経由の`/api/me`結果を表示します。未登録
+ユーザーは403となり、利用申請が業務DBへ記録され、Mailpitへ通知されます。
+
+## 検証とテスト
+
+```bash
+make verify
+make test-backend
+make test-frontend
+make phase3-check
+make phase4-check
+make phase5-check
+```
+
+`make test-e2e`とそれを含む`make test`のPlaywrightシナリオはPhase 7で実装します。
+現在のPhase 6統合検証は`make verify`とPhase 3〜5のcheckを使用します。
+
+frontendのproduction依存監査は`make test-frontend`で`npm audit --omit=dev`を実行
+します。開発依存を含む監査結果と既知警告はPhase完了時の検証結果に記録します。
+メジャーバージョン更新が必要な自動修正は行いません。
+
+## 認証、Cookie、issuer
+
+Better AuthはDBなしのGeneric OAuth構成です。セッションとアカウント情報は暗号化
+されたHTTP-only Cookieに保存されるため、`BETTER_AUTH_SECRET`を変えると既存Cookie
+は無効になります。Cookieやリダイレクトが不整合になった場合は、ブラウザの
+`localhost:3000` Cookieを削除して再ログインしてください。
+
+Keycloakがトークンへ設定するissuerはブラウザから到達できる外部URL
+`http://localhost:8180/realms/workflow`です。一方、コンテナ間のdiscovery/JWKS取得
+には`http://keycloak:8080`を使用します。これは同一Realmの内部・外部URLの違いで、
+`KEYCLOAK_ISSUER`を内部URLへ変更してはいけません。Realmの初回作成はstartup import、
+import後の設定更新・検証は内部Admin REST APIを使い、`kcadm.sh`には依存しません。
+
+## トラブルシューティング
+
+- 起動がタイムアウトした場合は、表示されたサービスのログを確認し、
+  `make ps`と`make logs`を実行してください。
+- `3000`、`8180`、`8025`が使用中なら、競合するプロセスまたは別のCompose projectを
+  停止してから再実行してください。
+- 停止後もデータが残るのはDocker volumeを保持するためです。volume名は通常
+  `workflow_postgres-data`です。削除が必要な場合だけ`make reset`を使ってください。
+- Keycloakのissuer、Better Auth URL、Cookieのホストはすべて`localhost`で揃えて
+  ください。`127.0.0.1`との混在はCookieやOAuth stateの不一致原因になります。
+- WSL再起動後はDocker daemonが利用可能であることを`docker info`で確認してください。
+
+## Keycloakの既知制約
+
+Keycloak 26.7.0では、GETしたUser Profile設定に`unmanagedAttributePolicy`がない
+状態から`"DISABLED"`を追加してPUTするとHTTP 400になります。そのため既存値を
+変更せず、email必須設定と許可ドメインpatternだけを内部Admin REST APIで冪等に
+更新します。

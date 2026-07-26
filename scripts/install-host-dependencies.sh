@@ -23,7 +23,7 @@ on Ubuntu/WSL2:
   - Docker Engine, Docker CLI, Buildx, and Docker Compose plugin
   - GNU Make
   - Git and GitHub CLI (gh)
-  - curl, jq, OpenSSL, and envsubst
+  - curl, jq, OpenSSL, envsubst, and ripgrep
 
 Node.js/npm, Java, Maven, PostgreSQL, Keycloak, and Playwright are intentionally
 excluded because this project runs them in containers.
@@ -100,7 +100,8 @@ log "Installing base command-line dependencies..."
   gnupg \
   jq \
   make \
-  openssl
+  openssl \
+  ripgrep
 
 temporary_directory="$(mktemp -d)"
 
