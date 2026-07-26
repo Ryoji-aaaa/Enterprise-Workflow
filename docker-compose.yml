@@ -180,14 +180,33 @@ services:
     build:
       context: ./tests/e2e
       args:
+        NODE_VERSION: ${NODE_VERSION:-24.18.0}
         PLAYWRIGHT_VERSION: ${PLAYWRIGHT_VERSION:-1.62.0}
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    init: true
+    shm_size: 1gb
     environment:
-      BASE_URL: http://frontend:3000
-      KEYCLOAK_URL: http://keycloak:8080
-      MAILPIT_URL: http://mailpit:8025
-    networks:
-      - public-network
-      - application-network
+      HOME: /tmp
+      BASE_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      KEYCLOAK_URL: ${KEYCLOAK_EXTERNAL_URL:-http://localhost:8180}
+      MAILPIT_URL: http://localhost:${MAILPIT_UI_PORT:-8025}
+      DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
+      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-password}
+      DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
+      DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:-password}
+      DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
+      DEV_PENDING_PASSWORD: ${DEV_PENDING_PASSWORD:-password}
+    volumes:
+      - ./tests/e2e/playwright-report:/workspace/playwright-report
+      - ./tests/e2e/test-results:/workspace/test-results
+    network_mode: host
+    depends_on:
+      frontend:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
 
 volumes:
   postgres-data:

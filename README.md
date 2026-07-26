@@ -124,16 +124,26 @@ networkです。`make verify`はCompose定義だけでなく、実コンテナ�
 make verify
 make test-backend
 make test-frontend
+make test-e2e
+make test
 make phase3-check
 make phase4-check
 make phase5-check
 ```
 
-`make test-e2e`とそれを含む`make test`のPlaywrightシナリオはPhase 7で実装します。
-現在のPhase 6統合検証は`make verify`とPhase 3〜5のcheckを使用します。
+`make test-e2e`はサービスをhealthyまで起動し、Keycloak設定を冪等更新してから、
+Chromiumを含む専用コンテナでPlaywrightを実行します。一般・管理者・業務DB未登録
+ユーザーのログイン、BFF、ログアウト、Mailpit通知、申請の重複防止、backendの
+ホスト非公開、JWTなしの401を検証します。E2E前処理が削除するのは未登録テスト
+ユーザーの利用申請と同じ件名のMailpitメッセージだけです。
+
+失敗時のtrace、スクリーンショット、videoは`tests/e2e/test-results/results`、
+HTML reportは`tests/e2e/playwright-report/report`へ保存されます。これらは生成物
+としてGit管理しません。詳細は[`docs/playwright.md`](docs/playwright.md)を参照して
+ください。
 
 frontendのproduction依存監査は`make test-frontend`で`npm audit --omit=dev`を実行
-します。開発依存を含む監査結果と既知警告はPhase完了時の検証結果に記録します。
+します。Playwright依存もlockfileで固定し、Phase完了時に監査結果を記録します。
 メジャーバージョン更新が必要な自動修正は行いません。
 
 ## 認証、Cookie、issuer
@@ -159,6 +169,12 @@ import後の設定更新・検証は内部Admin REST APIを使い、`kcadm.sh`�
   `workflow_postgres-data`です。削除が必要な場合だけ`make reset`を使ってください。
 - Keycloakのissuer、Better Auth URL、Cookieのホストはすべて`localhost`で揃えて
   ください。`127.0.0.1`との混在はCookieやOAuth stateの不一致原因になります。
+- E2EのOAuth開始が429になった場合、テストはBetter Authの`x-retry-after`に従い
+  1回だけ有限時間で再試行します。固定sleepや無限再試行は行いません。
+- E2E失敗の詳細はHTML reportとtraceを確認してください。再実行時は前回の生成物を
+  E2E前処理が削除します。
+- Mailpit通知の確認に失敗した場合は`http://localhost:8025`で件名
+  `[Workflow] 未登録ユーザーからアクセスがありました`を確認してください。
 - WSL再起動後はDocker daemonが利用可能であることを`docker info`で確認してください。
 
 ## Keycloakの既知制約

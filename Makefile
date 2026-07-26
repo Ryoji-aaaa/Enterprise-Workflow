@@ -48,7 +48,7 @@ test-frontend: ## Run frontend lint and type checks
 	@./scripts/test-frontend.sh
 
 test-e2e: ## Run Playwright end-to-end tests
-	$(COMPOSE) run --rm e2e
+	@./scripts/test-e2e.sh
 
 verify: ## Verify service readiness
 	./scripts/verify.sh
