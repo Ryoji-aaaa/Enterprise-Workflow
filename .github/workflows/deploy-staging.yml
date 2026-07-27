@@ -1,0 +1,108 @@
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_location: ${{ vars.AZURE_LOCATION }}
+      TF_VAR_resource_group_name: ${{ vars.AZURE_RESOURCE_GROUP }}
+      TF_VAR_acr_name: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+      TF_VAR_acr_resource_group_name: ${{ vars.AZURE_CONTAINER_REGISTRY_RESOURCE_GROUP }}
+      TF_VAR_github_identity_principal_id: ${{ vars.AZURE_GITHUB_IDENTITY_PRINCIPAL_ID }}
+      TF_VAR_container_app_environment_name: ${{ vars.AZURE_CONTAINER_APPS_ENVIRONMENT_NAME }}
+      TF_VAR_frontend_container_app_name: ${{ vars.AZURE_FRONTEND_CONTAINER_APP_NAME }}
+      TF_VAR_backend_container_app_name: ${{ vars.AZURE_BACKEND_CONTAINER_APP_NAME }}
+      TF_VAR_keycloak_container_app_name: ${{ vars.AZURE_KEYCLOAK_CONTAINER_APP_NAME }}
+      TF_VAR_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
+      TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
+      TF_VAR_mail_from: ${{ vars.MAIL_FROM }}
+      TF_VAR_provision_workloads: "true"
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Select immutable image tag
+        run: |
+          sha="$(git rev-parse HEAD)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "IMAGE_TAG=$sha" >> "$GITHUB_ENV"
+          echo "TF_VAR_image_tag=$sha" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Build and push SHA-tagged images
+        run: |
+          az acr login --name "$TF_VAR_acr_name"
+          registry="${TF_VAR_acr_name}.azurecr.io"
+          docker build -t "$registry/enterprise-workflow-frontend:$IMAGE_TAG" frontend
+          docker build -t "$registry/enterprise-workflow-backend:$IMAGE_TAG" backend
+          docker build -f keycloak/azure.Dockerfile \
+            -t "$registry/enterprise-workflow-keycloak:$IMAGE_TAG" .
+          docker push "$registry/enterprise-workflow-frontend:$IMAGE_TAG"
+          docker push "$registry/enterprise-workflow-backend:$IMAGE_TAG"
+          docker push "$registry/enterprise-workflow-keycloak:$IMAGE_TAG"
+      - name: Read deployment secrets from Key Vault
+        run: |
+          for name in postgres-admin-password keycloak-bootstrap-admin-password keycloak-client-secret; do
+            value="$(az keyvault secret show \
+              --vault-name "$TF_VAR_key_vault_name" --name "$name" \
+              --query value --output tsv)"
+            echo "::add-mask::$value"
+            variable_name="$(tr '[:lower:]-' '[:upper:]_' <<<"$name")"
+            echo "$variable_name=$value" >> "$GITHUB_ENV"
+            if [[ "$name" == "postgres-admin-password" ]]; then
+              echo "TF_VAR_postgres_administrator_password=$value" >> "$GITHUB_ENV"
+            fi
+          done
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform init, plan, and apply
+        working-directory: infra/environments/staging
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}"
+          terraform plan -input=false -out=tfplan
+          terraform apply -input=false -auto-approve tfplan
+          echo "FRONTEND_URL=$(terraform output -raw frontend_url)" >> "$GITHUB_ENV"
+          echo "KEYCLOAK_URL=$(terraform output -raw keycloak_url)" >> "$GITHUB_ENV"
+      - name: Configure Keycloak realm and client
+        env:
+          KEYCLOAK_ADMIN_USERNAME: admin
+          KEYCLOAK_REALM: workflow
+          KEYCLOAK_CLIENT_ID: workflow-web
+        run: |
+          export BETTER_AUTH_URL="$FRONTEND_URL"
+          ./scripts/configure-keycloak-azure.sh
+      - name: Run public smoke tests
+        run: ./scripts/azure-smoke-test.sh
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Staging deployment"
+            echo "- Image tag: \`$IMAGE_TAG\`"
+            echo "- Frontend: ${FRONTEND_URL:-not available}"
+            echo "- Keycloak: ${KEYCLOAK_URL:-not available}"
+          } >> "$GITHUB_STEP_SUMMARY"

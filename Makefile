@@ -4,7 +4,8 @@ SHELL := /usr/bin/env bash
 COMPOSE := docker compose
 
 .PHONY: help setup init build up down restart logs ps clean reset \
-	test test-backend test-frontend test-e2e verify render-keycloak-config
+	test test-backend test-frontend test-e2e verify render-keycloak-config \
+	terraform-check
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -54,3 +55,12 @@ verify: ## Verify service readiness
 
 render-keycloak-config: ## Render local Keycloak realm configuration
 	./keycloak/scripts/initialize-keycloak.sh render
+
+terraform-check: ## Format-check and validate all Terraform roots
+	terraform fmt -check -recursive infra
+	terraform -chdir=infra/bootstrap init -backend=false
+	terraform -chdir=infra/bootstrap validate
+	terraform -chdir=infra/environments/staging init -backend=false
+	terraform -chdir=infra/environments/staging validate
+	terraform -chdir=infra/environments/production init -backend=false
+	terraform -chdir=infra/environments/production validate

@@ -119,3 +119,15 @@ Spring BootとPostgreSQLにホスト公開URLはありません。
 - 起動失敗時は`make ps`と`make logs`で対象サービスを確認してください。
 - 本番利用前の必須変更は[production readiness](docs/operations/production-readiness.md)を
   参照してください。
+
+## Azure CI/CD
+
+Azure Container Apps向けTerraformとGitHub Actionsを`infra/`と
+`.github/workflows/`に分離しているため、ローカルComposeの起動方法とnetwork境界は
+変わりません。stagingはmainのCI成功後に自動deployし、productionはstagingで検証した
+commit SHAを手動昇格します。`latest`は使用しません。
+
+初回構築は[Terraform手順](infra/README.md)、全体構成は
+[Azure architecture](docs/infrastructure/azure-architecture.md)、OIDCとGitHub設定は
+[GitHub Actions手順](docs/infrastructure/github-actions.md)を参照してください。
+AzureにはMailpitを配置せず、メールサービスは別途決定します。
