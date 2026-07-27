@@ -81,7 +81,7 @@ jobs:
           echo "::notice::Staging deployment skipped because Azure OIDC is not configured."
           echo "Staging deployment skipped: Azure OIDC is not ready." \
             >> "$GITHUB_STEP_SUMMARY"
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         if: steps.readiness.outputs.ready == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}

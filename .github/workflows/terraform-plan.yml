@@ -98,7 +98,7 @@ jobs:
           echo "::notice::Azure plan skipped because OIDC or required Environment Variables are not configured."
           echo "Azure plan was skipped; static Terraform validation succeeded." \
             >> "$GITHUB_STEP_SUMMARY"
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         if: steps.readiness.outputs.ready == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
