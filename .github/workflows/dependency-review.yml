@@ -14,7 +14,7 @@ jobs:
       - name: GitHub dependency review when supported
         id: dependency-review
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
       - name: Explain unavailable dependency review
         if: steps.dependency-review.outcome == 'failure'
         run: |
