@@ -1,4 +1,4 @@
-FROM curlimages/curl:8.17.0
+FROM curlimages/curl:8.21.0
 
 USER root
 RUN apk add --no-cache jq
