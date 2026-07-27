@@ -7,11 +7,16 @@ import { serverEnvironment } from "@/lib/environment";
 const keycloakRealmUrl =
   `${serverEnvironment.keycloakInternalUrl}/realms/${serverEnvironment.keycloakRealm}`;
 const secureCookies = process.env.NODE_ENV === "production";
+const rateLimitEnabled =
+  process.env.BETTER_AUTH_RATE_LIMIT_ENABLED !== "false";
 
 export const auth = betterAuth({
   appName: process.env.NEXT_PUBLIC_APP_NAME ?? "ワークフローシステム",
   baseURL: serverEnvironment.betterAuthUrl,
   secret: serverEnvironment.betterAuthSecret,
+  rateLimit: {
+    enabled: rateLimitEnabled,
+  },
   trustedOrigins: [serverEnvironment.betterAuthUrl],
   emailAndPassword: {
     enabled: false,

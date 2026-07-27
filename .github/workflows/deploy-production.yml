@@ -3,9 +3,17 @@ name: Deploy production
 on:
   workflow_dispatch:
     inputs:
+      phase:
+        description: Create the foundation first; create workloads only after Key Vault secrets exist
+        required: true
+        default: foundation
+        type: choice
+        options:
+          - foundation
+          - workloads
       image_tag:
         description: Full 40-character commit SHA already verified in staging
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -34,23 +42,65 @@ jobs:
       TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
       TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
       TF_VAR_mail_from: ${{ vars.MAIL_FROM }}
-      TF_VAR_provision_workloads: "true"
+      TF_VAR_provision_workloads: ${{ inputs.phase == 'workloads' }}
 
     steps:
       - uses: actions/checkout@v5
+        if: inputs.phase == 'foundation'
+      - uses: actions/checkout@v5
+        if: inputs.phase == 'workloads'
         with:
           ref: ${{ inputs.image_tag }}
+      - name: Check Azure deployment configuration
+        id: readiness
+        env:
+          AZURE_OIDC_CONFIGURED: ${{ vars.AZURE_OIDC_CONFIGURED }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          TF_STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
+          TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+          TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+        run: |
+          ready=true
+          [[ "$AZURE_OIDC_CONFIGURED" == "true" ]] || ready=false
+          for name in \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+            TF_STATE_RESOURCE_GROUP TF_STATE_STORAGE_ACCOUNT \
+            TF_STATE_CONTAINER TF_STATE_KEY \
+            TF_VAR_location TF_VAR_resource_group_name TF_VAR_acr_name \
+            TF_VAR_acr_resource_group_name \
+            TF_VAR_github_identity_principal_id \
+            TF_VAR_container_app_environment_name \
+            TF_VAR_frontend_container_app_name \
+            TF_VAR_backend_container_app_name \
+            TF_VAR_keycloak_container_app_name TF_VAR_key_vault_name \
+            TF_VAR_postgres_server_name TF_VAR_allowed_email_domain \
+            TF_VAR_mail_from; do
+            [[ -n "${!name}" ]] || ready=false
+          done
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - name: Production deployment skipped
+        if: steps.readiness.outputs.ready != 'true'
+        run: |
+          echo "::notice::Production deployment skipped because Azure OIDC is not configured."
+          echo "Production deployment skipped: Azure OIDC is not ready." \
+            >> "$GITHUB_STEP_SUMMARY"
       - name: Validate immutable tag
+        if: steps.readiness.outputs.ready == 'true' && inputs.phase == 'workloads'
         run: |
           [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]
           [[ "$(git rev-parse HEAD)" == "$IMAGE_TAG" ]]
           echo "TF_VAR_image_tag=$IMAGE_TAG" >> "$GITHUB_ENV"
       - uses: azure/login@v2
+        if: steps.readiness.outputs.ready == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Confirm all promoted images exist
+        if: steps.readiness.outputs.ready == 'true' && inputs.phase == 'workloads'
         run: |
           for repository in frontend backend keycloak; do
             az acr repository show \
@@ -59,6 +109,7 @@ jobs:
               --output none
           done
       - name: Read deployment secrets from Key Vault
+        if: steps.readiness.outputs.ready == 'true' && inputs.phase == 'workloads'
         run: |
           for name in postgres-admin-password keycloak-bootstrap-admin-password keycloak-client-secret; do
             value="$(az keyvault secret show \
@@ -72,7 +123,9 @@ jobs:
             fi
           done
       - uses: hashicorp/setup-terraform@v3
+        if: steps.readiness.outputs.ready == 'true'
       - name: Terraform init and plan
+        if: steps.readiness.outputs.ready == 'true'
         working-directory: infra/environments/production
         run: |
           terraform init \
@@ -82,12 +135,16 @@ jobs:
             -backend-config="key=${{ vars.TF_STATE_KEY }}"
           terraform plan -input=false -out=tfplan
       - name: Apply production plan
+        if: steps.readiness.outputs.ready == 'true'
         working-directory: infra/environments/production
         run: |
           terraform apply -input=false -auto-approve tfplan
-          echo "FRONTEND_URL=$(terraform output -raw frontend_url)" >> "$GITHUB_ENV"
-          echo "KEYCLOAK_URL=$(terraform output -raw keycloak_url)" >> "$GITHUB_ENV"
+          if [[ "$TF_VAR_provision_workloads" == "true" ]]; then
+            echo "FRONTEND_URL=$(terraform output -raw frontend_url)" >> "$GITHUB_ENV"
+            echo "KEYCLOAK_URL=$(terraform output -raw keycloak_url)" >> "$GITHUB_ENV"
+          fi
       - name: Configure Keycloak realm and client
+        if: steps.readiness.outputs.ready == 'true' && inputs.phase == 'workloads'
         env:
           KEYCLOAK_ADMIN_USERNAME: admin
           KEYCLOAK_REALM: workflow
@@ -96,13 +153,15 @@ jobs:
           export BETTER_AUTH_URL="$FRONTEND_URL"
           ./scripts/configure-keycloak-azure.sh
       - name: Run public smoke tests
+        if: steps.readiness.outputs.ready == 'true' && inputs.phase == 'workloads'
         run: ./scripts/azure-smoke-test.sh
       - name: Deployment summary
         if: always()
         run: |
           {
             echo "## Production deployment"
-            echo "- Promoted image tag: \`$IMAGE_TAG\`"
+            echo "- Phase: \`${{ inputs.phase }}\`"
+            echo "- Promoted image tag: \`${IMAGE_TAG:-not applicable}\`"
             echo "- Frontend: ${FRONTEND_URL:-not available}"
             echo "- Keycloak: ${KEYCLOAK_URL:-not available}"
           } >> "$GITHUB_STEP_SUMMARY"

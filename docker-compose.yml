@@ -11,6 +11,7 @@ services:
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-ワークフローシステム}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-replace-with-at-least-32-random-characters}
+      BETTER_AUTH_RATE_LIMIT_ENABLED: "false"
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8180/realms/workflow}
       KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
@@ -113,8 +114,10 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME: ${KEYCLOAK_EXTERNAL_URL:-http://localhost:8180}
+    secrets:
+      - source: keycloak-realm
+        target: /opt/keycloak/data/import/workflow-realm.json
     volumes:
-      - ./keycloak/generated/import:/opt/keycloak/data/import:ro
       - ./keycloak/scripts/healthcheck.sh:/opt/keycloak/healthcheck.sh:ro
     ports:
       - "8180:8080"
@@ -210,6 +213,10 @@ services:
 
 volumes:
   postgres-data:
+
+secrets:
+  keycloak-realm:
+    file: ./keycloak/generated/import/workflow-realm.json
 
 networks:
   public-network:

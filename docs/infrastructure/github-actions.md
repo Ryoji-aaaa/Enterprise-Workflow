@@ -17,6 +17,7 @@ GitHub Environment variablesは次を登録する。
 
 ```text
 AZURE_CLIENT_ID
+AZURE_OIDC_CONFIGURED
 AZURE_TENANT_ID
 AZURE_SUBSCRIPTION_ID
 AZURE_LOCATION
@@ -42,3 +43,14 @@ TF_STATE_KEY
 Azure識別子はsecretではなくEnvironment variableとする。DB、Keycloak、Better Authの
 秘密値をGitHub Secretsへ複製しない。`production`にはrequired reviewerとprevent
 self-reviewを設定し、利用プランで使えない場合はworkflow実行権限を限定する。
+
+`AZURE_OIDC_CONFIGURED`はFederated Credentialと全必須variableの登録完了後だけ`true`に
+する。未設定時もPRのfmt/validateは実行し、Azure login、plan、deployは明示的にskipする。
+
+初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
+stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の
+phaseを手動で選択する。
+
+GitHub dependency reviewはrepositoryのDependency graphが利用できる場合だけ有効である。
+未対応の場合はworkflowを失敗させず、frontend/E2Eの`npm audit`とDependabotによる
+GitHub Actions、npm、Maven、Docker dependency更新を代替とする。

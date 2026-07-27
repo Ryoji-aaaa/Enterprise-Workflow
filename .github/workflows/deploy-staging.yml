@@ -33,7 +33,7 @@ jobs:
       TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
       TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
       TF_VAR_mail_from: ${{ vars.MAIL_FROM }}
-      TF_VAR_provision_workloads: "true"
+      TF_VAR_provision_workloads: ${{ vars.PROVISION_WORKLOADS || 'false' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -45,12 +45,50 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "IMAGE_TAG=$sha" >> "$GITHUB_ENV"
           echo "TF_VAR_image_tag=$sha" >> "$GITHUB_ENV"
+      - name: Check Azure deployment configuration
+        id: readiness
+        env:
+          AZURE_OIDC_CONFIGURED: ${{ vars.AZURE_OIDC_CONFIGURED }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          TF_STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
+          TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+          TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+        run: |
+          ready=true
+          [[ "$AZURE_OIDC_CONFIGURED" == "true" ]] || ready=false
+          for name in \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+            TF_STATE_RESOURCE_GROUP TF_STATE_STORAGE_ACCOUNT \
+            TF_STATE_CONTAINER TF_STATE_KEY \
+            TF_VAR_location TF_VAR_resource_group_name TF_VAR_acr_name \
+            TF_VAR_acr_resource_group_name \
+            TF_VAR_github_identity_principal_id \
+            TF_VAR_container_app_environment_name \
+            TF_VAR_frontend_container_app_name \
+            TF_VAR_backend_container_app_name \
+            TF_VAR_keycloak_container_app_name TF_VAR_key_vault_name \
+            TF_VAR_postgres_server_name TF_VAR_allowed_email_domain \
+            TF_VAR_mail_from; do
+            [[ -n "${!name}" ]] || ready=false
+          done
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - name: Staging deployment skipped
+        if: steps.readiness.outputs.ready != 'true'
+        run: |
+          echo "::notice::Staging deployment skipped because Azure OIDC is not configured."
+          echo "Staging deployment skipped: Azure OIDC is not ready." \
+            >> "$GITHUB_STEP_SUMMARY"
       - uses: azure/login@v2
+        if: steps.readiness.outputs.ready == 'true'
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Build and push SHA-tagged images
+        if: steps.readiness.outputs.ready == 'true'
         run: |
           az acr login --name "$TF_VAR_acr_name"
           registry="${TF_VAR_acr_name}.azurecr.io"
@@ -62,6 +100,7 @@ jobs:
           docker push "$registry/enterprise-workflow-backend:$IMAGE_TAG"
           docker push "$registry/enterprise-workflow-keycloak:$IMAGE_TAG"
       - name: Read deployment secrets from Key Vault
+        if: steps.readiness.outputs.ready == 'true' && vars.PROVISION_WORKLOADS == 'true'
         run: |
           for name in postgres-admin-password keycloak-bootstrap-admin-password keycloak-client-secret; do
             value="$(az keyvault secret show \
@@ -75,7 +114,9 @@ jobs:
             fi
           done
       - uses: hashicorp/setup-terraform@v3
+        if: steps.readiness.outputs.ready == 'true'
       - name: Terraform init, plan, and apply
+        if: steps.readiness.outputs.ready == 'true'
         working-directory: infra/environments/staging
         run: |
           terraform init \
@@ -85,9 +126,12 @@ jobs:
             -backend-config="key=${{ vars.TF_STATE_KEY }}"
           terraform plan -input=false -out=tfplan
           terraform apply -input=false -auto-approve tfplan
-          echo "FRONTEND_URL=$(terraform output -raw frontend_url)" >> "$GITHUB_ENV"
-          echo "KEYCLOAK_URL=$(terraform output -raw keycloak_url)" >> "$GITHUB_ENV"
+          if [[ "$TF_VAR_provision_workloads" == "true" ]]; then
+            echo "FRONTEND_URL=$(terraform output -raw frontend_url)" >> "$GITHUB_ENV"
+            echo "KEYCLOAK_URL=$(terraform output -raw keycloak_url)" >> "$GITHUB_ENV"
+          fi
       - name: Configure Keycloak realm and client
+        if: steps.readiness.outputs.ready == 'true' && vars.PROVISION_WORKLOADS == 'true'
         env:
           KEYCLOAK_ADMIN_USERNAME: admin
           KEYCLOAK_REALM: workflow
@@ -96,6 +140,7 @@ jobs:
           export BETTER_AUTH_URL="$FRONTEND_URL"
           ./scripts/configure-keycloak-azure.sh
       - name: Run public smoke tests
+        if: steps.readiness.outputs.ready == 'true' && vars.PROVISION_WORKLOADS == 'true'
         run: ./scripts/azure-smoke-test.sh
       - name: Deployment summary
         if: always()

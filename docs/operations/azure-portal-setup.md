@@ -96,6 +96,8 @@ Subject   repo:Ryoji-aaaa/Enterprise-Workflow:environment:<environment>
 GitHubの`Settings > Environments`で`staging`と`production`を作り、
 [`github-actions.md`](../infrastructure/github-actions.md)のvariablesを環境別に登録する。
 productionでは`Required reviewers`と`Prevent self-review`を有効化する。
+Federated Credentialとすべてのvariableを確認するまでは
+`AZURE_OIDC_CONFIGURED=false`、foundation構築中は`PROVISION_WORKLOADS=false`とする。
 
 ## Phase C: foundation apply後の秘密値登録
 

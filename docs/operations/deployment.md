@@ -8,7 +8,9 @@
 4. GitHub Environmentの`PROVISION_WORKLOADS`を`true`にする。
 5. staging workflowを手動実行するか、実装をmainへmergeする。
 6. SHA image push、Terraform apply、Keycloak設定、smoke testの成功を確認する。
-7. stagingで検証した同じ40文字SHAをproduction workflowへ入力する。
+7. production workflowを`foundation` phaseで実行する。
+8. production Key Vaultへ別の秘密値を登録する。
+9. `workloads` phaseを選び、stagingで検証した同じ40文字SHAを入力する。
 
 通常のstaging deployはmainのCI成功を起点に自動実行する。productionは手動だけであり、
 ACRに3 imageが存在することを確認してから同じtagを適用する。`latest`は作成も参照もしない。
