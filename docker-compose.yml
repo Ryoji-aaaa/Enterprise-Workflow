@@ -101,6 +101,20 @@ services:
     networks:
       - database-network
 
+  keycloak-realm-init:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.7.0}
+    user: "0"
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - >-
+        install -o 1000 -g 0 -m 0440
+        /source/workflow-realm.json
+        /target/workflow-realm.json
+    network_mode: none
+    volumes:
+      - ./keycloak/generated/import/workflow-realm.json:/source/workflow-realm.json:ro
+      - keycloak-import:/target
+
   keycloak:
     image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.7.0}
     command: start-dev --import-realm
@@ -114,10 +128,8 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME: ${KEYCLOAK_EXTERNAL_URL:-http://localhost:8180}
-    secrets:
-      - source: keycloak-realm
-        target: /opt/keycloak/data/import/workflow-realm.json
     volumes:
+      - keycloak-import:/opt/keycloak/data/import:ro
       - ./keycloak/scripts/healthcheck.sh:/opt/keycloak/healthcheck.sh:ro
     ports:
       - "8180:8080"
@@ -130,6 +142,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak-realm-init:
+        condition: service_completed_successfully
     networks:
       - public-network
       - database-network
@@ -213,10 +227,7 @@ services:
 
 volumes:
   postgres-data:
-
-secrets:
-  keycloak-realm:
-    file: ./keycloak/generated/import/workflow-realm.json
+  keycloak-import:
 
 networks:
   public-network:
