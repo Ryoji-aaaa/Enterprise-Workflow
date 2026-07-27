@@ -13,7 +13,9 @@
 
 - Frontend: [Next.js・Better Auth](frontend/nextjs-better-auth.md)
 - Frontend UI: [shadcn/ui・Tailwind CSS](frontend/shadcn-tailwind.md)
-- Backend: [Spring Boot](backend/spring-boot.md)
+- Backend:
+  [Spring Boot](backend/spring-boot.md) /
+  [Flyway](backend/flyway.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
   [Keycloak](infrastructure/keycloak.md) /
@@ -29,6 +31,8 @@
 - [ADR-0003: Keycloak設定をAdmin REST APIへ統一](decisions/ADR-0003-keycloak-configuration-api.md)
 - [ADR-0004: User Profile設定方針](decisions/ADR-0004-user-profile-policy.md)
 - [ADR-0005: アプリケーションのネットワーク境界](decisions/ADR-0005-application-network-boundaries.md)
+- [ADR-0006: FlywayによるDBマイグレーション](decisions/ADR-0006-database-migration-with-flyway.md)
+- [ADR-0007: GraphifyおよびEntireの導入保留](decisions/ADR-0007-deferred-ai-development-tools.md)
 
 ## 履歴資料
 

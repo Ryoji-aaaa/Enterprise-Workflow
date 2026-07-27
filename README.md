@@ -47,6 +47,11 @@ make init
 全サービスとネットワーク境界を検証します。既存のRealm、ユーザー、DBデータが
 あっても再実行できます。
 
+Spring Bootの起動時にFlywayが未適用のDB migrationを実行します。適用履歴は
+PostgreSQLの`flyway_schema_history`で管理します。Flyway導入前の業務DBを含むvolumeは
+そのまま移行せず、開発データを削除できることを確認して`make reset`で再作成してください。
+追加方法と運用ルールは[Flyway仕様](docs/backend/flyway.md)を参照してください。
+
 ## 起動・停止・リセット
 
 ```bash

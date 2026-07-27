@@ -10,3 +10,5 @@ ADRは現在の設計判断と、その理由・制約を記録します。`Acce
 | [ADR-0003](ADR-0003-keycloak-configuration-api.md) | Accepted | Keycloak Admin REST APIによる設定 |
 | [ADR-0004](ADR-0004-user-profile-policy.md) | Accepted | Keycloak User Profileの最小更新 |
 | [ADR-0005](ADR-0005-application-network-boundaries.md) | Accepted | アプリケーションのネットワーク境界 |
+| [ADR-0006](ADR-0006-database-migration-with-flyway.md) | Accepted | FlywayによるDBマイグレーション |
+| [ADR-0007](ADR-0007-deferred-ai-development-tools.md) | Temporary | GraphifyおよびEntireの導入保留 |

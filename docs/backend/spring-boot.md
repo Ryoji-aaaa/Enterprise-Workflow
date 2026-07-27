@@ -10,6 +10,7 @@
 - Spring Security OAuth2 Resource Server
 - Spring Data JPA
 - PostgreSQL Driver
+- Flyway
 - Spring Boot Mail
 - Spring Boot Actuator
 - JUnit 6、MockMvc、Spring Security Test、H2
@@ -67,8 +68,10 @@ PostgreSQLの`app_users.business_role`から取得する。
 
 ## 業務データ
 
-`schema.sql`を毎起動時に実行するが、すべて`CREATE TABLE IF NOT EXISTS`であり、
-既存データを削除しない。HibernateのDDL生成は通常実行時に無効化する。
+PostgreSQLのschemaは`db/migration`内のFlyway Versioned Migrationで管理する。
+backend起動時に未適用のmigrationを順番に適用し、履歴とchecksumを
+`flyway_schema_history`へ記録する。HibernateのDDL生成とSpring Boot SQL Initializationは
+通常実行時に使用しない。運用方法は[Flyway仕様](flyway.md)を参照する。
 
 ### `app_users`
 
@@ -98,6 +101,8 @@ APIが403を返して外側のトランザクションが終了しても記録�
 
 `make test-backend`はDocker buildの専用testステージで毎回JUnitを実行する。
 内部ネットワークを外部接続可能へ変更せず、Maven依存の取得はbuildネットワーク内に限定する。
+JUnitのAPI結合テストではH2とHibernate `create-drop`を使用し、Flywayは無効化する。
+PostgreSQL固有のmigrationは`make reset`と`make verify`で検証する。
 
 結合テストでは、JWTなし、不正issuer、email不備、許可ドメイン外、Client不一致、
 登録済み、無効、未登録、冪等更新、通知抑制、メール失敗を検証する。
