@@ -23,6 +23,13 @@
 
 `keycloak-init`は`init`プロファイルに属する一時サービスである。
 通常起動には含めず、設定または検証時に`docker compose run --rm`で実行する。
+生成したRealm JSONはrootで動く一時initサービスが専用volumeへ`0440`でコピーし、
+Keycloakへread-onlyで渡す。これによりhost側の`0600`を維持したまま、Linux CIでも
+非rootのKeycloakが読み込める。
+
+ローカルとE2Eでは短時間に複数のOAuth loginを繰り返すため、Better Authのrate limitを
+`BETTER_AUTH_RATE_LIMIT_ENABLED=false`で無効化する。Azureではこの変数を設定せず、
+production既定のrate limitを有効なままにする。
 
 ネットワークの許可・禁止経路は
 [ネットワーク境界](../architecture/network-boundaries.md)を正本とする。

@@ -19,9 +19,18 @@
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
   [Keycloak](infrastructure/keycloak.md) /
-  [PostgreSQL](infrastructure/postgresql.md)
+  [PostgreSQL](infrastructure/postgresql.md) /
+  [Azure architecture](infrastructure/azure-architecture.md) /
+  [Terraform](infrastructure/terraform.md) /
+  [GitHub Actions](infrastructure/github-actions.md) /
+  [Keycloak on Azure](infrastructure/keycloak-azure.md)
 - Testing: [Playwright E2E](testing/playwright.md)
-- Operations: [本番移行・production readiness](operations/production-readiness.md)
+- Operations:
+  [本番移行・production readiness](operations/production-readiness.md) /
+  [Azure deployment](operations/deployment.md) /
+  [Azure Portal初回セットアップ](operations/azure-portal-setup.md) /
+  [Revision rollback](operations/rollback.md) /
+  [DB migration](operations/database-migration.md)
 
 ## 意思決定記録
 
@@ -33,6 +42,9 @@
 - [ADR-0005: アプリケーションのネットワーク境界](decisions/ADR-0005-application-network-boundaries.md)
 - [ADR-0006: FlywayによるDBマイグレーション](decisions/ADR-0006-database-migration-with-flyway.md)
 - [ADR-0007: GraphifyおよびEntireの導入保留](decisions/ADR-0007-deferred-ai-development-tools.md)
+- [ADR-0008: Azure Container Apps](decisions/ADR-0008-azure-container-apps.md)
+- [ADR-0009: Terraform](decisions/ADR-0009-terraform.md)
+- [ADR-0010: Keycloak on Azure](decisions/ADR-0010-keycloak-on-azure.md)
 
 ## 履歴資料
 

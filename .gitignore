@@ -16,6 +16,15 @@ playwright-report/
 test-results/
 keycloak/generated/
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!.tfvars.example
+crash.log
+
 # Editors and operating systems
 .idea/
 .vscode/

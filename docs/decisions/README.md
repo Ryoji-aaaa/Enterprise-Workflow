@@ -12,3 +12,6 @@ ADRは現在の設計判断と、その理由・制約を記録します。`Acce
 | [ADR-0005](ADR-0005-application-network-boundaries.md) | Accepted | アプリケーションのネットワーク境界 |
 | [ADR-0006](ADR-0006-database-migration-with-flyway.md) | Accepted | FlywayによるDBマイグレーション |
 | [ADR-0007](ADR-0007-deferred-ai-development-tools.md) | Temporary | GraphifyおよびEntireの導入保留 |
+| [ADR-0008](ADR-0008-azure-container-apps.md) | Accepted | Azure Container Appsと公開境界 |
+| [ADR-0009](ADR-0009-terraform.md) | Accepted | Azure resourceとstateのTerraform管理 |
+| [ADR-0010](ADR-0010-keycloak-on-azure.md) | Accepted | Azureでもoptimized Keycloakを継続 |

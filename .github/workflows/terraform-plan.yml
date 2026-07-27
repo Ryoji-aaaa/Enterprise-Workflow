@@ -1,0 +1,128 @@
+name: Terraform plan
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive infra
+      - name: Validate bootstrap
+        working-directory: infra/bootstrap
+        run: terraform init -backend=false && terraform validate
+      - name: Validate staging
+        working-directory: infra/environments/staging
+        run: terraform init -backend=false && terraform validate
+      - name: Validate production
+        working-directory: infra/environments/production
+        run: terraform init -backend=false && terraform validate
+
+  plan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [staging, production]
+    environment: ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_location: ${{ vars.AZURE_LOCATION }}
+      TF_VAR_resource_group_name: ${{ vars.AZURE_RESOURCE_GROUP }}
+      TF_VAR_acr_name: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+      TF_VAR_acr_resource_group_name: ${{ vars.AZURE_CONTAINER_REGISTRY_RESOURCE_GROUP }}
+      TF_VAR_github_identity_principal_id: ${{ vars.AZURE_GITHUB_IDENTITY_PRINCIPAL_ID }}
+      TF_VAR_container_app_environment_name: ${{ vars.AZURE_CONTAINER_APPS_ENVIRONMENT_NAME }}
+      TF_VAR_frontend_container_app_name: ${{ vars.AZURE_FRONTEND_CONTAINER_APP_NAME }}
+      TF_VAR_backend_container_app_name: ${{ vars.AZURE_BACKEND_CONTAINER_APP_NAME }}
+      TF_VAR_keycloak_container_app_name: ${{ vars.AZURE_KEYCLOAK_CONTAINER_APP_NAME }}
+      TF_VAR_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
+      TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
+      TF_VAR_mail_from: ${{ vars.MAIL_FROM }}
+      TF_VAR_provision_workloads: ${{ vars.PROVISION_WORKLOADS || 'false' }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+      - name: Check Azure plan configuration
+        id: readiness
+        env:
+          AZURE_OIDC_CONFIGURED: ${{ vars.AZURE_OIDC_CONFIGURED }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          TF_STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
+          TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+          TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+        run: |
+          ready=true
+          if [[ "$AZURE_OIDC_CONFIGURED" != "true" ]]; then
+            ready=false
+          fi
+          for name in \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+            TF_STATE_RESOURCE_GROUP TF_STATE_STORAGE_ACCOUNT \
+            TF_STATE_CONTAINER TF_STATE_KEY \
+            TF_VAR_location TF_VAR_resource_group_name TF_VAR_acr_name \
+            TF_VAR_acr_resource_group_name \
+            TF_VAR_github_identity_principal_id \
+            TF_VAR_container_app_environment_name \
+            TF_VAR_frontend_container_app_name \
+            TF_VAR_backend_container_app_name \
+            TF_VAR_keycloak_container_app_name TF_VAR_key_vault_name \
+            TF_VAR_postgres_server_name TF_VAR_allowed_email_domain \
+            TF_VAR_mail_from; do
+            if [[ -z "${!name}" ]]; then
+              ready=false
+            fi
+          done
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - name: Azure plan skipped
+        if: steps.readiness.outputs.ready != 'true'
+        run: |
+          echo "::notice::Azure plan skipped because OIDC or required Environment Variables are not configured."
+          echo "Azure plan was skipped; static Terraform validation succeeded." \
+            >> "$GITHUB_STEP_SUMMARY"
+      - uses: azure/login@v2
+        if: steps.readiness.outputs.ready == 'true'
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Read PostgreSQL bootstrap password only for workload plans
+        if: steps.readiness.outputs.ready == 'true' && vars.PROVISION_WORKLOADS == 'true'
+        run: |
+          value="$(az keyvault secret show \
+            --vault-name "$TF_VAR_key_vault_name" \
+            --name postgres-admin-password \
+            --query value --output tsv)"
+          echo "::add-mask::$value"
+          echo "TF_VAR_postgres_administrator_password=$value" >> "$GITHUB_ENV"
+      - name: Terraform init
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: infra/environments/${{ matrix.environment }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}"
+      - name: Terraform plan
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: infra/environments/${{ matrix.environment }}
+        run: terraform plan -no-color -input=false -out=tfplan

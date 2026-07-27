@@ -68,6 +68,7 @@ render_configuration() {
 configure_keycloak() {
   local output_file="${GENERATED_CONFIG_DIRECTORY}/workflow-user-profile.json"
 
+  docker compose --project-directory "${PROJECT_DIRECTORY}" build keycloak-init
   docker compose --project-directory "${PROJECT_DIRECTORY}" run \
     --rm \
     --no-deps \

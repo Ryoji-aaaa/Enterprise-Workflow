@@ -1,0 +1,29 @@
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: GitHub dependency review when supported
+        id: dependency-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+      - name: Explain unavailable dependency review
+        if: steps.dependency-review.outcome == 'failure'
+        run: |
+          echo "::notice::GitHub dependency review is unavailable; npm audits and Dependabot remain active."
+          echo "GitHub dependency review was unavailable for this repository." \
+            >> "$GITHUB_STEP_SUMMARY"
+      - name: Audit frontend production dependencies
+        working-directory: frontend
+        run: npm ci && npm audit --omit=dev
+      - name: Audit E2E production dependencies
+        working-directory: tests/e2e
+        run: npm ci && npm audit --omit=dev
