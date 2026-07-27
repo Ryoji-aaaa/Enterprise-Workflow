@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS app_users (
+CREATE TABLE app_users (
     id UUID PRIMARY KEY,
     identity_provider VARCHAR(50) NOT NULL,
     issuer VARCHAR(500) NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS app_users (
     CONSTRAINT ck_app_users_role CHECK (business_role IN ('USER', 'ADMIN'))
 );
 
-CREATE TABLE IF NOT EXISTS access_requests (
+CREATE TABLE access_requests (
     id UUID PRIMARY KEY,
     issuer VARCHAR(500) NOT NULL,
     external_subject VARCHAR(255) NOT NULL,

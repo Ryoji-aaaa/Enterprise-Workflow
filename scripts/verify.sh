@@ -146,7 +146,7 @@ if contains_service keycloak; then
 fi
 
 if contains_service backend; then
-  echo "Checking Spring Boot Actuator health and business seed data..."
+  echo "Checking Spring Boot Actuator health, Flyway migration, and business seed data..."
   "${COMPOSE[@]}" exec -T backend \
     bash /app/healthcheck.sh
 
@@ -159,6 +159,46 @@ if contains_service backend; then
   )"
   [[ "${unauthenticated_status}" == "401" ]] || {
     echo "Expected unauthenticated /api/me to return HTTP 401, got ${unauthenticated_status}." >&2
+    exit 1
+  }
+
+  schema_table_count="$(
+    "${COMPOSE[@]}" exec -T postgres \
+      psql \
+        --username postgres \
+        --dbname "${WORKFLOW_DB_NAME:-workflow}" \
+        --tuples-only \
+        --no-align <<'SQL'
+SELECT count(*)
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('flyway_schema_history', 'app_users', 'access_requests');
+SQL
+  )"
+  [[ "${schema_table_count}" == "3" ]] || {
+    echo "Expected Flyway history and workflow schema tables were not initialized." >&2
+    exit 1
+  }
+
+  migration_summary="$(
+    "${COMPOSE[@]}" exec -T postgres \
+      psql \
+        --username postgres \
+        --dbname "${WORKFLOW_DB_NAME:-workflow}" \
+        --tuples-only \
+        --no-align <<'SQL'
+SELECT count(*) || ':' ||
+       count(*) FILTER (
+           WHERE script = 'V001__create_initial_schema.sql'
+             AND type = 'SQL'
+             AND checksum IS NOT NULL
+             AND success
+       )
+FROM flyway_schema_history;
+SQL
+  )"
+  [[ "${migration_summary}" == "1:1" ]] || {
+    echo "Expected exactly one successful V001 Flyway migration with a checksum." >&2
     exit 1
   }
 
