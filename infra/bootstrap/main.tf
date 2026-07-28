@@ -140,7 +140,7 @@ resource "azurerm_federated_identity_credential" "github" {
   parent_id = azurerm_user_assigned_identity.github[each.key].id
   audience  = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_organization}/${var.github_repository}:environment:${each.key}"
+  subject   = "repo:${var.github_organization}@${var.github_organization_id}/${var.github_repository}@${var.github_repository_id}:environment:${each.key}"
 }
 
 locals {
