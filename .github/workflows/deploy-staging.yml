@@ -112,6 +112,9 @@ jobs:
             if [[ "$name" == "postgres-admin-password" ]]; then
               echo "TF_VAR_postgres_administrator_password=$value" >> "$GITHUB_ENV"
             fi
+            if [[ "$name" == "keycloak-bootstrap-admin-password" ]]; then
+              echo "KEYCLOAK_ADMIN_PASSWORD=$value" >> "$GITHUB_ENV"
+            fi
           done
       - uses: hashicorp/setup-terraform@v3
         if: steps.readiness.outputs.ready == 'true'
