@@ -47,7 +47,8 @@ KeycloakのRealmやユーザーもKeycloak専用DBを通じて同じボリュー
 - PostgreSQL: `pg_isready`
 - Mailpit: `/readyz`
 - Keycloak: 管理ポート9000の`/health/ready`を確認し、JSONの`status`が`UP`であることを検証
-- backend: runtime image内から`/actuator/health`のHTTP 200と`UP`を確認
+- backend: runtime image内から総合`/actuator/health`のHTTP 200と`UP`を確認し、ローカルでは
+  Mailpitのmail healthも維持
 - frontend: Node.jsの`fetch`で`/login`のHTTP成功を確認
 
 Keycloak公式イメージへ`curl`などを追加せず、Bashの`/dev/tcp`を使用する。

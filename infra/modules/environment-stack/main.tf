@@ -113,7 +113,7 @@ module "backend" {
     role_secret_name    = "workflow-db-password"
   }
   startup_probe = {
-    path                  = "/actuator/health"
+    path                  = "/actuator/health/readiness"
     port                  = 8080
     initial_delay_seconds = 10
     interval_seconds      = 10
@@ -121,11 +121,11 @@ module "backend" {
     failure_threshold     = 30
   }
   liveness_probe = {
-    path = "/actuator/health"
+    path = "/actuator/health/liveness"
     port = 8080
   }
   readiness_probe = {
-    path = "/actuator/health"
+    path = "/actuator/health/readiness"
     port = 8080
   }
 
