@@ -215,7 +215,7 @@ module "frontend" {
     HOSTNAME              = "0.0.0.0"
     NEXT_PUBLIC_APP_NAME  = "ワークフローシステム"
     BETTER_AUTH_URL       = local.frontend_url
-    BACKEND_INTERNAL_URL  = "https://${var.backend_container_app_name}.${module.container_app_environment.default_domain}"
+    BACKEND_INTERNAL_URL  = "https://${module.backend[0].fqdn}"
     KEYCLOAK_ISSUER       = local.keycloak_issuer
     KEYCLOAK_INTERNAL_URL = local.keycloak_url
     KEYCLOAK_REALM        = var.keycloak_realm

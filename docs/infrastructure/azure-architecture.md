@@ -23,6 +23,14 @@ readinessはアプリケーションの受付状態と業務DBを確認し、SMT
 ローカルComposeではMailpitと総合`/actuator/health`によるhealthcheckを維持する。
 Azureへメールサービスを導入する際は、通知配送の監視とアラートをprobeとは別に追加する。
 
+Frontendの`BACKEND_INTERNAL_URL`には、TerraformのBackend moduleがAzureRMから取得した
+internal ingress FQDNを`https://`付きで渡す。internal ingressのFQDNは
+`<backend-name>.internal.<environment-default-domain>`となり、同じContainer Apps
+Environment内のFrontendからだけ到達できる。環境のdefault domainへBackend名を直接
+連結するとexternal ingress形式になり、internal Backendへrouteされないため使用しない。
+Backendをexternalへ変更せず、Browserからの業務APIアクセスは引き続きFrontend BFFを
+経由する。
+
 全Container Appは共通の環境別User Assigned Managed Identityを持つ。ACRからのpullには
 `AcrPull`、Key Vault secret参照には`Key Vault Secrets User`を使い、ACR admin userや
 レジストリpasswordは使わない。Key VaultはGitHub-hosted runnerから秘密値を取得する

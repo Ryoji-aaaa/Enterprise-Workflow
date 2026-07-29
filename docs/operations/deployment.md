@@ -30,3 +30,10 @@ replicaが1以上であることを確認する。再ログイン後に`/api/bac
 `APPLICATION_USER_NOT_REGISTERED`から未登録ユーザー画面へ進めば正常であり、登録済み
 ユーザーはTopページが表示されることを確認する。Portalからprobeや環境変数を変更せず、
 差異があればTerraformを修正する。
+
+Frontend revisionの`BACKEND_INTERNAL_URL`はTerraformがBackend ingressから取得した
+`https://<backend-name>.internal.<environment-default-domain>`形式であることを確認する。
+Backend ingressはinternalのままとし、外部URLやBrowserから直接疎通確認しない。
+`BACKEND_UNAVAILABLE`が続く場合はFrontendログで接続先とproxy errorを確認し、Backend
+ログで`/api/me`到達を確認する。環境変数をPortalから修正せず、Terraformの生成値を直して
+Frontend revisionを更新する。
