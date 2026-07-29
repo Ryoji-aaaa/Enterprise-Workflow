@@ -34,8 +34,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [staging, production]
-    environment: ${{ matrix.environment }}
+        include:
+          - target_environment: staging
+            github_environment: staging-plan
+          - target_environment: production
+            github_environment: production-plan
+    environment: ${{ matrix.github_environment }}
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
@@ -58,6 +62,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: hashicorp/setup-terraform@v3
+      - name: Enforce production plan safety
+        if: matrix.target_environment == 'production' && vars.PROVISION_WORKLOADS != 'false'
+        run: |
+          echo "::error::production-plan must set PROVISION_WORKLOADS=false."
+          exit 1
       - name: Check Azure plan configuration
         id: readiness
         env:
@@ -115,7 +124,7 @@ jobs:
           echo "TF_VAR_postgres_administrator_password=$value" >> "$GITHUB_ENV"
       - name: Terraform init
         if: steps.readiness.outputs.ready == 'true'
-        working-directory: infra/environments/${{ matrix.environment }}
+        working-directory: infra/environments/${{ matrix.target_environment }}
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}" \
@@ -124,5 +133,5 @@ jobs:
             -backend-config="key=${{ vars.TF_STATE_KEY }}"
       - name: Terraform plan
         if: steps.readiness.outputs.ready == 'true'
-        working-directory: infra/environments/${{ matrix.environment }}
+        working-directory: infra/environments/${{ matrix.target_environment }}
         run: terraform plan -no-color -input=false -out=tfplan

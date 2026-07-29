@@ -144,6 +144,23 @@ resource "azurerm_federated_identity_credential" "github" {
 }
 
 locals {
+  plan_environments = {
+    staging-plan    = "staging"
+    production-plan = "production"
+  }
+}
+
+resource "azurerm_federated_identity_credential" "github_plan" {
+  for_each = local.plan_environments
+
+  name      = "github-enterprise-workflow-${each.key}"
+  parent_id = azurerm_user_assigned_identity.github[each.value].id
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "repo:${var.github_organization}@${var.github_organization_id}/${var.github_repository}@${var.github_repository_id}:environment:${each.key}"
+}
+
+locals {
   environment_roles = {
     for pair in setproduct(keys(local.environments), ["Contributor", "User Access Administrator"]) :
     "${pair[0]}-${pair[1]}" => {
