@@ -125,7 +125,7 @@ jobs:
               echo "KEYCLOAK_ADMIN_PASSWORD=$value" >> "$GITHUB_ENV"
             fi
           done
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         if: steps.readiness.outputs.ready == 'true'
       - name: Terraform init and plan
         if: steps.readiness.outputs.ready == 'true'
