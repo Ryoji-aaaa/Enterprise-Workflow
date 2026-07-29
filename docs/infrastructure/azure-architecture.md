@@ -14,7 +14,14 @@ Internet ──> Next.js Container App ──internal ingress──> Spring Boot
 Next.jsとKeycloakだけがexternal ingressを持つ。Spring Bootはinternal ingressであり、
 PostgreSQLはpublic networkを無効化したdelegated subnet上に置く。Next.jsにはDB設定を
 渡さない。MailpitはAzureへ配置しない。Azure上のメール配送サービスは未決定であり、
-決定までは通知送信が成功する前提にしない。
+決定までは通知送信が成功する前提にしない。SMTP未設定または障害は未登録ユーザーの
+メール通知だけを利用不能にし、認証済みユーザー向けの通常の業務APIは提供を継続する。
+
+Backend Container Appはstartupとreadinessで`/actuator/health/readiness`、livenessで
+`/actuator/health/liveness`を使う。livenessはアプリケーションの生存状態だけ、
+readinessはアプリケーションの受付状態と業務DBを確認し、SMTPはどちらにも含めない。
+ローカルComposeではMailpitと総合`/actuator/health`によるhealthcheckを維持する。
+Azureへメールサービスを導入する際は、通知配送の監視とアラートをprobeとは別に追加する。
 
 全Container Appは共通の環境別User Assigned Managed Identityを持つ。ACRからのpullには
 `AcrPull`、Key Vault secret参照には`Key Vault Secrets User`を使い、ACR admin userや
@@ -23,3 +30,6 @@ PostgreSQLはpublic networkを無効化したdelegated subnet上に置く。Next
 
 Container Appsは当初min/max replicaを1とする。Keycloakの複数replica化、cache stack、
 zone冗長化、メールサービス、custom domain/WAFは今回の対象外である。
+
+Container Appsを含むTerraform管理リソースをAzure Portalから直接変更しない。Portalは
+revision、traffic、replica、ログの確認に使用し、構成変更はTerraformへ反映してapplyする。

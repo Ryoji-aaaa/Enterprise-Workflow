@@ -18,3 +18,15 @@ ACRに3 imageが存在することを確認してから同じtagを適用する�
 smoke testはfrontend、OIDC discovery、login入口を匿名で確認する。Backend Actuatorは
 external URLを持たないため、Container Apps revisionのprobeとLog Analyticsで確認する。
 本番でテストユーザーを使う完全E2Eは行わない。
+
+Azureには現時点でメールサービスを配置しない。SMTP未設定または障害があってもBackendの
+liveness/readinessはmailを評価せず、通常の業務APIを提供できる状態をReadyとする。
+未登録ユーザーのアクセス要求はDBへ保存されるが、管理者へのメール通知は送信されない。
+メールサービス導入後は配送成否をprobeから独立した監視として追加する。
+
+デプロイ後はPortalで最新Backend revisionがActiveかつRunning、trafficが100%、
+replicaが1以上であることを確認する。再ログイン後に`/api/backend/me`が
+`BACKEND_UNAVAILABLE`にならないことを確認する。業務DB未登録ユーザーは
+`APPLICATION_USER_NOT_REGISTERED`から未登録ユーザー画面へ進めば正常であり、登録済み
+ユーザーはTopページが表示されることを確認する。Portalからprobeや環境変数を変更せず、
+差異があればTerraformを修正する。
