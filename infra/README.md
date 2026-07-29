@@ -21,6 +21,8 @@ containerをimportする。既存resourceを同名で作成しようとしては
 ```bash
 cd infra/bootstrap
 cp terraform.tfvars.example terraform.tfvars
+gh api repos/<owner>/<repository> \
+  --jq '{github_organization_id: .owner.id, github_repository_id: .id}'
 terraform init \
   -backend-config="resource_group_name=<tfstate-rg>" \
   -backend-config="storage_account_name=<storage-account>" \
@@ -30,6 +32,10 @@ terraform import azurerm_resource_group.tfstate \
   /subscriptions/<subscription-id>/resourceGroups/<tfstate-rg>
 terraform apply
 ```
+
+GitHub APIで取得したowner IDとrepository IDを`terraform.tfvars`へ設定する。
+2026-07-15以降に作成されたGitHub repositoryのOIDC subjectには、rename後も変わらない
+これらのIDがowner名とrepository名に付加される。
 
 該当する場合は`azurerm_resource_group.acr`および
 `azurerm_resource_group.environment[\"staging\"]`等も同様にimportする。

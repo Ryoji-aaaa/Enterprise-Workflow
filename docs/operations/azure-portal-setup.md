@@ -85,8 +85,11 @@ bootstrap applyで作成されたstaging/production用User Assigned Managed Iden
 ```text
 Issuer    https://token.actions.githubusercontent.com
 Audience  api://AzureADTokenExchange
-Subject   repo:Ryoji-aaaa/Enterprise-Workflow:environment:<environment>
+Subject   repo:<owner>@<owner-id>/<repository>@<repository-id>:environment:<environment>
 ```
+
+`owner-id`と`repository-id`は`infra/bootstrap/terraform.tfvars`に設定したGitHubの
+immutable IDと一致することを確認する。
 
 `Access control (IAM) > Role assignments`では、各identityが自環境Resource Groupだけに
 `Contributor`と`User Access Administrator`、state Storageに
