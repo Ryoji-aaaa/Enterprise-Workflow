@@ -29,7 +29,10 @@ Spring BootとPostgreSQLはホストへポートを公開しません。Next.js�
 - `curl`、`jq`、`openssl`、`envsubst`、`grep`
 - 利用ポート: `3000`、`8180`、`8025`
 
-Ubuntu/WSL2では`./scripts/install-host-dependencies.sh`でホスト依存を導入できます。
+Ubuntu/WSL2では`bash scripts/install-host-dependencies.sh`でホスト依存を導入できます。
+Ubuntu標準のDockerパッケージが導入済みの場合は、イメージ、コンテナ、volumeを
+保持したまま、実行中のコンテナを停止してBuildxとComposeを含むDocker公式
+パッケージへ自動的に置き換えます。
 Node.js、Java、Maven、PostgreSQL、Keycloak、Playwrightはコンテナ内で実行します。
 
 ## 初回セットアップ

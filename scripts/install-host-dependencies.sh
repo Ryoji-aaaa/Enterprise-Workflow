@@ -10,12 +10,11 @@ readonly GH_REPOSITORY_URL="https://cli.github.com/packages"
 readonly GH_KEY_FINGERPRINT_1="2C6106201985B60E6C7AC87323F3D4EA75716059"
 readonly GH_KEY_FINGERPRINT_2="7F38BBB59D064DBCB3D84D725612B36462313325"
 
-remove_conflicts=false
 temporary_directory=""
 
 usage() {
   cat <<EOF
-Usage: ./${SCRIPT_NAME} [--remove-docker-conflicts]
+Usage: ./${SCRIPT_NAME}
 
 Install the host-side dependencies required to build and operate this project
 on Ubuntu/WSL2:
@@ -30,8 +29,8 @@ excluded because this project runs them in containers.
 
 Options:
   --remove-docker-conflicts
-      Remove Docker packages that conflict with Docker's official packages.
-      Docker data under /var/lib/docker is not removed.
+      Deprecated compatibility option. Conflicting Docker packages are now
+      replaced automatically. Docker data under /var/lib/docker is not removed.
   -h, --help
       Show this help.
 EOF
@@ -57,7 +56,7 @@ trap cleanup EXIT
 for argument in "$@"; do
   case "${argument}" in
     --remove-docker-conflicts)
-      remove_conflicts=true
+      # Retained so existing documentation and automation do not break.
       ;;
     -h|--help)
       usage
@@ -147,12 +146,13 @@ for package in "${conflicting_packages[@]}"; do
 done
 
 if ((${#installed_conflicts[@]} > 0)); then
-  if [[ "${remove_conflicts}" == "true" ]]; then
-    log "Removing conflicting Docker packages: ${installed_conflicts[*]}"
-    "${SUDO[@]}" apt-get remove -y "${installed_conflicts[@]}"
-  else
-    fail "Conflicting Docker packages are installed: ${installed_conflicts[*]}. Review them, then rerun with --remove-docker-conflicts if removal is intended."
+  log "Replacing Docker packages that conflict with Docker's official packages: ${installed_conflicts[*]}"
+  log "Existing Docker images, containers, and volumes under /var/lib/docker will be preserved."
+  if [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
+    log "Stopping the existing Docker service and socket before replacement..."
+    "${SUDO[@]}" systemctl stop docker.service docker.socket
   fi
+  "${SUDO[@]}" apt-get remove -y "${installed_conflicts[@]}"
 fi
 
 log "Configuring GitHub CLI's official APT repository..."
@@ -190,10 +190,14 @@ log "Installing Docker Engine, Compose, Buildx, and GitHub CLI..."
 
 if [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
   log "Enabling and starting Docker..."
-  "${SUDO[@]}" systemctl enable --now docker
+  "${SUDO[@]}" systemctl daemon-reload
+  "${SUDO[@]}" systemctl reset-failed docker.service docker.socket || true
+  "${SUDO[@]}" systemctl enable docker.service docker.socket
+  "${SUDO[@]}" systemctl restart docker.socket
+  "${SUDO[@]}" systemctl restart docker.service
 elif command -v service >/dev/null 2>&1; then
   log "Starting Docker..."
-  "${SUDO[@]}" service docker start
+  "${SUDO[@]}" service docker restart
 else
   fail "Docker was installed, but no supported service manager was found."
 fi
