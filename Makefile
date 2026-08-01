@@ -60,6 +60,7 @@ terraform-check: ## Format-check and validate all Terraform roots
 	terraform fmt -check -recursive infra
 	./scripts/check-backend-probes.sh
 	./scripts/check-backend-internal-url.sh
+	./scripts/check-manual-seed-job-names.sh
 	terraform -chdir=infra/bootstrap init -backend=false
 	terraform -chdir=infra/bootstrap validate
 	terraform -chdir=infra/environments/staging init -backend=false

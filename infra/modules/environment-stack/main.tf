@@ -257,17 +257,18 @@ module "frontend" {
 }
 
 locals {
-  manual_seed_targets = var.provision_workloads && var.environment == "staging" ? toset([
-    "db",
-    "keycloak",
-    "all",
-  ]) : toset([])
+  manual_seed_job_names_by_target = {
+    db       = "job-ewf-stg-seed-db"
+    keycloak = "job-ewf-stg-seed-kc"
+    all      = "job-ewf-stg-seed-all"
+  }
+  manual_seed_jobs = var.provision_workloads && var.environment == "staging" ? local.manual_seed_job_names_by_target : {}
 }
 
 resource "azurerm_container_app_job" "manual_seed" {
-  for_each = local.manual_seed_targets
+  for_each = local.manual_seed_jobs
 
-  name                         = "job-enterprise-workflow-staging-seed-${each.key}"
+  name                         = each.value
   location                     = var.location
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id

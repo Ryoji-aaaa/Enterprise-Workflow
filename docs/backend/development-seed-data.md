@@ -27,9 +27,9 @@ promoteする通常3 imageには含めない。
 
 | Job名 | 対象 |
 | --- | --- |
-| `job-enterprise-workflow-staging-seed-db` | 業務DBのみ |
-| `job-enterprise-workflow-staging-seed-keycloak` | Keycloak userのみ |
-| `job-enterprise-workflow-staging-seed-all` | DB、Keycloakの順に両方 |
+| `job-ewf-stg-seed-db` | 業務DBのみ |
+| `job-ewf-stg-seed-kc` | Keycloak userのみ |
+| `job-ewf-stg-seed-all` | DB、Keycloakの順に両方 |
 
 Job定義は`WORKFLOW_MANUAL_SEED_ENABLED=true`、
 `WORKFLOW_DEPLOYMENT_ENVIRONMENT=staging`、対象別の
@@ -42,6 +42,11 @@ Keycloakの既存ユーザーは毎回passwordを指定値へ同期するため�
 `updated`の両方へ計上される。終了時には次の形式で集計をログ出力し、成功時は終了コード0、
 失敗時は非0で終了する。
 
+`all` JobのDB seedとKeycloak seedは単一transactionではない。DB seedが成功した後に
+Keycloak seedが失敗した場合、Job自体は非0終了するが、DBへの投入結果はcommit済みの
+部分成功として残る。失敗原因を解消して同じJobを再実行し、冪等なDB seedを再確認してから
+Keycloak seedを完了させる。
+
 ```text
 manual_seed_result target=db created=... existing=... updated=... failed=...
 manual_seed_result target=keycloak created=... existing=... updated=... failed=...
@@ -53,9 +58,9 @@ manual_seed_result target=keycloak created=... existing=... updated=... failed=.
 ```bash
 az containerapp job start \
   --resource-group rg-enterprise-workflow-staging \
-  --name job-enterprise-workflow-staging-seed-db
+  --name job-ewf-stg-seed-db
 
 az containerapp job start \
   --resource-group rg-enterprise-workflow-staging \
-  --name job-enterprise-workflow-staging-seed-keycloak
+  --name job-ewf-stg-seed-kc
 ```
