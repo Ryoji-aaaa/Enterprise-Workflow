@@ -9,23 +9,26 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.domain.AccessRequest;
 import jp.co.sdcj.workflow.domain.AppUser;
-import jp.co.sdcj.workflow.domain.UserRole;
 import jp.co.sdcj.workflow.repository.AccessRequestRepository;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
+import jp.co.sdcj.workflow.repository.PermissionRepository;
 
 @Service
 public class AccessRequestService {
 
     private final AccessRequestRepository accessRequestRepository;
     private final AppUserRepository appUserRepository;
+    private final PermissionRepository permissionRepository;
     private final AccessRequestNotificationService notificationService;
 
     public AccessRequestService(
             AccessRequestRepository accessRequestRepository,
             AppUserRepository appUserRepository,
+            PermissionRepository permissionRepository,
             AccessRequestNotificationService notificationService) {
         this.accessRequestRepository = accessRequestRepository;
         this.appUserRepository = appUserRepository;
+        this.permissionRepository = permissionRepository;
         this.notificationService = notificationService;
     }
 
@@ -50,8 +53,9 @@ public class AccessRequestService {
             return;
         }
 
-        List<AppUser> administrators =
-                appUserRepository.findAllByRoleAndEnabledTrue(UserRole.ADMIN);
+        List<AppUser> administrators = appUserRepository.findAllById(
+                permissionRepository.findEffectiveUserIdsByPermissionCode(
+                        PermissionCodes.USER_READ, now));
         if (notificationService.send(request, administrators)) {
             request.markNotificationSent(now);
         }

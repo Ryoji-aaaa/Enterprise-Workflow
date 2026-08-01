@@ -15,3 +15,6 @@ ADRは現在の設計判断と、その理由・制約を記録します。`Acce
 | [ADR-0008](ADR-0008-azure-container-apps.md) | Accepted | Azure Container Appsと公開境界 |
 | [ADR-0009](ADR-0009-terraform.md) | Accepted | Azure resourceとstateのTerraform管理 |
 | [ADR-0010](ADR-0010-keycloak-on-azure.md) | Accepted | Azureでもoptimized Keycloakを継続 |
+| [ADR-0011](ADR-0011-separate-business-users-from-external-identities.md) | Accepted | 業務ユーザーと外部認証IDの分離 |
+| [ADR-0012](ADR-0012-separate-organization-position-and-authorization.md) | Accepted | 組織・役職・業務権限の分離 |
+| [ADR-0013](ADR-0013-append-only-audit-and-change-history.md) | Accepted | 監査ログと変更履歴の追記専用化 |

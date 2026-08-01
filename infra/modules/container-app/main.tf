@@ -57,6 +57,7 @@ resource "azurerm_container_app" "this" {
           GRANT CONNECT ON DATABASE ${init_container.value.database_name} TO ${init_container.value.database_role};
           SQL
           psql "host=$POSTGRES_HOST dbname=${init_container.value.database_name} user=$POSTGRES_ADMIN_USER sslmode=require" <<'SQL'
+          ${join("\n", [for extension in init_container.value.extensions : "CREATE EXTENSION IF NOT EXISTS ${extension};"])}
           GRANT ALL ON SCHEMA public TO ${init_container.value.database_role};
           ALTER SCHEMA public OWNER TO ${init_container.value.database_role};
           SQL

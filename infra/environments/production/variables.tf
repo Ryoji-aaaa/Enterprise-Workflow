@@ -27,6 +27,10 @@ variable "provision_workloads" {
   type    = bool
   default = false
 }
+variable "contract_legacy_user_columns" {
+  type    = bool
+  default = false
+}
 variable "allowed_email_domain" { type = string }
 variable "mail_host" {
   type    = string

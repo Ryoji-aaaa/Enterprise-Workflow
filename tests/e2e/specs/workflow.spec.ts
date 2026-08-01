@@ -105,7 +105,7 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(meBody).toMatchObject({
     email: userEmail,
     displayName: "開発一般ユーザー",
-    roles: ["USER"],
+    roles: ["APPLICATION_USER"],
   });
   expect(meBody).not.toHaveProperty("accessToken");
   expect(meBody).not.toHaveProperty("refreshToken");
@@ -130,7 +130,7 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
   expect(await meResponse.json()).toMatchObject({
     email: adminEmail,
     displayName: "開発管理者",
-    roles: ["ADMIN"],
+    roles: ["SYSTEM_ADMIN"],
   });
 });
 

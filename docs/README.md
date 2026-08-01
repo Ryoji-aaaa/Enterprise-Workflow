@@ -15,7 +15,11 @@
 - Frontend UI: [shadcn/ui・Tailwind CSS](frontend/shadcn-tailwind.md)
 - Backend:
   [Spring Boot](backend/spring-boot.md) /
-  [Flyway](backend/flyway.md)
+  [Flyway](backend/flyway.md) /
+  [ユーザー管理](backend/user-management.md) /
+  [組織・所属・役職管理](backend/organization-management.md) /
+  [業務認可](backend/authorization.md) /
+  [監査ログ](backend/audit-logging.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
   [Keycloak](infrastructure/keycloak.md) /
@@ -45,6 +49,9 @@
 - [ADR-0008: Azure Container Apps](decisions/ADR-0008-azure-container-apps.md)
 - [ADR-0009: Terraform](decisions/ADR-0009-terraform.md)
 - [ADR-0010: Keycloak on Azure](decisions/ADR-0010-keycloak-on-azure.md)
+- [ADR-0011: 業務ユーザーと外部認証IDの分離](decisions/ADR-0011-separate-business-users-from-external-identities.md)
+- [ADR-0012: 組織・役職・業務権限の分離](decisions/ADR-0012-separate-organization-position-and-authorization.md)
+- [ADR-0013: 追記専用の監査ログと変更履歴](decisions/ADR-0013-append-only-audit-and-change-history.md)
 
 ## 履歴資料
 

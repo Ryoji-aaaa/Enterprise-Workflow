@@ -12,12 +12,24 @@ HibernateによるDDL生成とSpring Boot SQL Initializationは通常実行時�
 
 ```text
 backend/src/main/resources/db/migration/
-└── V001__create_initial_schema.sql
+├── V001__create_initial_schema.sql
+├── V002__expand_user_management_schema.sql
+├── V003__create_organization_management_schema.sql
+├── V004__create_authorization_management_schema.sql
+├── V005__create_audit_log_schema.sql
+├── V006__seed_and_migrate_user_organization_authorization_data.sql
+└── V007__contract_legacy_app_user_columns.sql
 ```
 
-初回マイグレーションは`app_users`と`access_requests`を作成する。
+V001は従来の`app_users`と`access_requests`、V002からV005は新しい管理基盤、V006は
+SYSTEM・マスタseedと既存データ移行、V007は切替後の旧列削除を扱う。
 適用履歴、ファイル名、checksum、成功状態はPostgreSQLの
 `flyway_schema_history`に記録される。
+
+V003の期間重複排他制約は`btree_gist`を使用する。Azure Database for PostgreSQL
+Flexible ServerではTerraformが`azure.extensions=BTREE_GIST`を設定し、backendの
+database bootstrapが管理者権限で拡張を先に作成する。Flyway実行ユーザーへ
+データベース全体の`CREATE`権限を追加しない。
 
 ## ファイル命名規則
 
@@ -28,8 +40,8 @@ V{3桁連番}__{英小文字の説明}.sql
 例:
 
 ```text
-V002__create_workflow_requests.sql
-V003__add_approval_status.sql
+V008__create_workflow_requests.sql
+V009__add_approval_status.sql
 ```
 
 番号は既存ファイルの最大値から1つ進める。versionは重複させず、説明には英小文字と
@@ -42,11 +54,18 @@ underscoreを使用する。
 3. H2上の既存APIテストと、空のPostgreSQLに対する全migrationを検証する。
 
 ```bash
-touch backend/src/main/resources/db/migration/V002__add_example_column.sql
+touch backend/src/main/resources/db/migration/V008__add_example_column.sql
 make test-backend
 make reset
 make verify
 ```
+
+`make test-backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
+
+- 空DBへのV001からV007とHibernate schema validation
+- V001既存ユーザーからV007までの実データ移行
+- email正規化の事前検査、排他制約、追記専用trigger
+- 二回目起動時のFlyway・基盤seedの冪等性
 
 適用状況はPostgreSQLコンテナ内で確認する。
 
@@ -65,10 +84,10 @@ Flywayは適用時のchecksumを保存し、起動時に現在のファイルと
 `flyway repair`で安易に履歴を合わせてはならない。履歴修復が必要な場合は、
 対象環境、原因、残存オブジェクトを確認し、専用の作業Planとレビューを用意する。
 
-## 開発用seedとの責務分離
+## 基盤seedと開発用seedの責務分離
 
-Flywayはテーブル、制約などのスキーマだけを管理する。
-開発用管理者・一般ユーザーは従来どおり`DevelopmentUserInitializer`が投入し、
+SYSTEMユーザー、初期ロール・権限、移行に必要な組織など、全環境で同じ基盤データは
+Flywayで冪等に投入する。開発用管理者・一般ユーザーは`DevelopmentUserInitializer`が投入し、
 `workflow.seed.enabled`で有効・無効を切り替える。環境依存の開発データを
 migrationへ含めない。
 
@@ -84,7 +103,7 @@ make restart
 make verify
 ```
 
-最初の検証ではV001が1回だけ成功していること、再起動後も履歴行とseedが
+最初の検証ではV001からV007が1回ずつ成功していること、再起動後も履歴行とseedが
 重複しないことを確認する。
 
 ## マイグレーション失敗時の確認方法
@@ -108,7 +127,35 @@ SQLエラー、version重複、欠落したファイル、checksum不一致を�
 
 ## 本番移行時の注意事項
 
-今回の導入は、破棄可能なローカル開発DBを空にしてV001から適用することを前提とする。
-既存データを保持する共有環境・本番環境にはそのまま適用しない。
-対象DBの現行schemaと運用要件を調査し、baseline方式、バックアップ、停止時間、
-段階的な互換性維持を別Planで決定する。
+V002からV007はV001の既存ユーザーを保持して新構造へ移行できる。ただし、共有環境と本番では
+V006とV007を同じContainer Apps revision作成中に適用しない。Terraformの
+`contract_legacy_user_columns`は既定で`false`であり、backendへ
+`SPRING_FLYWAY_TARGET=006`を渡す。
+
+1. DB backupを取得し、case-insensitive email重複がないことを確認する。
+2. `CONTRACT_LEGACY_USER_COLUMNS=false`のまま新アプリをdeployする。
+3. Flyway V006、ユーザー件数、外部ID、主所属、ロール、認証・認可、監査を確認する。
+4. 新revisionだけがactiveで、旧revisionへtrafficがないことを確認する。V007適用中は管理更新と
+   初回loginを停止するwrite drainを設け、Flywayを実行するbackendを1 instanceだけ起動する。
+5. GitHub Environmentの`CONTRACT_LEGACY_USER_COLUMNS=true`へ変更し、同じ検証済みimageを
+   再deployしてV007を適用する。
+6. V007のユーザー単位reconciliation成功と旧列削除を確認し、フラグを以後`true`に保つ。
+   `true`では`SPRING_FLYWAY_TARGET`を渡さないため、V008以降も通常どおりlatestまで適用される。
+
+V007は外部ID、主所属、旧ロールに欠落があればDDL実行前に失敗する。V006までなら旧アプリへ
+戻せるが、V007後は旧列へ依存するimageへ戻さず、前進修正または承認済みbackup restoreを行う。
+write drain前に旧revisionがV006後のユーザー行を作成した場合も、その行はreconciliation対象として
+識別され、正規化した主所属・ロールがなければV007は失敗して旧列を保持する。欠落を補正してから
+contract deployを再実行する。互換triggerにはapp_usersと子tableの双方向投影があるため、write drainを
+省略するとlock競合またはdeadlockで起動が一度失敗し得る。その場合もV007はtransaction rollbackされる。
+旧revisionを停止したことを再確認してから、contract deployを再試行する。
+
+V006は`app_users`を排他して最終再同期した後、application-switch用の互換triggerを同一transaction
+で設置する。新modelのユーザー・状態・外部ID・主所属・全体scopeのlegacy相当ロールは旧列へ安全側に
+投影され、旧revisionで進行中だった初回loginのsubject更新は正規化tableへ同期される。旧binaryは組織
+scopeを表現できないため、組織scope付きロールだけを持つユーザーは全体ADMIN/USERへ平坦化せず
+`enabled=false`とする。明示的にunlinkした外部IDや全体scopeのlegacy相当ロールがないユーザーも旧
+projectionを`enabled=false`にして、rollback時の権限復活を防ぐ。
+これらの一時列・trigger・helper functionはreconciliation成功後にV007が削除する。V007も
+source/target tableをtransaction lockしてから照合するため、確認済み状態と旧列削除の間へ管理writeが
+割り込むことはない。

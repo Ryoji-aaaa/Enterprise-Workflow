@@ -38,6 +38,11 @@ variable "provision_workloads" {
   type        = bool
   default     = false
 }
+variable "contract_legacy_user_columns" {
+  description = "False pins Flyway at V006 for the application-switch deployment; set true only in the later single-migrator contract deployment after legacy revisions and user-management writes are drained."
+  type        = bool
+  default     = false
+}
 variable "keycloak_realm" {
   type    = string
   default = "workflow"
