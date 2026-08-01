@@ -136,7 +136,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V007 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V008 via the real app.
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
 docker rm --force "${BACKEND_CONTAINER}" >/dev/null
@@ -153,7 +153,10 @@ SQL
 # Mirror the production application-switch deployment: the new entity model
 # must run successfully at V006 while legacy columns are still available to an
 # old revision. V007 is released only by the separate startup below.
-start_backend workflow_upgrade 006
+# The current application maps columns introduced after the V006 compatibility
+# window. Start it without schema validation here; the final startup below
+# validates the complete V008 schema.
+start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
 BEGIN
@@ -579,8 +582,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 7 THEN
-        RAISE EXCEPTION 'expected 7 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 8 THEN
+        RAISE EXCEPTION 'expected 8 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -599,6 +602,15 @@ BEGIN
     IF (SELECT account_status FROM app_users
         WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2') <> 'DISABLED' THEN
         RAISE EXCEPTION 'disabled legacy user was not migrated to DISABLED';
+    END IF;
+    IF (SELECT employment_type FROM app_users
+        WHERE id = workflow_system_user_id()) <> 'SYSTEM'
+       OR EXISTS (
+           SELECT 1 FROM app_users
+           WHERE id <> workflow_system_user_id()
+             AND employment_type <> 'REGULAR_EMPLOYEE'
+       ) THEN
+        RAISE EXCEPTION 'employment type migration is invalid';
     END IF;
     IF (SELECT count(*) FROM user_external_identities
         WHERE user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1') <> 1
@@ -892,7 +904,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 7 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 8 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -903,21 +915,61 @@ BEGIN
        ) THEN
         RAISE EXCEPTION 'fresh database SYSTEM seed is invalid';
     END IF;
-    IF (SELECT count(*) FROM roles) <> 6 OR (SELECT count(*) FROM permissions) <> 13 THEN
+    IF (SELECT employment_type FROM app_users
+        WHERE id = '00000000-0000-0000-0000-000000000001') <> 'SYSTEM' THEN
+        RAISE EXCEPTION 'fresh database SYSTEM employment type is invalid';
+    END IF;
+    IF (SELECT count(*) FROM roles) <> 9 OR (SELECT count(*) FROM permissions) <> 14 THEN
         RAISE EXCEPTION 'fresh database authorization seeds are invalid';
     END IF;
+    BEGIN
+        INSERT INTO app_users (
+            id, email, display_name, employment_type, account_status,
+            valid_from, created_by, updated_by
+        ) VALUES (
+            'abababab-abab-abab-abab-abababababab', 'invalid.employment@sdcj.co.jp',
+            'Invalid employment', 'INVALID', 'ACTIVE', CURRENT_TIMESTAMP,
+            workflow_system_user_id(), workflow_system_user_id()
+        );
+        RAISE EXCEPTION 'invalid employment type unexpectedly succeeded';
+    EXCEPTION WHEN check_violation THEN
+        NULL;
+    END;
+    BEGIN
+        INSERT INTO organization_units (
+            id, organization_id, parent_unit_id, unit_code, unit_name, unit_type,
+            display_order, enabled, valid_from, created_by, updated_by
+        ) SELECT
+            'acacacac-acac-acac-acac-acacacacacac', organization_id, id,
+            'INVALID_TYPE', 'Invalid type', 'INVALID', 0, TRUE, CURRENT_DATE,
+            workflow_system_user_id(), workflow_system_user_id()
+        FROM organization_units WHERE unit_code = 'SDCJ';
+        RAISE EXCEPTION 'invalid organization unit type unexpectedly succeeded';
+    EXCEPTION WHEN check_violation THEN
+        NULL;
+    END;
 END;
 $$;
+
+INSERT INTO organization_units (
+    id, organization_id, parent_unit_id, unit_code, unit_name, unit_type,
+    display_order, enabled, valid_from, created_by, updated_by
+)
+SELECT
+    'adadadad-adad-adad-adad-adadadadadad', organization_id, id,
+    'PROJECT_MIGRATION_TEST', 'Project migration test', 'PROJECT', 9999,
+    TRUE, CURRENT_DATE, workflow_system_user_id(), workflow_system_user_id()
+FROM organization_units WHERE unit_code = 'SDCJ';
 SQL
 docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 7
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 8
        OR (SELECT count(*) FROM app_users) <> 1
-       OR (SELECT count(*) FROM roles) <> 6
-       OR (SELECT count(*) FROM permissions) <> 13
+       OR (SELECT count(*) FROM roles) <> 9
+       OR (SELECT count(*) FROM permissions) <> 14
        OR (SELECT count(*) FROM audit_logs
            WHERE action_type = 'MIGRATE_EXISTING_USER_DATA') <> 1 THEN
         RAISE EXCEPTION 'second startup was not idempotent';

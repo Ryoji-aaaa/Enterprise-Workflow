@@ -31,6 +31,10 @@ public class AppUser extends AuditedEntity {
     private String displayName;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "employment_type", nullable = false, length = 30)
+    private EmploymentType employmentType;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "account_status", nullable = false, length = 30)
     private AccountStatus accountStatus;
 
@@ -74,6 +78,20 @@ public class AppUser extends AuditedEntity {
         initialize(employeeCode, email, displayName, accountStatus, validFrom, validUntil);
     }
 
+    public AppUser(
+            String employeeCode,
+            String email,
+            String displayName,
+            EmploymentType employmentType,
+            AccountStatus accountStatus,
+            Instant validFrom,
+            Instant validUntil,
+            UUID auditUserId) {
+        super(auditUserId);
+        initialize(employeeCode, email, displayName, accountStatus, validFrom, validUntil);
+        this.employmentType = Objects.requireNonNull(employmentType, "employmentType");
+    }
+
     private void initialize(
             String employeeCode,
             String email,
@@ -85,6 +103,7 @@ public class AppUser extends AuditedEntity {
         this.employeeCode = employeeCode;
         this.email = normalizeEmail(email);
         this.displayName = Objects.requireNonNull(displayName, "displayName");
+        this.employmentType = EmploymentType.REGULAR_EMPLOYEE;
         this.accountStatus = Objects.requireNonNull(accountStatus, "accountStatus");
         this.validFrom = validFrom;
         this.validUntil = validUntil;
@@ -101,6 +120,22 @@ public class AppUser extends AuditedEntity {
         this.employeeCode = employeeCode;
         this.email = normalizeEmail(email);
         this.displayName = Objects.requireNonNull(displayName, "displayName");
+        this.validFrom = validFrom;
+        this.validUntil = validUntil;
+        markUpdatedBy(updatedBy);
+    }
+
+    public void updateProfile(
+            String employeeCode,
+            String displayName,
+            EmploymentType employmentType,
+            Instant validFrom,
+            Instant validUntil,
+            UUID updatedBy) {
+        validatePeriod(validFrom, validUntil);
+        this.employeeCode = employeeCode;
+        this.displayName = Objects.requireNonNull(displayName, "displayName");
+        this.employmentType = Objects.requireNonNull(employmentType, "employmentType");
         this.validFrom = validFrom;
         this.validUntil = validUntil;
         markUpdatedBy(updatedBy);
@@ -161,6 +196,10 @@ public class AppUser extends AuditedEntity {
 
     public String getDisplayName() {
         return displayName;
+    }
+
+    public EmploymentType getEmploymentType() {
+        return employmentType;
     }
 
     public AccountStatus getAccountStatus() {

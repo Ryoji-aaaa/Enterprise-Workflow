@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -114,6 +115,15 @@ public class UserRoleAssignmentService {
                 assignmentData(assignment),
                 safeReason);
         return assignment;
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserRoleAssignment> findAllByUserId(UUID userId) {
+        if (!appUserRepository.existsById(userId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND",
+                    "ユーザーが見つかりません。");
+        }
+        return assignmentRepository.findAllByUserIdOrderByValidFromDesc(userId);
     }
 
     @Transactional

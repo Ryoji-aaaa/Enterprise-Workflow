@@ -13,6 +13,8 @@ import jp.co.sdcj.workflow.domain.UserRoleAssignment;
 public interface UserRoleAssignmentRepository
         extends JpaRepository<UserRoleAssignment, UUID> {
 
+    List<UserRoleAssignment> findAllByUserIdOrderByValidFromDesc(UUID userId);
+
     @Query("""
             select assignment from UserRoleAssignment assignment
             where assignment.userId = :userId

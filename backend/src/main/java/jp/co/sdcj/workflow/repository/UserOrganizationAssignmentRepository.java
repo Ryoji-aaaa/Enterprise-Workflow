@@ -14,6 +14,8 @@ import jp.co.sdcj.workflow.domain.UserOrganizationAssignment;
 public interface UserOrganizationAssignmentRepository
         extends JpaRepository<UserOrganizationAssignment, UUID> {
 
+    List<UserOrganizationAssignment> findAllByUserIdOrderByValidFromDesc(UUID userId);
+
     @Query("""
             select assignment from UserOrganizationAssignment assignment
             where assignment.userId = :userId
@@ -60,6 +62,30 @@ public interface UserOrganizationAssignmentRepository
             """)
     Optional<UserOrganizationAssignment> findCurrentPrimaryByUserId(
             @Param("userId") UUID userId,
+            @Param("onDate") LocalDate onDate);
+
+    @Query("""
+            select assignment from UserOrganizationAssignment assignment
+            where assignment.userId in :userIds
+              and assignment.primary = true
+              and assignment.validFrom <= :onDate
+              and (assignment.validUntil is null or assignment.validUntil >= :onDate)
+              and exists (
+                  select unit.id
+                  from OrganizationUnit unit, Organization organization
+                  where unit.id = assignment.organizationUnitId
+                    and organization.id = unit.organizationId
+                    and unit.enabled = true
+                    and organization.enabled = true
+                    and unit.validFrom <= :onDate
+                    and (unit.validUntil is null or unit.validUntil >= :onDate)
+                    and organization.validFrom <= :onDate
+                    and (organization.validUntil is null
+                         or organization.validUntil >= :onDate)
+              )
+            """)
+    List<UserOrganizationAssignment> findCurrentPrimaryByUserIdIn(
+            @Param("userIds") List<UUID> userIds,
             @Param("onDate") LocalDate onDate);
 
     @Query("""

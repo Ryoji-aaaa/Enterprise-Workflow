@@ -16,6 +16,7 @@ client_body="$(mktemp)"
 admin_user_body="$(mktemp)"
 user_body="$(mktemp)"
 pending_user_body="$(mktemp)"
+user_count_body="$(mktemp)"
 profile_body="$(mktemp)"
 discovery_body="$(mktemp)"
 
@@ -29,6 +30,7 @@ cleanup() {
     "${admin_user_body}" \
     "${user_body}" \
     "${pending_user_body}" \
+    "${user_count_body}" \
     "${profile_body}" \
     "${discovery_body}"
 }
@@ -124,6 +126,7 @@ admin_get "${REALM_URL}/users" "${user_body}" \
 admin_get "${REALM_URL}/users" "${pending_user_body}" \
   --data-urlencode "username=${DEV_PENDING_EMAIL}" \
   --data-urlencode 'exact=true'
+admin_get "${REALM_URL}/users/count" "${user_count_body}"
 admin_get "${USER_PROFILE_URL}" "${profile_body}"
 public_get "${DISCOVERY_URL}" "${discovery_body}"
 
@@ -177,6 +180,8 @@ for user_spec in \
   ' "${user_file}" >/dev/null
 done
 
+jq --exit-status '. >= 74' "${user_count_body}" >/dev/null
+
 escaped_domain="$(printf '%s' "${ALLOWED_EMAIL_DOMAIN}" | sed 's/\./\\./g')"
 email_regex="^[A-Za-z0-9.!#%&'*+/=?^_\`{|}~-]+@${escaped_domain}$"
 jq --exit-status --arg pattern "${email_regex}" '
@@ -193,4 +198,4 @@ jq --exit-status --arg issuer "http://localhost:8180/realms/${KEYCLOAK_REALM}" '
   .issuer == $issuer
 ' "${discovery_body}" >/dev/null
 
-echo "Verified Keycloak configuration through the internal Admin REST API."
+echo "Verified Keycloak configuration and $(cat "${user_count_body}") realm users through the internal Admin REST API."

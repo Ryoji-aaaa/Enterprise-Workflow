@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,8 @@ import jp.co.sdcj.workflow.service.UserOrganizationAssignmentService;
 import jp.co.sdcj.workflow.service.UserRoleAssignmentService;
 
 @Component
+@Profile("development")
+@Order(10)
 @ConditionalOnProperty(
         name = "workflow.seed.enabled",
         havingValue = "true",
@@ -86,11 +90,13 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments arguments) {
-        upsert(adminEmail, "開発管理者", RoleCodes.SYSTEM_ADMIN);
-        upsert(userEmail, "開発一般ユーザー", RoleCodes.APPLICATION_USER);
+        upsert(adminEmail, "開発管理者",
+                RoleCodes.SYSTEM_ADMIN, RoleCodes.ORGANIZATION_CHART_VIEWER);
+        upsert(userEmail, "開発一般ユーザー",
+                RoleCodes.APPLICATION_USER, RoleCodes.ORGANIZATION_CHART_VIEWER);
     }
 
-    private void upsert(String email, String displayName, String roleCode) {
+    private void upsert(String email, String displayName, String... roleCodes) {
         AuditActor actor = AuditActor.system();
         Instant now = Instant.now();
         LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
@@ -128,19 +134,21 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
                     "Development seed synchronization");
         }
 
-        Role role = roleRepository.findByRoleCode(roleCode).orElseThrow(() ->
-                new IllegalStateException("Required seed role does not exist: " + roleCode));
-        if (!roleAssignmentRepository.existsOverlappingAssignment(
-                user.getId(), role.getId(), null, now, null)) {
-            roleAssignmentService.assign(
-                    user.getId(),
-                    role.getId(),
-                    null,
-                    now,
-                    null,
-                    "Development seed",
-                    actor,
-                    AccountStatusChangeSource.SYSTEM);
+        for (String roleCode : roleCodes) {
+            Role role = roleRepository.findByRoleCode(roleCode).orElseThrow(() ->
+                    new IllegalStateException("Required seed role does not exist: " + roleCode));
+            if (!roleAssignmentRepository.existsOverlappingAssignment(
+                    user.getId(), role.getId(), null, now, null)) {
+                roleAssignmentService.assign(
+                        user.getId(),
+                        role.getId(),
+                        null,
+                        now,
+                        null,
+                        "Development seed",
+                        actor,
+                        AccountStatusChangeSource.SYSTEM);
+            }
         }
 
         if (organizationAssignmentRepository

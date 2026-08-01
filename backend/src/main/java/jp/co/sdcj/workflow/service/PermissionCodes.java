@@ -11,6 +11,7 @@ public final class PermissionCodes {
     public static final String ROLE_REVOKE = "ROLE_REVOKE";
     public static final String ORGANIZATION_READ = "ORGANIZATION_READ";
     public static final String ORGANIZATION_MANAGE = "ORGANIZATION_MANAGE";
+    public static final String ORGANIZATION_CHART_READ = "ORGANIZATION_CHART_READ";
     public static final String AUDIT_LOG_READ = "AUDIT_LOG_READ";
     public static final String WORKFLOW_SUBMIT = "WORKFLOW_SUBMIT";
     public static final String WORKFLOW_APPROVE = "WORKFLOW_APPROVE";

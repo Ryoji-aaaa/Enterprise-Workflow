@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import {
+  BACKEND_TIMEOUT_MILLISECONDS,
   requestBackendMe,
   type CurrentUser,
 } from "@/lib/backend-api";
@@ -75,4 +76,71 @@ export async function getBackendMe(
   return backendResult.kind === "success"
     ? { ...backendResult, setCookies }
     : { kind: backendResult.kind, setCookies };
+}
+
+export type BackendProxyResult = {
+  response: Response;
+  setCookies: string[];
+};
+
+export async function proxyBackendRequest(
+  requestHeaders: Headers,
+  path: string,
+  init: RequestInit = {},
+): Promise<BackendProxyResult> {
+  const sessionResponse = await auth.api.getSession({
+    headers: requestHeaders,
+    asResponse: true,
+  });
+  const setCookies = setCookieValues(sessionResponse);
+  const session = await readJson(sessionResponse);
+  if (!sessionResponse.ok || !session) {
+    return {
+      response: Response.json(
+        { code: "AUTHENTICATION_REQUIRED", message: "再度ログインしてください。" },
+        { status: 401 },
+      ),
+      setCookies,
+    };
+  }
+
+  const tokenResponse = await auth.api.getAccessToken({
+    headers: requestHeaders,
+    body: { providerId: KEYCLOAK_PROVIDER_ID },
+    asResponse: true,
+  });
+  setCookies.push(...setCookieValues(tokenResponse));
+  const token = tokenResponse.ok
+    ? await readJson<{ accessToken?: string }>(tokenResponse)
+    : undefined;
+  if (!token?.accessToken) {
+    return {
+      response: Response.json(
+        { code: "AUTHENTICATION_REQUIRED", message: "再度ログインしてください。" },
+        { status: 401 },
+      ),
+      setCookies,
+    };
+  }
+
+  try {
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${token.accessToken}`);
+    headers.set("Accept", "application/json");
+    const response = await fetch(`${serverEnvironment.backendInternalUrl}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers,
+      signal: AbortSignal.timeout(BACKEND_TIMEOUT_MILLISECONDS),
+    });
+    return { response, setCookies };
+  } catch {
+    return {
+      response: Response.json(
+        { code: "BACKEND_UNAVAILABLE", message: "現在サービスを利用できません。" },
+        { status: 503 },
+      ),
+      setCookies,
+    };
+  }
 }

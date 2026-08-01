@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canViewOrganizationChart,
   requestBackendMe,
   type BackendFetch,
   type CurrentUser,
@@ -12,9 +13,23 @@ const currentUser: CurrentUser = {
   externalSubject: "subject",
   email: "example.user1@sdcj.co.jp",
   displayName: "開発一般ユーザー",
+  employmentType: "REGULAR_EMPLOYEE",
   department: { name: "開発部" },
   roles: ["USER"],
+  permissions: ["WORKFLOW_SUBMIT", "ORGANIZATION_CHART_READ"],
 };
+
+test("組織図メニューは権限を持つ正社員と準社員だけに許可する", () => {
+  assert.equal(canViewOrganizationChart(currentUser), true);
+  assert.equal(canViewOrganizationChart({
+    ...currentUser,
+    employmentType: "ASSOCIATE_EMPLOYEE",
+  }), true);
+  for (const employmentType of ["PART_TIME", "CONTRACT_EMPLOYEE", "SYSTEM"] as const) {
+    assert.equal(canViewOrganizationChart({ ...currentUser, employmentType }), false);
+  }
+  assert.equal(canViewOrganizationChart({ ...currentUser, permissions: [] }), false);
+});
 
 function response(status: number, body?: unknown): BackendFetch {
   return async () =>

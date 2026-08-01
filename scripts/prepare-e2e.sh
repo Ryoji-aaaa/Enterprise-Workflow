@@ -29,8 +29,30 @@ docker compose exec -T postgres \
   psql \
     --username postgres \
     --dbname "${WORKFLOW_DB_NAME:-workflow}" \
+    --set ON_ERROR_STOP=1 \
     --set "pending_email=${DEV_PENDING_EMAIL}" <<'SQL'
 DELETE FROM access_requests WHERE email = :'pending_email';
+
+UPDATE app_users
+SET display_name = '仮 社長',
+    updated_by = workflow_system_user_id(),
+    updated_at = CURRENT_TIMESTAMP,
+    version = version + 1
+WHERE email = 'president@sdcj.co.jp'
+  AND display_name = '仮 社長 E2E';
+
+UPDATE user_role_assignments assignment
+SET valid_until = CURRENT_TIMESTAMP,
+    assignment_reason = 'E2E recovery cleanup',
+    updated_by = workflow_system_user_id(),
+    updated_at = CURRENT_TIMESTAMP,
+    version = assignment.version + 1
+FROM app_users user_account, roles role
+WHERE assignment.user_id = user_account.id
+  AND assignment.role_id = role.id
+  AND user_account.email = 'president@sdcj.co.jp'
+  AND role.role_code = 'AUDITOR'
+  AND (assignment.valid_until IS NULL OR assignment.valid_until > CURRENT_TIMESTAMP);
 SQL
 
 curl --fail --silent --show-error \

@@ -211,7 +211,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V004__create_authorization_management_schema.sql',
     'V005__create_audit_log_schema.sql',
     'V006__seed_and_migrate_user_organization_authorization_data.sql',
-    'V007__contract_legacy_app_user_columns.sql'
+    'V007__contract_legacy_app_user_columns.sql',
+    'V008__add_employment_type_project_and_organization_chart_roles.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -220,8 +221,8 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "7:7" ]] || {
-    echo "Expected all seven Flyway migrations to be applied successfully with checksums." >&2
+  [[ "${migration_summary}" == "8:8" ]] || {
+    echo "Expected all eight Flyway migrations to be applied successfully with checksums." >&2
     exit 1
   }
 
@@ -258,6 +259,33 @@ SQL
   )"
   [[ "${seed_count}" == "2" ]] || {
     echo "Expected development business users were not initialized." >&2
+    exit 1
+  }
+
+  development_organization_summary="$(
+    "${COMPOSE[@]}" exec -T postgres \
+      psql \
+        --username postgres \
+        --dbname "${WORKFLOW_DB_NAME:-workflow}" \
+        --tuples-only \
+        --no-align <<'SQL'
+SELECT
+  (SELECT count(*)
+     FROM app_users
+    WHERE email = 'president@sdcj.co.jp'
+       OR email LIKE '%.head@sdcj.co.jp'
+       OR email LIKE '%.user@sdcj.co.jp') || ':' ||
+  (SELECT count(*) FROM organization_units) || ':' ||
+  (SELECT count(*) FROM positions) || ':' ||
+  (SELECT count(*) FROM user_organization_assignments) || ':' ||
+  (SELECT count(*)
+     FROM user_role_assignments
+    WHERE valid_from <= CURRENT_TIMESTAMP
+      AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP));
+SQL
+  )"
+  [[ "${development_organization_summary}" == "69:39:7:71:183" ]] || {
+    echo "Development organization seed data does not match the expected users, units, positions, assignments, and role assignments." >&2
     exit 1
   }
 

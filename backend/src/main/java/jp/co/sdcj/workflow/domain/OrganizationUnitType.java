@@ -6,5 +6,6 @@ public enum OrganizationUnitType {
     DEPARTMENT,
     SECTION,
     TEAM,
+    PROJECT,
     OTHER
 }
