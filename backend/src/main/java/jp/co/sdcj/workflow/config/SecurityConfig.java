@@ -3,9 +3,9 @@ package jp.co.sdcj.workflow.config;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -20,8 +20,8 @@ import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.ManagementFailureAuditService;
 
 @Configuration
+@Profile("!manual-seed")
 @EnableMethodSecurity
-@EnableConfigurationProperties({SecurityProperties.class, NotificationProperties.class})
 public class SecurityConfig {
 
     @Bean

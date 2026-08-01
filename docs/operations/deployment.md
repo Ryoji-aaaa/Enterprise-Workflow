@@ -4,7 +4,7 @@
 
 1. bootstrap resourceとOIDC/RBACを作る。
 2. 環境を`provision_workloads=false`でapplyする。
-3. Key Vaultへ6個の秘密値を登録する。
+3. Key Vaultへ6個の通常秘密値と、stagingだけに開発seed passwordを登録する。
 4. GitHub Environmentの`PROVISION_WORKLOADS`を`true`にする。
 5. staging workflowを手動実行するか、実装をmainへmergeする。
 6. SHA image push、Terraform apply、Keycloak設定、smoke testの成功を確認する。
@@ -18,6 +18,10 @@ ACRに3 imageが存在することを確認してから同じtagを適用する�
 smoke testはfrontend、OIDC discovery、login入口を匿名で確認する。Backend Actuatorは
 external URLを持たないため、Container Apps revisionのprobeとLog Analyticsで確認する。
 本番でテストユーザーを使う完全E2Eは行わない。
+
+staging開発データはdeployから投入しない。必要な期間だけ、
+[`development-seed-data.md`](../backend/development-seed-data.md)の手動Container Apps Jobを
+対象別に開始する。productionにはseed Jobを作成せず、seed入口もproductionを拒否する。
 
 Azureには現時点でメールサービスを配置しない。SMTP未設定または障害があってもBackendの
 liveness/readinessはmailを評価せず、通常の業務APIを提供できる状態をReadyとする。

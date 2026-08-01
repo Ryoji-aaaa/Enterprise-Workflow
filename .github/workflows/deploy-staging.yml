@@ -94,11 +94,15 @@ jobs:
           az acr login --name "$TF_VAR_acr_name"
           registry="${TF_VAR_acr_name}.azurecr.io"
           docker build -t "$registry/enterprise-workflow-frontend:$IMAGE_TAG" frontend
-          docker build -t "$registry/enterprise-workflow-backend:$IMAGE_TAG" backend
+          docker build --target runtime \
+            -t "$registry/enterprise-workflow-backend:$IMAGE_TAG" backend
+          docker build --target seed-runtime \
+            -t "$registry/enterprise-workflow-seed:$IMAGE_TAG" backend
           docker build -f keycloak/azure.Dockerfile \
             -t "$registry/enterprise-workflow-keycloak:$IMAGE_TAG" .
           docker push "$registry/enterprise-workflow-frontend:$IMAGE_TAG"
           docker push "$registry/enterprise-workflow-backend:$IMAGE_TAG"
+          docker push "$registry/enterprise-workflow-seed:$IMAGE_TAG"
           docker push "$registry/enterprise-workflow-keycloak:$IMAGE_TAG"
       - name: Read deployment secrets from Key Vault
         if: steps.readiness.outputs.ready == 'true' && vars.PROVISION_WORKLOADS == 'true'

@@ -23,3 +23,17 @@ COPY --from=build /workspace/target/workflow-backend-*.jar app.jar
 COPY scripts/healthcheck.sh /app/healthcheck.sh
 USER 10001
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
+FROM eclipse-temurin:${JAVA_VERSION}-jre AS seed-runtime
+USER root
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends curl jq \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /workspace/target/workflow-backend-*.jar app.jar
+COPY scripts/manual-seed.sh /app/manual-seed.sh
+COPY scripts/seed-keycloak-users.sh /app/seed-keycloak-users.sh
+COPY seed/development-users.tsv /app/development-users.tsv
+RUN chmod 0555 /app/manual-seed.sh /app/seed-keycloak-users.sh
+USER 10001
+ENTRYPOINT ["/app/manual-seed.sh"]
