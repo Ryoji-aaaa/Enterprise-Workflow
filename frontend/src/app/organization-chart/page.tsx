@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Network, UserRound } from "lucide-react";
+import { Building2, ChevronDown, Crown, Landmark, Network, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildOrganizationChartIndex } from "@/lib/organization-chart-tree";
+import { cn } from "@/lib/utils";
 
 type Member = {
   userId: string;
@@ -59,37 +61,60 @@ const typeLabels: Record<Unit["type"], string> = {
 
 function OrganizationNode({
   unit,
-  childUnits,
   lookup,
+  depth,
 }: {
   unit: Unit;
-  childUnits: Unit[];
   lookup: Map<string | null, Unit[]>;
+  depth: number;
 }) {
-  const [open, setOpen] = useState(unit.parentUnitId === null);
+  const [open, setOpen] = useState(true);
+  const childUnits = lookup.get(unit.id) ?? [];
   const head = unit.members.find((member) => member.isHead);
   const members = unit.members.filter((member) => !member.isHead);
 
   return (
-    <li className="min-w-64 list-none">
-      <Card className={unit.type === "PROJECT" ? "border-primary/60 bg-primary/5" : ""}>
-        <CardHeader className="gap-2">
-          <div className="flex items-start justify-between gap-2">
-            <CardTitle>{unit.name}</CardTitle>
-            <Badge variant={unit.type === "PROJECT" ? "default" : "secondary"}>
-              {typeLabels[unit.type]}
-            </Badge>
+    <li className={cn("relative list-none py-2", depth >= 4 && "min-w-[42rem]")}>
+      <span aria-hidden className="absolute -left-5 top-9 w-5 border-t border-border md:-left-8 md:w-8" />
+      <Card className={cn(
+        "w-full max-w-[44rem] shadow-sm",
+        unit.type === "PROJECT" && "border-primary/60 bg-primary/5",
+      )}>
+        <CardHeader className="gap-2 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <Building2 className="size-4 shrink-0 text-muted-foreground" />
+              <CardTitle className="truncate text-base">{unit.name}</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">{unit.members.length}名</span>
+              <Badge variant={unit.type === "PROJECT" ? "default" : "secondary"}>
+                {typeLabels[unit.type]}
+              </Badge>
+              {childUnits.length > 0 && (
+                <Button
+                  aria-expanded={open}
+                  aria-label={`${unit.name}の配下組織を${open ? "閉じる" : "開く"}`}
+                  className="size-7"
+                  onClick={() => setOpen((value) => !value)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <ChevronDown className={cn("transition-transform", open && "rotate-180")} />
+                </Button>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground">所属 {unit.members.length}名</p>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2 px-4 pb-4">
           {head ? (
-            <div className="rounded-lg border bg-background p-3">
-              <p className="font-medium">{head.displayName}</p>
+            <div className="flex flex-wrap items-baseline gap-x-2 rounded-md border bg-background px-3 py-2">
+              <p className="text-sm font-medium">{head.displayName}</p>
               <p className="text-xs text-muted-foreground">{head.positionName}</p>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">責任者未登録</p>
+            <p className="text-xs text-muted-foreground">責任者未登録</p>
           )}
           {members.length > 0 && (
             <details>
@@ -106,24 +131,12 @@ function OrganizationNode({
               </ul>
             </details>
           )}
-          {childUnits.length > 0 && (
-            <Button
-              aria-expanded={open}
-              className="w-full"
-              onClick={() => setOpen((value) => !value)}
-              type="button"
-              variant="outline"
-            >
-              <ChevronDown className={open ? "rotate-180 transition-transform" : "transition-transform"} />
-              配下組織 {childUnits.length}件
-            </Button>
-          )}
         </CardContent>
       </Card>
       {open && childUnits.length > 0 && (
-        <ul className="mt-5 grid items-start gap-5 border-l-2 border-muted pl-5 lg:grid-flow-col lg:auto-cols-[18rem]">
+        <ul className="relative ml-3 border-l border-border pl-5 md:ml-6 md:pl-8">
           {childUnits.map((child) => (
-            <OrganizationTree key={child.id} lookup={lookup} unit={child} />
+            <OrganizationTree depth={depth + 1} key={child.id} lookup={lookup} unit={child} />
           ))}
         </ul>
       )}
@@ -134,11 +147,42 @@ function OrganizationNode({
 function OrganizationTree({
   unit,
   lookup,
+  depth,
 }: {
   unit: Unit;
   lookup: Map<string | null, Unit[]>;
+  depth: number;
 }) {
-  return <OrganizationNode childUnits={lookup.get(unit.id) ?? []} lookup={lookup} unit={unit} />;
+  return <OrganizationNode depth={depth} lookup={lookup} unit={unit} />;
+}
+
+function GovernancePanel({ units }: { units: Unit[] }) {
+  if (units.length === 0) {
+    return null;
+  }
+  return (
+    <Card className="mb-6 border-dashed bg-background/80">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Landmark className="size-4 text-muted-foreground" />
+          <h2>統治機関・会議体</h2>
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">社長を頂点とする業務執行組織とは別枠で表示しています。</p>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {units.map((unit) => (
+            <li className="rounded-lg border bg-muted/30 px-4 py-3" key={unit.id}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">{unit.name}</p>
+                <Badge variant="outline">統治組織</Badge>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function OrganizationChartPage() {
@@ -164,23 +208,12 @@ export default function OrganizationChartPage() {
     return () => controller.abort();
   }, []);
 
-  const lookup = useMemo(() => {
-    const value = new Map<string | null, Unit[]>();
-    if (state.kind === "ready") {
-      for (const unit of state.chart.units) {
-        const siblings = value.get(unit.parentUnitId) ?? [];
-        siblings.push(unit);
-        value.set(unit.parentUnitId, siblings);
-      }
-      for (const siblings of value.values()) {
-        siblings.sort((left, right) => left.displayOrder - right.displayOrder);
-      }
-    }
-    return value;
+  const chartIndex = useMemo(() => {
+    return buildOrganizationChartIndex(state.kind === "ready" ? state.chart.units : []);
   }, [state]);
   return (
     <main className="min-h-svh bg-muted/30 p-4 md:p-8">
-      <div className="mx-auto max-w-[110rem]">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -200,21 +233,47 @@ export default function OrganizationChartPage() {
           <Card><CardContent>表示できる組織データがありません。</CardContent></Card>
         )}
         {state.kind === "ready" && state.chart.units.length > 0 && (
-          <div className="overflow-x-auto pb-6">
-            <div className="min-w-max">
-              <Card className="mb-6 max-w-sm border-primary/60">
-                <CardHeader><CardTitle>{state.chart.organization.name}</CardTitle></CardHeader>
-                <CardContent>
-                  {state.chart.president ? (
-                    <div><p className="font-medium">{state.chart.president.displayName}</p><p className="text-sm text-muted-foreground">{state.chart.president.positionName}</p></div>
-                  ) : <p className="text-sm text-muted-foreground">社長未登録</p>}
-                </CardContent>
-              </Card>
-              <ul className="grid items-start gap-5 md:grid-flow-col md:auto-cols-[18rem]">
-                {(lookup.get(null) ?? []).map((unit) => <OrganizationTree key={unit.id} lookup={lookup} unit={unit} />)}
-              </ul>
-            </div>
-          </div>
+          <>
+            <GovernancePanel units={chartIndex.governanceUnits} />
+            <section aria-labelledby="business-organization-title">
+              <div className="mb-3">
+                <h2 className="font-semibold" id="business-organization-title">業務執行組織</h2>
+                <p className="text-xs text-muted-foreground">社長を最上層として、配下組織を縦方向に表示します。</p>
+              </div>
+              <div className="overflow-x-auto rounded-xl border bg-background p-4 pb-8 md:p-6">
+                <div className="min-w-0">
+                  <Card className="w-full max-w-[44rem] border-primary/60 bg-primary/5 shadow-sm">
+                    <CardHeader className="gap-2 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <Crown className="size-5 text-primary" />社長
+                        </CardTitle>
+                        <Badge>{state.chart.organization.name}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4">
+                      {state.chart.president ? (
+                        <div className="flex flex-wrap items-baseline gap-x-2 rounded-md border bg-background px-3 py-2">
+                          <p className="font-medium">{state.chart.president.displayName}</p>
+                          <p className="text-xs text-muted-foreground">{state.chart.president.positionName}</p>
+                        </div>
+                      ) : <p className="text-sm text-muted-foreground">社長未登録</p>}
+                    </CardContent>
+                  </Card>
+                  {chartIndex.operationalUnits.length > 0 ? (
+                    <ul className="relative ml-3 border-l border-border pl-5 md:ml-6 md:pl-8">
+                      {chartIndex.operationalUnits.map((unit) => (
+                        <OrganizationTree depth={1} key={unit.id} lookup={chartIndex.childrenByParent} unit={unit} />
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-4 text-sm text-muted-foreground">社長配下の組織は登録されていません。</p>
+                  )}
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">5階層目以降は横スクロールして確認できます。</p>
+            </section>
+          </>
         )}
       </div>
     </main>

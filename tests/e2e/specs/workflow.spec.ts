@@ -150,8 +150,15 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   const me = (await meResponse.json()) as { id: string };
   await page.getByRole("link", { name: "組織図" }).click();
   await expect(page.getByRole("heading", { name: "組織図" })).toBeVisible();
-  await expect(page.getByText("仮 社長", { exact: true })).toBeVisible();
-  await expect(page.getByText("管理本部", { exact: true })).toBeVisible();
+  const governance = page.getByRole("heading", { name: "統治機関・会議体" });
+  await expect(governance).toBeVisible();
+  await expect(page.getByText("株主総会", { exact: true })).toBeVisible();
+  await expect(page.getByText("監査役会", { exact: true })).toBeVisible();
+  await expect(page.getByText("取締役会", { exact: true })).toBeVisible();
+  const businessOrganization = page.getByRole("region", { name: "業務執行組織" });
+  await expect(businessOrganization.getByText("仮 社長", { exact: true })).toBeVisible();
+  await expect(businessOrganization.getByText("管理本部", { exact: true })).toBeVisible();
+  await expect(businessOrganization.getByText("株主総会", { exact: true })).toHaveCount(0);
 
   await page.getByRole("link", { name: "トップへ戻る" }).click();
   await page.getByRole("link", { name: "ユーザー管理" }).click();
