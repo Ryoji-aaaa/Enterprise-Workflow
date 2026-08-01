@@ -3,12 +3,12 @@ package jp.co.sdcj.workflow.service;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,38 +17,21 @@ import org.springframework.transaction.annotation.Transactional;
 import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.api.OrganizationChartResponse;
 import jp.co.sdcj.workflow.domain.AppUser;
-import jp.co.sdcj.workflow.domain.Organization;
-import jp.co.sdcj.workflow.domain.OrganizationUnit;
-import jp.co.sdcj.workflow.domain.Position;
-import jp.co.sdcj.workflow.domain.UserOrganizationAssignment;
-import jp.co.sdcj.workflow.repository.AppUserRepository;
-import jp.co.sdcj.workflow.repository.OrganizationRepository;
-import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
-import jp.co.sdcj.workflow.repository.PositionRepository;
-import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
+import jp.co.sdcj.workflow.repository.OrganizationChartRepository;
+import jp.co.sdcj.workflow.repository.OrganizationChartRow;
 
 @Service
 public class OrganizationChartService {
 
-    private final OrganizationRepository organizationRepository;
-    private final OrganizationUnitRepository unitRepository;
-    private final UserOrganizationAssignmentRepository assignmentRepository;
-    private final AppUserRepository userRepository;
-    private final PositionRepository positionRepository;
+    private static final String ORGANIZATION_CODE = "SDCJ";
+
+    private final OrganizationChartRepository chartRepository;
     private final AuditLogService auditLogService;
 
     public OrganizationChartService(
-            OrganizationRepository organizationRepository,
-            OrganizationUnitRepository unitRepository,
-            UserOrganizationAssignmentRepository assignmentRepository,
-            AppUserRepository userRepository,
-            PositionRepository positionRepository,
+            OrganizationChartRepository chartRepository,
             AuditLogService auditLogService) {
-        this.organizationRepository = organizationRepository;
-        this.unitRepository = unitRepository;
-        this.assignmentRepository = assignmentRepository;
-        this.userRepository = userRepository;
-        this.positionRepository = positionRepository;
+        this.chartRepository = chartRepository;
         this.auditLogService = auditLogService;
     }
 
@@ -67,72 +50,65 @@ public class OrganizationChartService {
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         Instant now = Instant.now();
-        Organization organization = organizationRepository.findByOrganizationCode("SDCJ")
-                .filter(value -> value.isEffectiveOn(today))
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND, "ORGANIZATION_CHART_NOT_FOUND",
-                        "有効な組織が見つかりません。"));
-        List<OrganizationUnit> allUnits = unitRepository
-                .findAllEffectiveByOrganizationId(organization.getId(), today);
-        OrganizationUnit root = allUnits.stream()
-                .filter(unit -> unit.getUnitCode().equals("SDCJ"))
+        List<OrganizationChartRow> rows = chartRepository.findEffectiveChart(
+                ORGANIZATION_CODE, today, now);
+        if (rows.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND, "ORGANIZATION_CHART_NOT_FOUND",
+                    "有効な組織が見つかりません。");
+        }
+
+        OrganizationChartRow root = rows.stream()
+                .filter(row -> ORGANIZATION_CODE.equals(row.unitCode()))
                 .findFirst()
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND, "ORGANIZATION_CHART_ROOT_NOT_FOUND",
                         "会社組織が見つかりません。"));
+        Map<UUID, List<OrganizationChartResponse.Member>> membersByUnit = new LinkedHashMap<>();
+        for (OrganizationChartRow row : rows) {
+            if (row.userId() != null) {
+                membersByUnit.computeIfAbsent(row.unitId(), ignored -> new ArrayList<>())
+                        .add(toMember(row));
+            }
+        }
+        membersByUnit.replaceAll((ignored, members) -> members.stream()
+                .sorted(Comparator
+                        .comparing(OrganizationChartResponse.Member::isHead).reversed()
+                        .thenComparing(OrganizationChartResponse.Member::displayName))
+                .toList());
 
-        Map<UUID, Position> positions = positionRepository.findAll().stream()
-                .collect(Collectors.toMap(Position::getId, Function.identity()));
-        OrganizationChartResponse.Member president = members(root, today, now, positions).stream()
+        OrganizationChartResponse.Member president = membersByUnit
+                .getOrDefault(root.unitId(), List.of()).stream()
                 .filter(member -> "PRESIDENT".equals(member.positionCode()))
                 .findFirst()
                 .orElse(null);
-        List<OrganizationChartResponse.Unit> units = allUnits.stream()
-                .filter(unit -> !unit.getId().equals(root.getId()))
-                .map(unit -> new OrganizationChartResponse.Unit(
-                        unit.getId(),
-                        root.getId().equals(unit.getParentUnitId()) ? null : unit.getParentUnitId(),
-                        unit.getUnitCode(), unit.getUnitName(), unit.getUnitType(),
-                        unit.getDisplayOrder(), members(unit, today, now, positions)))
+        List<OrganizationChartResponse.Unit> units = rows.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        OrganizationChartRow::unitId,
+                        row -> row,
+                        (first, ignored) -> first,
+                        LinkedHashMap::new))
+                .values().stream()
+                .filter(row -> !row.unitId().equals(root.unitId()))
+                .map(row -> new OrganizationChartResponse.Unit(
+                        row.unitId(),
+                        root.unitId().equals(row.parentUnitId()) ? null : row.parentUnitId(),
+                        row.unitCode(), row.unitName(), row.unitType(), row.displayOrder(),
+                        membersByUnit.getOrDefault(row.unitId(), List.of())))
                 .toList();
         return new OrganizationChartResponse(
                 new OrganizationChartResponse.OrganizationSummary(
-                        organization.getId(), organization.getOrganizationCode(),
-                        organization.getOrganizationName()),
+                        root.organizationId(), root.organizationCode(), root.organizationName()),
                 president,
                 units);
     }
 
-    private List<OrganizationChartResponse.Member> members(
-            OrganizationUnit unit,
-            LocalDate today,
-            Instant now,
-            Map<UUID, Position> positions) {
-        return assignmentRepository.findCurrentByOrganizationUnitId(unit.getId(), today).stream()
-                .map(assignment -> toMember(assignment, now, positions))
-                .filter(java.util.Objects::nonNull)
-                .sorted(Comparator
-                        .comparing(OrganizationChartResponse.Member::isHead).reversed()
-                        .thenComparing(OrganizationChartResponse.Member::displayName))
-                .toList();
-    }
-
-    private OrganizationChartResponse.Member toMember(
-            UserOrganizationAssignment assignment,
-            Instant now,
-            Map<UUID, Position> positions) {
-        AppUser user = userRepository.findById(assignment.getUserId())
-                .filter(value -> value.isAvailableAt(now))
-                .orElse(null);
-        if (user == null) {
-            return null;
-        }
-        Position position = positions.get(assignment.getPositionId());
-        String positionCode = position == null ? null : position.getPositionCode();
+    private OrganizationChartResponse.Member toMember(OrganizationChartRow row) {
+        String positionCode = row.positionCode();
         return new OrganizationChartResponse.Member(
-                user.getId(), user.getDisplayName(), user.getEmail(),
-                positionCode, position == null ? null : position.getPositionName(),
-                position != null && !"MEMBER".equals(positionCode),
-                assignment.isPrimary());
+                row.userId(), row.displayName(), row.email(),
+                positionCode, row.positionName(),
+                positionCode != null && !"MEMBER".equals(positionCode),
+                Boolean.TRUE.equals(row.primaryAssignment()));
     }
 }

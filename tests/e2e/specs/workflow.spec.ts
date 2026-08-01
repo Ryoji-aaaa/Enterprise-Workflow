@@ -280,3 +280,12 @@ test("未認証のBFFリクエストは401になる", async ({ request }) => {
 
   expect(response.status()).toBe(401);
 });
+
+test("allowlist外のBackend APIは認証処理前に拒否する", async ({ request }) => {
+  const response = await request.get("/api/backend/actuator/health");
+
+  expect(response.status()).toBe(404);
+  await expect(response.json()).resolves.toMatchObject({
+    code: "BACKEND_ROUTE_NOT_ALLOWED",
+  });
+});

@@ -14,6 +14,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -22,6 +24,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import jakarta.persistence.EntityManagerFactory;
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.AssignmentType;
@@ -51,6 +54,7 @@ import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
 import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
 import jp.co.sdcj.workflow.service.PermissionCodes;
 import jp.co.sdcj.workflow.service.RoleCodes;
+import jp.co.sdcj.workflow.service.OrganizationChartService;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -75,6 +79,8 @@ class OrganizationChartApiIntegrationTest {
     @Autowired private RolePermissionRepository rolePermissionRepository;
     @Autowired private UserRoleAssignmentRepository roleAssignmentRepository;
     @Autowired private AuditLogRepository auditLogRepository;
+    @Autowired private OrganizationChartService organizationChartService;
+    @Autowired private EntityManagerFactory entityManagerFactory;
 
     private AppUser viewer;
     private OrganizationUnit project;
@@ -192,6 +198,24 @@ class OrganizationChartApiIntegrationTest {
         mockMvc.perform(get("/api/organization-chart").with(viewerJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.units", hasSize(0)));
+    }
+
+    @Test
+    void 組織図対象データは一つのSQLで一括取得する() {
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        boolean originallyEnabled = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+        try {
+            organizationChartService.getChart(viewer);
+
+            org.assertj.core.api.Assertions.assertThat(statistics.getPrepareStatementCount())
+                    .as("organization chart SQL count")
+                    .isEqualTo(1L);
+        } finally {
+            statistics.clear();
+            statistics.setStatisticsEnabled(originallyEnabled);
+        }
     }
 
     private AppUser saveUser(String email, String displayName, String subject, Instant now) {
