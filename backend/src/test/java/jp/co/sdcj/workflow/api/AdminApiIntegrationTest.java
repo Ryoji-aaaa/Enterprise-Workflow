@@ -152,6 +152,7 @@ class AdminApiIntegrationTest {
 
         Map<String, Permission> permissions = Map.of(
                 PermissionCodes.USER_READ, savePermission(PermissionCodes.USER_READ),
+                PermissionCodes.USER_UPDATE, savePermission(PermissionCodes.USER_UPDATE),
                 PermissionCodes.USER_STATUS_CHANGE,
                         savePermission(PermissionCodes.USER_STATUS_CHANGE),
                 PermissionCodes.ROLE_ASSIGN, savePermission(PermissionCodes.ROLE_ASSIGN),
@@ -190,6 +191,85 @@ class AdminApiIntegrationTest {
                 .andExpect(jsonPath("$.content", hasSize(2)))
                 .andExpect(jsonPath("$.content[*].email", hasItem(ADMIN_EMAIL)))
                 .andExpect(jsonPath("$.content[*].email", hasItem(USER_EMAIL)));
+    }
+
+    @Test
+    void 管理者はemailを変えずに基本情報と雇用区分を更新でき監査が残る() throws Exception {
+        mockMvc.perform(patch("/api/admin/users/{userId}", user.getId())
+                        .with(validJwt("api-admin-subject", ADMIN_EMAIL))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "employeeCode": "E-1001",
+                                  "email": "must-not-change@sdcj.co.jp",
+                                  "displayName": "更新済みユーザー",
+                                  "employmentType": "PART_TIME",
+                                  "validFrom": "%s",
+                                  "validUntil": null,
+                                  "version": %d
+                                }
+                                """.formatted(user.getValidFrom(), user.getVersion())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(USER_EMAIL))
+                .andExpect(jsonPath("$.employeeCode").value("E-1001"))
+                .andExpect(jsonPath("$.displayName").value("更新済みユーザー"))
+                .andExpect(jsonPath("$.employmentType").value("PART_TIME"));
+
+        org.assertj.core.api.Assertions.assertThat(appUserRepository.findById(user.getId()))
+                .get()
+                .satisfies(updated -> {
+                    org.assertj.core.api.Assertions.assertThat(updated.getEmail())
+                            .isEqualTo(USER_EMAIL);
+                    org.assertj.core.api.Assertions.assertThat(updated.getEmploymentType().name())
+                            .isEqualTo("PART_TIME");
+                });
+        org.assertj.core.api.Assertions.assertThat(auditLogRepository.findAll(
+                        org.springframework.data.domain.PageRequest.of(0, 50)).getContent())
+                .anySatisfy(log -> {
+                    org.assertj.core.api.Assertions.assertThat(log.getActionType())
+                            .isEqualTo("USER_UPDATED");
+                    org.assertj.core.api.Assertions.assertThat(log.getTargetId())
+                            .isEqualTo(user.getId().toString());
+                });
+    }
+
+    @Test
+    void ユーザー基本情報の楽観ロック競合は409になる() throws Exception {
+        mockMvc.perform(patch("/api/admin/users/{userId}", user.getId())
+                        .with(validJwt("api-admin-subject", ADMIN_EMAIL))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "displayName": "競合更新",
+                                  "employmentType": "REGULAR_EMPLOYEE",
+                                  "validFrom": "%s",
+                                  "validUntil": null,
+                                  "version": 999
+                                }
+                                """.formatted(user.getValidFrom())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"));
+
+        org.assertj.core.api.Assertions.assertThat(
+                appUserRepository.findById(user.getId()).orElseThrow().getDisplayName())
+                .isEqualTo("API user");
+    }
+
+    @Test
+    void USER_UPDATEがなければ基本情報を更新できない() throws Exception {
+        mockMvc.perform(patch("/api/admin/users/{userId}", user.getId())
+                        .with(validJwt("api-user-subject", USER_EMAIL))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "displayName": "権限なし更新",
+                                  "employmentType": "REGULAR_EMPLOYEE",
+                                  "validFrom": "%s",
+                                  "validUntil": null,
+                                  "version": %d
+                                }
+                                """.formatted(user.getValidFrom(), user.getVersion())))
+                .andExpect(status().isForbidden());
     }
 
     @Test

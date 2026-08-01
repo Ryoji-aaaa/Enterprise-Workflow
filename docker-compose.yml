@@ -60,6 +60,7 @@ services:
       ACCESS_REQUEST_NOTIFICATION_COOLDOWN: ${ACCESS_REQUEST_NOTIFICATION_COOLDOWN:-15m}
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
+      SPRING_PROFILES_ACTIVE: development
     healthcheck:
       test: ["CMD", "bash", "/app/healthcheck.sh"]
       interval: 10s
@@ -165,9 +166,11 @@ services:
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
       DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
+      DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-password}
     volumes:
       - ./keycloak/scripts/configure-keycloak.sh:/opt/workflow/configure-keycloak.sh:ro
       - ./keycloak/scripts/verify-keycloak.sh:/opt/workflow/verify-keycloak.sh:ro
+      - ./keycloak/development-users.tsv:/opt/workflow/development-users.tsv:ro
     entrypoint: []
     command:
       - /opt/workflow/configure-keycloak.sh
@@ -213,6 +216,10 @@ services:
       DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:-password}
       DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
       DEV_PENDING_PASSWORD: ${DEV_PENDING_PASSWORD:-password}
+      DEV_PRESIDENT_EMAIL: president@sdcj.co.jp
+      DEV_PRESIDENT_PASSWORD: ${DEV_SEED_PASSWORD:-password}
+      DEV_PART_TIME_EMAIL: example.parttime1@sdcj.co.jp
+      DEV_PART_TIME_PASSWORD: ${DEV_SEED_PASSWORD:-password}
     volumes:
       - ./tests/e2e/playwright-report:/workspace/playwright-report
       - ./tests/e2e/test-results:/workspace/test-results

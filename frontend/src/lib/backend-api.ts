@@ -5,11 +5,24 @@ export type CurrentUser = {
   externalSubject: string;
   email: string;
   displayName: string;
+  employmentType:
+    | "SYSTEM"
+    | "REGULAR_EMPLOYEE"
+    | "ASSOCIATE_EMPLOYEE"
+    | "PART_TIME"
+    | "CONTRACT_EMPLOYEE";
   department: {
     name: string;
   } | null;
   roles: string[];
+  permissions: string[];
 };
+
+export function canViewOrganizationChart(user: CurrentUser): boolean {
+  return user.permissions.includes("ORGANIZATION_CHART_READ")
+    && (user.employmentType === "REGULAR_EMPLOYEE"
+      || user.employmentType === "ASSOCIATE_EMPLOYEE");
+}
 
 export type BackendApiResult =
   | {

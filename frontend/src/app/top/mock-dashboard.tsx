@@ -18,6 +18,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 
 import { LogoutForm } from "@/components/logout-form";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { canViewOrganizationChart, type CurrentUser } from "@/lib/backend-api";
 
 const menuItems = [
   { label: "モック文字１", icon: LayoutDashboard, active: true },
@@ -238,7 +240,12 @@ function ListMock() {
   );
 }
 
-export function MockDashboard({ displayName }: { displayName: string }) {
+export function MockDashboard({
+  user,
+}: {
+  user: CurrentUser;
+}) {
+  const { displayName, permissions } = user;
   const initials = displayName.trim().slice(0, 2) || "仮";
 
   return (
@@ -308,6 +315,26 @@ export function MockDashboard({ displayName }: { displayName: string }) {
       <div className="grid min-h-[calc(100svh-4rem)] md:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="hidden border-r bg-sidebar md:flex md:flex-col">
           <nav className="flex-1 space-y-1 p-3">
+            {canViewOrganizationChart(user) && (
+              <Button
+                className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70"
+                render={<Link href="/organization-chart" />}
+                variant="ghost"
+              >
+                <Shapes className="size-4.5" />
+                <span>組織図</span>
+              </Button>
+            )}
+            {permissions.includes("USER_READ") && (
+              <Button
+                className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70"
+                render={<Link href="/admin/users" />}
+                variant="ghost"
+              >
+                <Users className="size-4.5" />
+                <span>ユーザー管理</span>
+              </Button>
+            )}
             {menuItems.map((item) => {
               const Icon = item.icon;
               return (

@@ -13,6 +13,9 @@
 
 - Frontend: [Next.js・Better Auth](frontend/nextjs-better-auth.md)
 - Frontend UI: [shadcn/ui・Tailwind CSS](frontend/shadcn-tailwind.md)
+- Frontend features:
+  [組織図](frontend/organization-chart.md) /
+  [ユーザー管理](frontend/user-management.md)
 - Backend:
   [Spring Boot](backend/spring-boot.md) /
   [Flyway](backend/flyway.md) /
@@ -20,6 +23,7 @@
   [組織・所属・役職管理](backend/organization-management.md) /
   [業務認可](backend/authorization.md) /
   [監査ログ](backend/audit-logging.md)
+  [開発用組織データ](backend/development-seed-data.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
   [Keycloak](infrastructure/keycloak.md) /

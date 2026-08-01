@@ -7,6 +7,8 @@ readonly TOKEN_URL="${KEYCLOAK_INTERNAL_URL}/realms/master/protocol/openid-conne
 readonly REALM_URL="${KEYCLOAK_INTERNAL_URL}/admin/realms/${KEYCLOAK_REALM}"
 readonly USER_PROFILE_URL="${REALM_URL}/users/profile"
 readonly OAUTH_CALLBACK_URL="${BETTER_AUTH_URL}/api/auth/oauth2/callback/keycloak"
+readonly DEVELOPMENT_USERS_FILE="${DEVELOPMENT_USERS_FILE:-/opt/workflow/development-users.tsv}"
+readonly DEVELOPMENT_USER_PASSWORD="${DEV_SEED_PASSWORD:-password}"
 
 for variable_name in \
   KEYCLOAK_ADMIN \
@@ -104,6 +106,7 @@ access_token="$(jq --exit-status --raw-output '.access_token' "${token_body}")"
 admin_get() {
   url="$1"
   output_file="$2"
+  shift 2
   : >"${response_headers}"
   : >"${response_body}"
   status="$(
@@ -112,6 +115,8 @@ admin_get() {
       --output "${response_body}" \
       --write-out '%{http_code}' \
       --header "Authorization: Bearer ${access_token}" \
+      --get \
+      "$@" \
       "${url}"
   )"
   echo "GET ${url}: HTTP ${status}" >&2
@@ -144,6 +149,32 @@ admin_put() {
       ;;
     *)
       report_failure PUT "${url}" "${status}"
+      exit 1
+      ;;
+  esac
+}
+
+admin_post() {
+  url="$1"
+  input_file="$2"
+  : >"${response_headers}"
+  : >"${response_body}"
+  status="$(
+    curl --silent --show-error \
+      --dump-header "${response_headers}" \
+      --output "${response_body}" \
+      --write-out '%{http_code}' \
+      --request POST "${url}" \
+      --header "Authorization: Bearer ${access_token}" \
+      --header 'Content-Type: application/json' \
+      --data-binary "@${input_file}"
+  )"
+  echo "POST ${url}: HTTP ${status}" >&2
+  case "${status}" in
+    200|201|204|409)
+      ;;
+    *)
+      report_failure POST "${url}" "${status}"
       exit 1
       ;;
   esac
@@ -186,9 +217,9 @@ configure_user_name() {
   first_name="$2"
   last_name="$3"
 
-  admin_get \
-    "${REALM_URL}/users?username=${email}&exact=true" \
-    "${user_list}"
+  admin_get "${REALM_URL}/users" "${user_list}" \
+    --data-urlencode "username=${email}" \
+    --data-urlencode 'exact=true'
   jq --exit-status --arg email "${email}" '
     length == 1 and .[0].username == $email
   ' "${user_list}" >/dev/null
@@ -216,6 +247,80 @@ configure_user_name() {
       .requiredActions == []
     ' "${user_result}" >/dev/null
 }
+
+ensure_development_user() {
+  email="$1"
+  display_name="$2"
+
+  admin_get "${REALM_URL}/users" "${user_list}" \
+    --data-urlencode "username=${email}" \
+    --data-urlencode 'exact=true'
+  user_count="$(jq 'length' "${user_list}")"
+  if [ "${user_count}" = "0" ]; then
+    admin_get "${REALM_URL}/users" "${user_list}" \
+      --data-urlencode "email=${email}" \
+      --data-urlencode 'exact=true'
+    user_count="$(jq 'length' "${user_list}")"
+  fi
+  if [ "${user_count}" = "0" ]; then
+    jq -n \
+      --arg email "${email}" \
+      --arg display_name "${display_name}" \
+      '{
+        username: $email,
+        email: $email,
+        firstName: "仮",
+        lastName: $display_name,
+        enabled: true,
+        emailVerified: true,
+        requiredActions: []
+      }' >"${user_payload}"
+    admin_post "${REALM_URL}/users" "${user_payload}"
+    admin_get "${REALM_URL}/users" "${user_list}" \
+      --data-urlencode "email=${email}" \
+      --data-urlencode 'exact=true'
+  elif [ "${user_count}" != "1" ]; then
+    echo "Expected at most one Keycloak user for ${email}." >&2
+    exit 1
+  fi
+
+  jq --exit-status --arg email "${email}" '
+    length == 1 and
+    .[0].username == $email and
+    .[0].email == $email
+  ' "${user_list}" >/dev/null
+
+  user_uuid="$(jq --exit-status --raw-output '.[0].id' "${user_list}")"
+  jq \
+    --arg email "${email}" \
+    --arg display_name "${display_name}" \
+    '
+      .[0]
+      | .username = $email
+      | .email = $email
+      | .firstName = "仮"
+      | .lastName = $display_name
+      | .enabled = true
+      | .emailVerified = true
+      | .requiredActions = []
+    ' "${user_list}" >"${user_payload}"
+  admin_put "${REALM_URL}/users/${user_uuid}" "${user_payload}"
+
+  jq -n --arg password "${DEVELOPMENT_USER_PASSWORD}" \
+    '{type: "password", value: $password, temporary: false}' >"${user_payload}"
+  admin_put "${REALM_URL}/users/${user_uuid}/reset-password" "${user_payload}"
+}
+
+if [ ! -r "${DEVELOPMENT_USERS_FILE}" ]; then
+  echo "Development user definition is not readable: ${DEVELOPMENT_USERS_FILE}" >&2
+  exit 1
+fi
+while IFS="$(printf '\t')" read -r seed_email seed_display_name; do
+  case "${seed_email}" in
+    ''|'#'*) continue ;;
+  esac
+  ensure_development_user "${seed_email}" "${seed_display_name}"
+done <"${DEVELOPMENT_USERS_FILE}"
 
 configure_user_name "${DEV_ADMIN_EMAIL}" "開発" "管理者"
 configure_user_name "${DEV_USER_EMAIL}" "開発" "一般ユーザー"

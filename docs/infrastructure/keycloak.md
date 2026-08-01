@@ -33,6 +33,10 @@ Self RegistrationはRealm設定で無効化する。KeycloakのRealm RoleやClie
 | 未登録テスト | `example.pending1@sdcj.co.jp` | 登録済み | 登録しない |
 
 全ユーザーは有効かつemail verifiedである。サンプルパスワードはローカル開発専用である。
+組織図用69ユーザーと雇用区分境界テスト用2ユーザーは
+`keycloak/development-users.tsv`を正本としてAdmin REST APIで冪等作成・更新する。
+共通パスワードは`DEV_SEED_PASSWORD`（既定`password`）であり、
+この初期化コンテナはローカルdevelopmentでのみ使用する。
 
 ## User Profile
 

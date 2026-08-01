@@ -189,8 +189,17 @@ class MeApiIntegrationTest {
                 "READ",
                 null,
                 SYSTEM_USER_ID));
+        Permission workflowSubmit = permissionRepository.save(new Permission(
+                PermissionCodes.WORKFLOW_SUBMIT,
+                "Submit workflows",
+                "WORKFLOW",
+                "SUBMIT",
+                null,
+                SYSTEM_USER_ID));
         rolePermissionRepository.save(new RolePermission(
                 administratorRole.getId(), userRead.getId(), SYSTEM_USER_ID));
+        rolePermissionRepository.save(new RolePermission(
+                applicationUserRole.getId(), workflowSubmit.getId(), SYSTEM_USER_ID));
         assignRole(user, applicationUserRole, now);
         assignRole(administrator, administratorRole, now);
     }
@@ -284,8 +293,10 @@ class MeApiIntegrationTest {
                 .andExpect(jsonPath("$.externalSubject").value("user-subject"))
                 .andExpect(jsonPath("$.email").value(USER_EMAIL))
                 .andExpect(jsonPath("$.displayName").value("開発一般ユーザー"))
+                .andExpect(jsonPath("$.employmentType").value("REGULAR_EMPLOYEE"))
                 .andExpect(jsonPath("$.department.name").value("開発部"))
-                .andExpect(jsonPath("$.roles", contains(RoleCodes.APPLICATION_USER)));
+                .andExpect(jsonPath("$.roles", contains(RoleCodes.APPLICATION_USER)))
+                .andExpect(jsonPath("$.permissions", contains(PermissionCodes.WORKFLOW_SUBMIT)));
     }
 
     @Test

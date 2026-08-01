@@ -15,9 +15,11 @@ import jp.co.sdcj.workflow.api.MeResponse;
 import jp.co.sdcj.workflow.api.MeResponse.DepartmentResponse;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.OrganizationUnit;
+import jp.co.sdcj.workflow.domain.Permission;
 import jp.co.sdcj.workflow.domain.Role;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
+import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.RoleRepository;
 import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
 import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
@@ -31,6 +33,7 @@ public class CurrentUserService {
     private final OrganizationUnitRepository organizationUnitRepository;
     private final UserRoleAssignmentRepository roleAssignmentRepository;
     private final RoleRepository roleRepository;
+    private final PermissionRepository permissionRepository;
 
     public CurrentUserService(
             CurrentUserProvider currentUserProvider,
@@ -38,13 +41,15 @@ public class CurrentUserService {
             UserOrganizationAssignmentRepository organizationAssignmentRepository,
             OrganizationUnitRepository organizationUnitRepository,
             UserRoleAssignmentRepository roleAssignmentRepository,
-            RoleRepository roleRepository) {
+            RoleRepository roleRepository,
+            PermissionRepository permissionRepository) {
         this.currentUserProvider = currentUserProvider;
         this.appUserRepository = appUserRepository;
         this.organizationAssignmentRepository = organizationAssignmentRepository;
         this.organizationUnitRepository = organizationUnitRepository;
         this.roleAssignmentRepository = roleAssignmentRepository;
         this.roleRepository = roleRepository;
+        this.permissionRepository = permissionRepository;
     }
 
     @Transactional
@@ -75,13 +80,21 @@ public class CurrentUserService {
                 .distinct()
                 .sorted(Comparator.naturalOrder())
                 .toList();
+        List<String> permissions = permissionRepository
+                .findAllEffectiveByUserId(user.getId(), now).stream()
+                .map(Permission::getPermissionCode)
+                .distinct()
+                .sorted()
+                .toList();
 
         return new MeResponse(
                 user.getId(),
                 identity.subject(),
                 user.getEmail(),
                 user.getDisplayName(),
+                user.getEmploymentType(),
                 department,
-                roles);
+                roles,
+                permissions);
     }
 }

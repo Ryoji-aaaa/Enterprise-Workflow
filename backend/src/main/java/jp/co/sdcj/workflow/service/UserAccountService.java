@@ -2,6 +2,7 @@ package jp.co.sdcj.workflow.service;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -14,6 +15,7 @@ import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AccountStatusChangeSource;
 import jp.co.sdcj.workflow.domain.AppUser;
+import jp.co.sdcj.workflow.domain.EmploymentType;
 import jp.co.sdcj.workflow.domain.UserAccountStatusHistory;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.UserAccountStatusHistoryRepository;
@@ -45,6 +47,36 @@ public class UserAccountService {
     @Transactional(readOnly = true)
     public AppUser get(UUID userId) {
         return appUserRepository.findById(userId).orElseThrow(() -> notFound(userId));
+    }
+
+    @Transactional
+    public AppUser updateProfile(
+            UUID userId,
+            String employeeCode,
+            String displayName,
+            EmploymentType employmentType,
+            Instant validFrom,
+            Instant validUntil,
+            long expectedVersion,
+            AuditActor actor) {
+        AppUser user = appUserRepository.findById(userId).orElseThrow(() -> notFound(userId));
+        if (user.getVersion() != expectedVersion) {
+            throw new ApiException(HttpStatus.CONFLICT, "OPTIMISTIC_LOCK_CONFLICT",
+                    "他のユーザーによって更新されています。最新情報を再読込してください。");
+        }
+        if (validFrom == null || (validUntil != null && !validUntil.isAfter(validFrom))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_USER_VALIDITY_PERIOD",
+                    "利用終了日時は利用開始日時より後を指定してください。");
+        }
+        Map<String, Object> before = profileData(user);
+        user.updateProfile(
+                employeeCode, displayName, employmentType,
+                validFrom, validUntil, actor.userId());
+        appUserRepository.save(user);
+        auditLogService.recordSuccess(
+                actor, "USER_UPDATED", "APP_USER", userId.toString(),
+                before, profileData(user), "User information updated");
+        return user;
     }
 
     @Transactional
@@ -157,5 +189,19 @@ public class UserAccountService {
                 HttpStatus.NOT_FOUND,
                 "USER_NOT_FOUND",
                 "ユーザーが見つかりません: " + userId);
+    }
+
+    private static Map<String, Object> profileData(AppUser user) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (user.getEmployeeCode() != null) {
+            data.put("employeeCode", user.getEmployeeCode());
+        }
+        data.put("displayName", user.getDisplayName());
+        data.put("employmentType", user.getEmploymentType());
+        data.put("validFrom", user.getValidFrom());
+        if (user.getValidUntil() != null) {
+            data.put("validUntil", user.getValidUntil());
+        }
+        return data;
     }
 }

@@ -77,5 +77,5 @@ export function MePanel() {
   }
 
   const { user } = state;
-  return <MockDashboard displayName={user.displayName} />;
+  return <MockDashboard user={user} />;
 }

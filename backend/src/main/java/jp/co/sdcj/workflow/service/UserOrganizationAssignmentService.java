@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -100,6 +101,59 @@ public class UserOrganizationAssignmentService {
                 assignmentData(assignment),
                 null);
         return assignment;
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserOrganizationAssignment> findAllByUserId(UUID userId) {
+        if (!appUserRepository.existsById(userId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND",
+                    "ユーザーが見つかりません。");
+        }
+        return assignmentRepository.findAllByUserIdOrderByValidFromDesc(userId);
+    }
+
+    @Transactional
+    public UserOrganizationAssignment updateForUser(
+            UUID userId,
+            UUID assignmentId,
+            UUID organizationUnitId,
+            UUID positionId,
+            AssignmentType assignmentType,
+            boolean primary,
+            UUID managerUserId,
+            LocalDate validFrom,
+            LocalDate validUntil,
+            long expectedVersion,
+            AuditActor actor,
+            String reason) {
+        UserOrganizationAssignment current = requireOwnedAssignment(
+                userId, assignmentId, expectedVersion);
+        return update(
+                current.getId(), organizationUnitId, positionId, assignmentType,
+                primary, managerUserId, validFrom, validUntil, actor, reason);
+    }
+
+    @Transactional
+    public UserOrganizationAssignment end(
+            UUID userId,
+            UUID assignmentId,
+            long expectedVersion,
+            LocalDate endDate,
+            AuditActor actor,
+            String reason) {
+        UserOrganizationAssignment current = requireOwnedAssignment(
+                userId, assignmentId, expectedVersion);
+        LocalDate effectiveEnd = endDate == null
+                ? LocalDate.now(ZoneOffset.UTC) : endDate;
+        if (effectiveEnd.isBefore(current.getValidFrom())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "INVALID_ORGANIZATION_ASSIGNMENT_PERIOD",
+                    "所属終了日は開始日以降を指定してください。");
+        }
+        return update(
+                current.getId(), current.getOrganizationUnitId(), current.getPositionId(),
+                current.getAssignmentType(), current.isPrimary(), current.getManagerUserId(),
+                current.getValidFrom(), effectiveEnd, actor, reason);
     }
 
     @Transactional
@@ -209,6 +263,20 @@ public class UserOrganizationAssignmentService {
                     "所属期間はユーザーの利用期間内にしてください。");
         }
         return user;
+    }
+
+    private UserOrganizationAssignment requireOwnedAssignment(
+            UUID userId, UUID assignmentId, long expectedVersion) {
+        UserOrganizationAssignment assignment = assignmentRepository.findById(assignmentId)
+                .filter(value -> value.getUserId().equals(userId))
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "ORGANIZATION_ASSIGNMENT_NOT_FOUND",
+                        "所属割当が見つかりません。"));
+        if (assignment.getVersion() != expectedVersion) {
+            throw new ApiException(HttpStatus.CONFLICT, "OPTIMISTIC_LOCK_CONFLICT",
+                    "他のユーザーによって更新されています。最新情報を再読込してください。");
+        }
+        return assignment;
     }
 
     private OrganizationUnit requireEffectiveUnit(

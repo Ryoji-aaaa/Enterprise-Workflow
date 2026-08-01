@@ -1,0 +1,18 @@
+# 開発用組織・ユーザーデータ
+
+開発用データはFlywayへ入れず、`development` profileかつ`workflow.seed.enabled=true`の
+場合だけInitializerで作成する。Docker ComposeのBackendだけがこのprofileを有効にし、
+staging・productionでは実行しない。
+
+`DevelopmentSeedData`にSDCJ配下37組織単位の固定コードと階層を定義する。統治組織3件を
+除く34組織に責任者・一般ユーザーを1名ずつ作成し、会社直下に社長を1名作成するため、
+組織図用DBユーザーは69名である。既存の開発管理者・一般ユーザーを含めた業務ユーザーには
+必要なDBロールを付与する。さらに雇用区分の境界確認専用として、所属を持たないパート・嘱託
+ユーザーを各1名作成する。この2名は`ORGANIZATION_CHART_VIEWER`を持つがBackendで閲覧を
+拒否される。
+
+Initializerは組織コード、email、役職コードを自然キーとして存在しない行だけを追加する。
+既存行の手動変更は上書きせず、所属・ロールは期間重複検査で再起動時の重複を防ぐ。
+
+Keycloak側は`keycloak/development-users.tsv`を読み、組織図用69名と境界確認用2名の
+計71アカウントをemailで検索して作成または同期する。Keycloak Roleは業務認可に使わない。

@@ -28,7 +28,7 @@
 `organization_id + unit_code`を一意とする。種類は次のいずれかである。
 
 ```text
-COMPANY / DIVISION / DEPARTMENT / SECTION / TEAM / OTHER
+COMPANY / DIVISION / DEPARTMENT / SECTION / TEAM / PROJECT / OTHER
 ```
 
 階層変更時は、DBのCHECK制約とtrigger、およびサービス層で次を検証する。
@@ -113,13 +113,17 @@ triggerと同じトランザクション内のサービス検証で補完する�
 
 ## APIと実装境界
 
-組織管理画面と更新APIは今回の対象外だが、`ORGANIZATION_READ`を要求する次の参照APIを
-提供する。
+管理者向け参照APIに加え、一般利用者向け組織図APIを提供する。
 
 ```http
 GET /api/admin/organizations
 GET /api/admin/organization-units
+GET /api/admin/positions
+GET /api/organization-chart
 ```
+
+`/api/organization-chart`は`ORGANIZATION_CHART_READ`と対象雇用区分の両方を検証し、
+有効な組織・ユーザー・所属だけをフラットな`parentUnitId`付きレスポンスで返す。
 
 request/response DTOとエラーコードは実際のControllerと結合テストを正本とする。
 将来の更新APIは、階層循環、期間重複、無効マスタへの割当を検証するサービスを経由する。

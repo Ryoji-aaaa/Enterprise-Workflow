@@ -27,6 +27,7 @@ id
 employee_code
 email
 display_name
+employment_type
 account_status
 account_status_reason
 valid_from
@@ -40,6 +41,10 @@ version
 emailは小文字へ正規化し、大文字・小文字を区別せず必須かつ一意とする。社員コードは任意だが値がある場合は一意とする。
 `valid_until`を設定する場合は`valid_from`より後でなければならない。
 `version`はJPAの楽観ロックに使う。
+
+雇用区分は`SYSTEM`、`REGULAR_EMPLOYEE`、`ASSOCIATE_EMPLOYEE`、`PART_TIME`、
+`CONTRACT_EMPLOYEE`のいずれかである。組織図の閲覧資格はロールだけでなく雇用区分も使い、
+正社員と準社員だけを許可する。
 
 アカウント状態は次のいずれかである。
 
@@ -167,16 +172,19 @@ V001で許容されていた大文字・小文字だけが異なるemailは自�
 
 ## APIと実装境界
 
-管理画面の全面実装は対象外だが、次の管理APIを基盤の動作確認と後続画面のために提供する。
+ユーザー管理画面から次の管理APIを利用する。
 
 | Method | Path | 必要な権限 |
 | --- | --- | --- |
 | `GET` | `/api/admin/users` | `USER_READ` |
 | `GET` | `/api/admin/users/{userId}` | `USER_READ` |
+| `PATCH` | `/api/admin/users/{userId}` | `USER_UPDATE` |
 | `PATCH` | `/api/admin/users/{userId}/status` | `USER_STATUS_CHANGE` |
+| `GET/POST/PATCH/DELETE` | `/api/admin/users/{userId}/organization-assignments...` | `ORGANIZATION_READ` / `ORGANIZATION_MANAGE` |
+| `GET/POST/DELETE` | `/api/admin/users/{userId}/roles...` | `ROLE_READ` / `ROLE_ASSIGN` / `ROLE_REVOKE` |
 
-一覧のページング、request/response DTO、エラーコードは実際のControllerと結合テストを正本と
-する。状態変更APIは上記サービスを迂回してEntityを直接更新してはならない。
+emailと外部ID属性は更新APIの対象外である。ユーザー本体と所属の更新は`version`を要求し、
+競合時に409を返す。状態、所属、ロールの変更はサービスを迂回してEntityを直接更新しない。
 
 ## 承認経路との関係
 
