@@ -2,12 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, Crown, Landmark, Network, UserRound } from "lucide-react";
+import { Building2, ChevronDown, Crown, Landmark, Network, Pencil, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { buildOrganizationChartIndex } from "@/lib/organization-chart-tree";
+import type { CurrentUser } from "@/lib/backend-api";
+import {
+  buildOrganizationChartIndex,
+  canEditOrganizationChartUsers,
+  organizationChartUserEditPath,
+} from "@/lib/organization-chart-tree";
 import { cn } from "@/lib/utils";
 
 type Member = {
@@ -59,14 +64,47 @@ const typeLabels: Record<Unit["type"], string> = {
   OTHER: "統治組織",
 };
 
+function MemberSummary({
+  member,
+  canEditUsers,
+  showUserIcon = false,
+}: {
+  member: Member;
+  canEditUsers: boolean;
+  showUserIcon?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+        {showUserIcon && <UserRound className="size-3.5 shrink-0" />}
+        <p className="text-sm font-medium">{member.displayName}</p>
+        {member.positionName && <p className="text-xs text-muted-foreground">{member.positionName}</p>}
+      </div>
+      {canEditUsers && (
+        <Button
+          aria-label={`${member.displayName}のユーザー情報を編集`}
+          render={<Link href={organizationChartUserEditPath(member.userId)} />}
+          size="sm"
+          variant="outline"
+        >
+          <Pencil data-icon="inline-start" />
+          編集
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function OrganizationNode({
   unit,
   lookup,
   depth,
+  canEditUsers,
 }: {
   unit: Unit;
   lookup: Map<string | null, Unit[]>;
   depth: number;
+  canEditUsers: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const childUnits = lookup.get(unit.id) ?? [];
@@ -109,10 +147,7 @@ function OrganizationNode({
         </CardHeader>
         <CardContent className="space-y-2 px-4 pb-4">
           {head ? (
-            <div className="flex flex-wrap items-baseline gap-x-2 rounded-md border bg-background px-3 py-2">
-              <p className="text-sm font-medium">{head.displayName}</p>
-              <p className="text-xs text-muted-foreground">{head.positionName}</p>
-            </div>
+            <MemberSummary canEditUsers={canEditUsers} member={head} />
           ) : (
             <p className="text-xs text-muted-foreground">責任者未登録</p>
           )}
@@ -123,9 +158,8 @@ function OrganizationNode({
               </summary>
               <ul className="mt-2 space-y-1 text-sm">
                 {members.map((member) => (
-                  <li className="flex items-center gap-2" key={member.userId}>
-                    <UserRound className="size-3.5" />
-                    {member.displayName}
+                  <li key={member.userId}>
+                    <MemberSummary canEditUsers={canEditUsers} member={member} showUserIcon />
                   </li>
                 ))}
               </ul>
@@ -136,7 +170,13 @@ function OrganizationNode({
       {open && childUnits.length > 0 && (
         <ul className="relative ml-3 border-l border-border pl-5 md:ml-6 md:pl-8">
           {childUnits.map((child) => (
-            <OrganizationTree depth={depth + 1} key={child.id} lookup={lookup} unit={child} />
+            <OrganizationTree
+              canEditUsers={canEditUsers}
+              depth={depth + 1}
+              key={child.id}
+              lookup={lookup}
+              unit={child}
+            />
           ))}
         </ul>
       )}
@@ -148,12 +188,14 @@ function OrganizationTree({
   unit,
   lookup,
   depth,
+  canEditUsers,
 }: {
   unit: Unit;
   lookup: Map<string | null, Unit[]>;
   depth: number;
+  canEditUsers: boolean;
 }) {
-  return <OrganizationNode depth={depth} lookup={lookup} unit={unit} />;
+  return <OrganizationNode canEditUsers={canEditUsers} depth={depth} lookup={lookup} unit={unit} />;
 }
 
 function GovernancePanel({ units }: { units: Unit[] }) {
@@ -187,19 +229,26 @@ function GovernancePanel({ units }: { units: Unit[] }) {
 
 export default function OrganizationChartPage() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [permissions, setPermissions] = useState<string[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/backend/organization-chart", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (response.ok) {
-          setState({ kind: "ready", chart: (await response.json()) as Chart });
-        } else if (response.status === 403) {
-          setState({ kind: "forbidden" });
-        } else {
-          setState({ kind: "error", message: "組織図を取得できませんでした。" });
-        }
-      })
+    Promise.all([
+      fetch("/api/backend/organization-chart", { cache: "no-store", signal: controller.signal }),
+      fetch("/api/backend/me", { cache: "no-store", signal: controller.signal }),
+    ]).then(async ([chartResponse, meResponse]) => {
+      if (meResponse.ok) {
+        const me = (await meResponse.json()) as CurrentUser;
+        setPermissions(me.permissions);
+      }
+      if (chartResponse.ok) {
+        setState({ kind: "ready", chart: (await chartResponse.json()) as Chart });
+      } else if (chartResponse.status === 403) {
+        setState({ kind: "forbidden" });
+      } else {
+        setState({ kind: "error", message: "組織図を取得できませんでした。" });
+      }
+    })
       .catch(() => {
         if (!controller.signal.aborted) {
           setState({ kind: "error", message: "組織図を取得できませんでした。" });
@@ -211,6 +260,7 @@ export default function OrganizationChartPage() {
   const chartIndex = useMemo(() => {
     return buildOrganizationChartIndex(state.kind === "ready" ? state.chart.units : []);
   }, [state]);
+  const canEditUsers = canEditOrganizationChartUsers(permissions);
   return (
     <main className="min-h-svh bg-muted/30 p-4 md:p-8">
       <div className="mx-auto max-w-7xl">
@@ -253,17 +303,20 @@ export default function OrganizationChartPage() {
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
                       {state.chart.president ? (
-                        <div className="flex flex-wrap items-baseline gap-x-2 rounded-md border bg-background px-3 py-2">
-                          <p className="font-medium">{state.chart.president.displayName}</p>
-                          <p className="text-xs text-muted-foreground">{state.chart.president.positionName}</p>
-                        </div>
+                        <MemberSummary canEditUsers={canEditUsers} member={state.chart.president} />
                       ) : <p className="text-sm text-muted-foreground">社長未登録</p>}
                     </CardContent>
                   </Card>
                   {chartIndex.operationalUnits.length > 0 ? (
                     <ul className="relative ml-3 border-l border-border pl-5 md:ml-6 md:pl-8">
                       {chartIndex.operationalUnits.map((unit) => (
-                        <OrganizationTree depth={1} key={unit.id} lookup={chartIndex.childrenByParent} unit={unit} />
+                        <OrganizationTree
+                          canEditUsers={canEditUsers}
+                          depth={1}
+                          key={unit.id}
+                          lookup={chartIndex.childrenByParent}
+                          unit={unit}
+                        />
                       ))}
                     </ul>
                   ) : (

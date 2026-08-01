@@ -144,6 +144,11 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   await login(page, presidentEmail, presidentPassword);
 
   await expect(page).toHaveURL(/\/top$/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileNavigation = page.getByRole("navigation", { name: "モバイルナビゲーション" });
+  await expect(mobileNavigation.getByRole("link", { name: "組織図" })).toBeVisible();
+  await expect(mobileNavigation.getByRole("link", { name: "ユーザー管理" })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
   const meResponse = await page.request.get("/api/backend/me");
   expect(meResponse.status()).toBe(200);
@@ -159,8 +164,27 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   await expect(businessOrganization.getByText("仮 社長", { exact: true })).toBeVisible();
   await expect(businessOrganization.getByText("管理本部", { exact: true })).toBeVisible();
   await expect(businessOrganization.getByText("株主総会", { exact: true })).toHaveCount(0);
+  const presidentEdit = businessOrganization.getByRole("link", {
+    name: "仮 社長のユーザー情報を編集",
+  });
+  await expect(presidentEdit).toBeVisible();
 
-  await page.getByRole("link", { name: "トップへ戻る" }).click();
+  const internalAuditCard = businessOrganization
+    .getByText("内部監査室", { exact: true })
+    .locator("xpath=ancestor::*[@data-slot='card'][1]");
+  await expect(internalAuditCard.getByRole("link", {
+    name: "仮 内部監査室責任者のユーザー情報を編集",
+  })).toBeVisible();
+  await internalAuditCard.getByText("一般ユーザーを表示（1名）", { exact: true }).click();
+  await expect(internalAuditCard.getByRole("link", {
+    name: "仮 内部監査室一般のユーザー情報を編集",
+  })).toBeVisible();
+
+  await presidentEdit.click();
+  await expect(page).toHaveURL(new RegExp(`/admin/users/${me.id}/edit$`));
+  await expect(page.getByRole("heading", { name: "ユーザー情報編集" })).toBeVisible();
+
+  await page.goto("/top");
   await page.getByRole("link", { name: "ユーザー管理" }).click();
   await expect(page.getByRole("heading", { name: "ユーザー管理" })).toBeVisible();
   await expect(page.getByText(/ユーザー一覧（\d+件）/)).toBeVisible();
@@ -200,10 +224,19 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
 test("一般正社員は組織図を閲覧できユーザー管理は表示されない", async ({ page }) => {
   await login(page, userEmail, userPassword);
 
+  const meResponse = await page.request.get("/api/backend/me");
+  expect(meResponse.status()).toBe(200);
+  const me = (await meResponse.json()) as { id: string };
   await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
   await expect(page.getByRole("link", { name: "ユーザー管理" })).toHaveCount(0);
   await page.getByRole("link", { name: "組織図" }).click();
   await expect(page.getByText("仮 社長", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /ユーザー情報を編集/ })).toHaveCount(0);
+
+  const directApiResponse = await page.request.get(`/api/backend/admin/users/${me.id}`);
+  expect(directApiResponse.status()).toBe(403);
+  await page.goto(`/admin/users/${me.id}/edit`);
+  await expect(page.getByText("この情報を管理する権限がありません（403）。")).toBeVisible();
 });
 
 test("パートは組織図メニューがなく直接アクセスも403になる", async ({ page }) => {

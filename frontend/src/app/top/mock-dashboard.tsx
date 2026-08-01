@@ -260,6 +260,29 @@ export function MockDashboard({
           </span>
         </div>
 
+        <nav aria-label="モバイルナビゲーション" className="ml-2 flex items-center gap-1 md:hidden">
+          {canViewOrganizationChart(user) && (
+            <Button
+              aria-label="組織図"
+              render={<Link href="/organization-chart" />}
+              size="icon-lg"
+              variant="ghost"
+            >
+              <Shapes />
+            </Button>
+          )}
+          {permissions.includes("USER_READ") && (
+            <Button
+              aria-label="ユーザー管理"
+              render={<Link href="/admin/users" />}
+              size="icon-lg"
+              variant="ghost"
+            >
+              <Users />
+            </Button>
+          )}
+        </nav>
+
         <label className="relative mx-4 hidden max-w-xl flex-1 items-center lg:flex">
           <Search className="pointer-events-none absolute left-3 z-10 size-4 text-muted-foreground" />
           <Input

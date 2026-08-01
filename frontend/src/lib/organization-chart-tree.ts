@@ -5,6 +5,14 @@ export type ChartUnitNode = {
   displayOrder: number;
 };
 
+export function canEditOrganizationChartUsers(permissions: readonly string[]): boolean {
+  return permissions.includes("USER_UPDATE");
+}
+
+export function organizationChartUserEditPath(userId: string): string {
+  return `/admin/users/${userId}/edit`;
+}
+
 export function buildOrganizationChartIndex<T extends ChartUnitNode>(units: T[]) {
   const childrenByParent = new Map<string | null, T[]>();
   for (const unit of units) {
