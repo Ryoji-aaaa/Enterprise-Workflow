@@ -58,6 +58,7 @@ jobs:
       TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
       TF_VAR_mail_from: ${{ vars.MAIL_FROM }}
       TF_VAR_provision_workloads: ${{ vars.PROVISION_WORKLOADS || 'false' }}
+      TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
 
     steps:
       - uses: actions/checkout@v5

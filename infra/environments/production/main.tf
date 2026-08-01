@@ -17,6 +17,7 @@ module "environment" {
   postgres_administrator_password = var.postgres_administrator_password
   image_tag                       = var.image_tag
   provision_workloads             = var.provision_workloads
+  contract_legacy_user_columns    = var.contract_legacy_user_columns
   allowed_email_domain            = var.allowed_email_domain
   mail_host                       = var.mail_host
   mail_port                       = var.mail_port

@@ -89,7 +89,7 @@ module "backend" {
   target_port                  = 8080
   external_enabled             = false
   key_vault_uri                = module.key_vault.vault_uri
-  environment_variables = {
+  environment_variables = merge({
     SPRING_DATASOURCE_URL      = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
     SPRING_DATASOURCE_USERNAME = "workflow"
     KEYCLOAK_ISSUER            = local.keycloak_issuer
@@ -100,7 +100,11 @@ module "backend" {
     MAIL_PORT                  = tostring(var.mail_port)
     MAIL_FROM                  = var.mail_from
     WORKFLOW_SEED_ENABLED      = "false"
-  }
+    }, var.contract_legacy_user_columns ? tomap({}) : tomap({
+      # Pin only the application-switch deployment. Once the legacy contract is
+      # approved, omitting the target lets later Flyway versions apply normally.
+      SPRING_FLYWAY_TARGET = "006"
+  }))
   secret_environment_variables = {
     SPRING_DATASOURCE_PASSWORD = "workflow-db-password"
   }
@@ -111,6 +115,7 @@ module "backend" {
     database_role       = "workflow"
     admin_secret_name   = "postgres-admin-password"
     role_secret_name    = "workflow-db-password"
+    extensions          = ["btree_gist"]
   }
   startup_probe = {
     path                  = "/actuator/health/readiness"
@@ -129,7 +134,7 @@ module "backend" {
     port = 8080
   }
 
-  depends_on = [module.key_vault, azurerm_role_assignment.acr_pull]
+  depends_on = [module.postgres, module.key_vault, azurerm_role_assignment.acr_pull]
 }
 
 module "keycloak" {
@@ -195,7 +200,7 @@ module "keycloak" {
     success_threshold = 1
   }
 
-  depends_on = [module.key_vault, azurerm_role_assignment.acr_pull]
+  depends_on = [module.postgres, module.key_vault, azurerm_role_assignment.acr_pull]
 }
 
 module "frontend" {

@@ -172,10 +172,26 @@ if contains_service backend; then
 SELECT count(*)
 FROM information_schema.tables
 WHERE table_schema = 'public'
-  AND table_name IN ('flyway_schema_history', 'app_users', 'access_requests');
+  AND table_name IN (
+    'flyway_schema_history',
+    'app_users',
+    'access_requests',
+    'user_external_identities',
+    'user_account_status_histories',
+    'organizations',
+    'organization_units',
+    'positions',
+    'user_organization_assignments',
+    'roles',
+    'permissions',
+    'role_permissions',
+    'user_role_assignments',
+    'user_role_change_histories',
+    'audit_logs'
+  );
 SQL
   )"
-  [[ "${schema_table_count}" == "3" ]] || {
+  [[ "${schema_table_count}" == "15" ]] || {
     echo "Expected Flyway history and workflow schema tables were not initialized." >&2
     exit 1
   }
@@ -187,18 +203,39 @@ SQL
         --dbname "${WORKFLOW_DB_NAME:-workflow}" \
         --tuples-only \
         --no-align <<'SQL'
-SELECT count(*) || ':' ||
-       count(*) FILTER (
-           WHERE script = 'V001__create_initial_schema.sql'
-             AND type = 'SQL'
-             AND checksum IS NOT NULL
-             AND success
-       )
+SELECT count(*) || ':' || count(*) FILTER (
+  WHERE script IN (
+    'V001__create_initial_schema.sql',
+    'V002__expand_user_management_schema.sql',
+    'V003__create_organization_management_schema.sql',
+    'V004__create_authorization_management_schema.sql',
+    'V005__create_audit_log_schema.sql',
+    'V006__seed_and_migrate_user_organization_authorization_data.sql',
+    'V007__contract_legacy_app_user_columns.sql'
+  )
+    AND type = 'SQL'
+    AND checksum IS NOT NULL
+    AND success
+)
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "1:1" ]] || {
-    echo "Expected exactly one successful V001 Flyway migration with a checksum." >&2
+  [[ "${migration_summary}" == "7:7" ]] || {
+    echo "Expected all seven Flyway migrations to be applied successfully with checksums." >&2
+    exit 1
+  }
+
+  extension_count="$(
+    "${COMPOSE[@]}" exec -T postgres \
+      psql \
+        --username postgres \
+        --dbname "${WORKFLOW_DB_NAME:-workflow}" \
+        --tuples-only \
+        --no-align \
+        --command "SELECT count(*) FROM pg_extension WHERE extname = 'btree_gist';"
+  )"
+  [[ "${extension_count}" == "1" ]] || {
+    echo "Expected the btree_gist extension required by temporal constraints." >&2
     exit 1
   }
 
@@ -212,13 +249,41 @@ SQL
         --set "admin_email=${DEV_ADMIN_EMAIL}" \
         --set "user_email=${DEV_USER_EMAIL}" <<'SQL'
 SELECT count(*)
-FROM app_users
-WHERE (email = :'admin_email' AND business_role = 'ADMIN')
-   OR (email = :'user_email' AND business_role = 'USER');
+FROM app_users u
+JOIN user_role_assignments ura ON ura.user_id = u.id
+JOIN roles r ON r.id = ura.role_id
+WHERE (u.email = :'admin_email' AND r.role_code = 'SYSTEM_ADMIN')
+   OR (u.email = :'user_email' AND r.role_code = 'APPLICATION_USER');
 SQL
   )"
   [[ "${seed_count}" == "2" ]] || {
     echo "Expected development business users were not initialized." >&2
+    exit 1
+  }
+
+  legacy_column_count="$(
+    "${COMPOSE[@]}" exec -T postgres \
+      psql \
+        --username postgres \
+        --dbname "${WORKFLOW_DB_NAME:-workflow}" \
+        --tuples-only \
+        --no-align <<'SQL'
+SELECT count(*)
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'app_users'
+  AND column_name IN (
+    'identity_provider',
+    'issuer',
+    'external_subject',
+    'department_name',
+    'business_role',
+    'enabled'
+  );
+SQL
+  )"
+  [[ "${legacy_column_count}" == "0" ]] || {
+    echo "Legacy app_users columns remain after the contract migration." >&2
     exit 1
   }
 

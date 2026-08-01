@@ -23,6 +23,14 @@ resource "azurerm_postgresql_flexible_server" "this" {
   }
 }
 
+# Flyway V003 installs btree_gist for temporal exclusion constraints. Azure
+# Flexible Server rejects CREATE EXTENSION until it is explicitly allowlisted.
+resource "azurerm_postgresql_flexible_server_configuration" "extensions" {
+  name      = "azure.extensions"
+  server_id = azurerm_postgresql_flexible_server.this.id
+  value     = "BTREE_GIST"
+}
+
 resource "azurerm_postgresql_flexible_server_database" "database" {
   for_each = toset(["workflow", "keycloak"])
 
@@ -30,4 +38,6 @@ resource "azurerm_postgresql_flexible_server_database" "database" {
   server_id = azurerm_postgresql_flexible_server.this.id
   collation = "en_US.utf8"
   charset   = "UTF8"
+
+  depends_on = [azurerm_postgresql_flexible_server_configuration.extensions]
 }

@@ -28,8 +28,8 @@ Self RegistrationはRealm設定で無効化する。KeycloakのRealm RoleやClie
 
 | 種別 | ユーザー名 | Keycloak | Workflow DB |
 | --- | --- | --- | --- |
-| 管理者 | `example.admin1@sdcj.co.jp` | 登録済み | ADMINとして登録 |
-| 一般 | `example.user1@sdcj.co.jp` | 登録済み | USERとして登録 |
+| 管理者 | `example.admin1@sdcj.co.jp` | 登録済み | DBで`SYSTEM_ADMIN`を割当 |
+| 一般 | `example.user1@sdcj.co.jp` | 登録済み | DBで`APPLICATION_USER`を割当 |
 | 未登録テスト | `example.pending1@sdcj.co.jp` | 登録済み | 登録しない |
 
 全ユーザーは有効かつemail verifiedである。サンプルパスワードはローカル開発専用である。

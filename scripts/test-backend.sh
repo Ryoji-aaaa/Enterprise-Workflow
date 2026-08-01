@@ -14,3 +14,5 @@ docker build \
   --target test \
   --tag workflow-backend-test \
   backend
+
+"${SCRIPT_DIRECTORY}/test-postgres-migrations.sh"

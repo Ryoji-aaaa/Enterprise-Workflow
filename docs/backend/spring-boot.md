@@ -33,8 +33,9 @@ Resource Serverの署名・有効期限検証後、業務層で次を再検証�
 - emailが`ALLOWED_EMAIL_DOMAIN`と完全一致する
 - `aud`または`azp`が`workflow-web`と一致する
 
-JWT、Client Secret、パスワードはログへ出力しない。業務権限はJWTやKeycloak Roleではなく
-PostgreSQLの`app_users.business_role`から取得する。
+JWT、Client Secret、パスワードはログへ出力しない。業務ユーザーは
+`user_external_identities`の`issuer + external_subject`から解決し、業務権限はJWTや
+Keycloak RoleではなくPostgreSQLのロール・権限テーブルから取得する。
 
 ## API
 
@@ -51,14 +52,14 @@ PostgreSQLの`app_users.business_role`から取得する。
   "department": {
     "name": "開発部"
   },
-  "roles": ["USER"]
+  "roles": ["APPLICATION_USER"]
 }
 ```
 
 - JWTなし・署名不正・issuer不正: HTTP 401
 - emailクレーム不正、許可ドメイン外、Client不一致: HTTP 403
 - DB未登録: HTTP 403、`APPLICATION_USER_NOT_REGISTERED`
-- DB上で無効: HTTP 403、`APPLICATION_USER_DISABLED`
+- DB上で利用不可または有効期間外: HTTP 403
 
 エラーは内部例外やJWTを含めず、`code`と利用者向け`message`だけを返す。
 
@@ -73,14 +74,16 @@ backend起動時に未適用のmigrationを順番に適用し、履歴とchecksu
 `flyway_schema_history`へ記録する。HibernateのDDL生成とSpring Boot SQL Initializationは
 通常実行時に使用しない。運用方法は[Flyway仕様](flyway.md)を参照する。
 
-### `app_users`
+### ユーザー・組織・権限・監査
 
-利用可否、表示名、部署、`USER`または`ADMIN`の業務ロールを管理する。
-`issuer + external_subject`とemailに一意制約を持つ。
+`app_users`はIdPに依存しない業務ユーザーとアカウント状態・有効期間を管理する。
+外部IDは`user_external_identities`、部署・役職は組織テーブル、操作権限はロール・権限
+テーブルへ分離する。詳細は次を参照する。
 
-開発用の管理者と一般ユーザーはemailで事前登録する。初回の正規JWT受信時に、
-署名済みかつemail verifiedのemailを照合して`issuer + subject`を一度だけ紐付ける。
-紐付け後は`issuer + subject`を利用者識別子とする。
+- [ユーザー管理](user-management.md)
+- [組織・所属・役職管理](organization-management.md)
+- [業務認可](authorization.md)
+- [監査ログ](audit-logging.md)
 
 ### `access_requests`
 
@@ -91,7 +94,7 @@ APIが403を返して外側のトランザクションが終了しても記録�
 
 ## Mailpit通知
 
-未登録ユーザーの初回アクセス時、DB上の有効な`ADMIN`全員へSMTP通知する。
+未登録ユーザーの初回アクセス時、DB上の有効な管理対象ユーザーへSMTP通知する。
 通知には表示名、email、subject、issuer、初回・最終日時、アクセス回数を含める。
 
 同じ利用者への通知は既定で15分抑制する。SMTP失敗時もアクセス要求を保存し、

@@ -78,6 +78,7 @@ variable "database_bootstrap" {
     admin_secret_name   = string
     role_secret_name    = string
     postgres_image      = optional(string, "postgres:18.4-alpine")
+    extensions          = optional(set(string), [])
   })
   default = null
 
@@ -87,5 +88,13 @@ variable "database_bootstrap" {
       try(var.database_bootstrap.database_role, "")
     )
     error_message = "database_role must be workflow or keycloak."
+  }
+
+  validation {
+    condition = var.database_bootstrap == null || alltrue([
+      for extension in try(var.database_bootstrap.extensions, []) :
+      can(regex("^[a-z][a-z0-9_]*$", extension))
+    ])
+    error_message = "database extensions must be safe lowercase PostgreSQL identifiers."
   }
 }

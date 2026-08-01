@@ -44,7 +44,8 @@ Better AuthのDBなしsession、暗号化されたHTTP-only Cookie、BFFでの�
 - email、subject、表示名claimの差異を正規化する
 - `workflow.security.identity-provider`をIdP中立の識別子へ変更する
 
-業務ユーザーとアクセス申請は`issuer + external_subject`を外部IDとしている。
+業務ユーザーはIdP非依存のUUIDを主キーとし、`user_external_identities`とアクセス申請は
+`issuer + external_subject`を外部IDとしている。
 issuerとsubjectがKeycloakから変わるため、切替前に既存ユーザーとの対応表を作り、
 監査可能なDB migrationで新しい外部IDへ関連付ける。emailだけの自動突合で権限を
 引き継がない。
@@ -84,6 +85,10 @@ E2EではEntra IDの実tenantへ常時依存させるか、CI専用tenantとテ�
 - Mailpitを本番構成から除外し、認証済みSMTP/TLSと実管理者宛先を設定する
 - PostgreSQLとbackendを引き続き非公開networkに置く
 - database migrationを専用権限で管理し、runtime userへDDL権限を与えない
+- ユーザー基盤移行は`CONTRACT_LEGACY_USER_COLUMNS=false`でV006までdeployし、新revisionの
+  安定稼働と移行件数を確認した別deployでだけ`true`へ切り替えてV007を適用する
+- V007適用前に旧revisionを停止し、管理更新と初回loginをwrite drainする。Flyway migratorは
+  1 instanceに限定し、lock競合でrollbackした場合はdrainを確認してcontract deployを再試行する
 - backup、restore試験、暗号化、保持期間、個人情報削除手順を定める
 - 未登録通知に含める個人情報を最小化し、監査ログの閲覧権限を限定する
 

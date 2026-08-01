@@ -1,72 +1,87 @@
 package jp.co.sdcj.workflow.service;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.api.MeResponse;
 import jp.co.sdcj.workflow.api.MeResponse.DepartmentResponse;
 import jp.co.sdcj.workflow.domain.AppUser;
+import jp.co.sdcj.workflow.domain.OrganizationUnit;
+import jp.co.sdcj.workflow.domain.Role;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
+import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
+import jp.co.sdcj.workflow.repository.RoleRepository;
+import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
+import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
 
 @Service
 public class CurrentUserService {
 
-    private final JwtIdentityValidator identityValidator;
+    private final CurrentUserProvider currentUserProvider;
     private final AppUserRepository appUserRepository;
-    private final AccessRequestService accessRequestService;
+    private final UserOrganizationAssignmentRepository organizationAssignmentRepository;
+    private final OrganizationUnitRepository organizationUnitRepository;
+    private final UserRoleAssignmentRepository roleAssignmentRepository;
+    private final RoleRepository roleRepository;
 
     public CurrentUserService(
-            JwtIdentityValidator identityValidator,
+            CurrentUserProvider currentUserProvider,
             AppUserRepository appUserRepository,
-            AccessRequestService accessRequestService) {
-        this.identityValidator = identityValidator;
+            UserOrganizationAssignmentRepository organizationAssignmentRepository,
+            OrganizationUnitRepository organizationUnitRepository,
+            UserRoleAssignmentRepository roleAssignmentRepository,
+            RoleRepository roleRepository) {
+        this.currentUserProvider = currentUserProvider;
         this.appUserRepository = appUserRepository;
-        this.accessRequestService = accessRequestService;
+        this.organizationAssignmentRepository = organizationAssignmentRepository;
+        this.organizationUnitRepository = organizationUnitRepository;
+        this.roleAssignmentRepository = roleAssignmentRepository;
+        this.roleRepository = roleRepository;
     }
 
     @Transactional
     public MeResponse getCurrentUser(Jwt jwt) {
-        AuthenticatedIdentity identity = identityValidator.validate(jwt);
-        AppUser user = findAndBindUser(identity);
+        CurrentApplicationUser current = currentUserProvider.getRequiredUser(jwt);
+        AppUser user = current.user();
+        AuthenticatedIdentity identity = current.identity();
+        Instant now = Instant.now();
+        user.recordLogin(now, user.getId());
+        appUserRepository.save(user);
 
-        if (user == null) {
-            accessRequestService.record(identity);
-            throw new ApiException(
-                    HttpStatus.FORBIDDEN,
-                    "APPLICATION_USER_NOT_REGISTERED",
-                    "利用申請を管理者へ通知しました。");
-        }
-        if (!user.isEnabled()) {
-            throw new ApiException(
-                    HttpStatus.FORBIDDEN,
-                    "APPLICATION_USER_DISABLED",
-                    "このアカウントでは利用できません。");
-        }
+        DepartmentResponse department = organizationAssignmentRepository
+                .findCurrentPrimaryByUserId(user.getId(), LocalDate.now(ZoneOffset.UTC))
+                .flatMap(assignment -> organizationUnitRepository
+                        .findById(assignment.getOrganizationUnitId()))
+                .map(OrganizationUnit::getUnitName)
+                .map(DepartmentResponse::new)
+                .orElse(null);
+
+        List<UUID> roleIds = roleAssignmentRepository.findCurrentByUserId(user.getId(), now)
+                .stream()
+                .map(assignment -> assignment.getRoleId())
+                .distinct()
+                .toList();
+        List<String> roles = roleRepository.findAllById(roleIds).stream()
+                .filter(Role::isEnabled)
+                .map(Role::getRoleCode)
+                .distinct()
+                .sorted(Comparator.naturalOrder())
+                .toList();
 
         return new MeResponse(
                 user.getId(),
                 identity.subject(),
                 user.getEmail(),
                 user.getDisplayName(),
-                new DepartmentResponse(user.getDepartmentName()),
-                List.of(user.getRole().name()));
-    }
-
-    private AppUser findAndBindUser(AuthenticatedIdentity identity) {
-        return appUserRepository
-                .findByIssuerAndExternalSubject(identity.issuer(), identity.subject())
-                .orElseGet(() -> appUserRepository
-                        .findByEmailIgnoreCase(identity.email())
-                        .filter(user -> user.getExternalSubject() == null)
-                        .map(user -> {
-                            user.bindExternalIdentity(identity.issuer(), identity.subject());
-                            return appUserRepository.save(user);
-                        })
-                        .orElse(null));
+                department,
+                roles);
     }
 }
