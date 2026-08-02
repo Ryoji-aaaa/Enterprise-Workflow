@@ -19,3 +19,18 @@ soft deleteを必須とする。
 `environment-stack`はstaging workload構築時だけ、DB、Keycloak、両方を対象にした3個の
 手動Container Apps Jobを作る。Jobにschedule/event triggerはなく、通常deployからも開始しない。
 productionでは`for_each`が空になり、seed Jobを作成しない。
+
+## ローカル静的検証
+
+```bash
+make verify-infra
+```
+
+このターゲットは`terraform fmt -check`、bootstrap・staging・production各rootの
+`terraform init -backend=false`と`validate`に加え、Backend probe、内部Backend URL、
+staging限定の手動seed Job名とproduction guardを検証する。各rootへ`.terraform/`を生成するが、
+Azureへのlogin、plan、applyは行わない。Terraformにも`-no-color`を渡すため、CIログへANSI
+制御文字を出力しない。
+
+旧`make terraform-check`は移行用の警告付きエイリアスである。文書、CI、新しい手順では
+`make verify-infra`を使用する。

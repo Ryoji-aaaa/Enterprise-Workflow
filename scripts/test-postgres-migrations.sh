@@ -2,8 +2,13 @@
 
 set -Eeuo pipefail
 
-readonly SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIRECTORY
+PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+readonly PROJECT_DIRECTORY
+# shellcheck source=scripts/lib/log.sh
+source "${SCRIPT_DIRECTORY}/lib/log.sh"
+
 readonly MIGRATION_DIRECTORY="${PROJECT_DIRECTORY}/backend/src/main/resources/db/migration"
 readonly POSTGRES_IMAGE="${POSTGRES_VERSION:+postgres:${POSTGRES_VERSION}}"
 readonly EFFECTIVE_POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4}"
@@ -12,6 +17,7 @@ readonly NETWORK_NAME="workflow-migration-test-network-${TEST_SUFFIX}"
 readonly POSTGRES_CONTAINER="workflow-migration-test-postgres-${TEST_SUFFIX}"
 readonly BACKEND_CONTAINER="workflow-migration-test-backend-${TEST_SUFFIX}"
 readonly DATABASE_PASSWORD="migration-test-password"
+readonly TEST_START=${SECONDS}
 
 cleanup() {
   docker rm --force "${BACKEND_CONTAINER}" >/dev/null 2>&1 || true
@@ -21,7 +27,7 @@ cleanup() {
 trap cleanup EXIT
 
 fail() {
-  echo "PostgreSQL migration test failed: $*" >&2
+  log_fail "PostgreSQL migration test failed: $*"
   exit 1
 }
 
@@ -85,6 +91,8 @@ start_backend() {
   fail "backend did not become ready while migrating ${database_name}"
 }
 
+log_section "PostgreSQL migration test environment"
+log_info "Starting an isolated PostgreSQL ${EFFECTIVE_POSTGRES_IMAGE#postgres:} test database..."
 docker network create "${NETWORK_NAME}" >/dev/null
 docker run --detach --rm \
   --name "${POSTGRES_CONTAINER}" \
@@ -107,6 +115,7 @@ admin_psql postgres --command \
 
 # A V001 database with case-only duplicate emails must stop at V002 with an
 # actionable preflight error, and the failed migration must roll back atomically.
+log_section "Migration preflight failure handling"
 create_database case_conflict
 docker exec --interactive --env "PGPASSWORD=${DATABASE_PASSWORD}" "${POSTGRES_CONTAINER}" \
   psql --host 127.0.0.1 --username workflow --dbname case_conflict \
@@ -137,6 +146,7 @@ fi
 
 # Exercise the supported in-place V001 upgrade with representative linked and
 # pre-registered legacy users. Flyway applies V002 through V008 via the real app.
+log_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
 docker rm --force "${BACKEND_CONTAINER}" >/dev/null
@@ -516,6 +526,7 @@ docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 
 # The contract migration must refuse to remove the source columns when one
 # normalized mapping disappears during the application-switch window.
+log_section "Contract migration reconciliation safeguards"
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 ALTER TABLE user_external_identities
     DISABLE TRIGGER tr_user_external_identities_project_legacy;
@@ -565,6 +576,7 @@ start_backend workflow_upgrade
 # Run repository queries against the migrated PostgreSQL schema. These checks
 # are deliberately outside the default H2-backed Surefire suite because null
 # temporal and UUID parameter binding differs between the two databases.
+log_section "PostgreSQL repository queries and database constraints"
 docker run --rm \
   --network "${NETWORK_NAME}" \
   --env "POSTGRES_TEST_URL=jdbc:postgresql://${POSTGRES_CONTAINER}:5432/workflow_upgrade" \
@@ -899,6 +911,7 @@ docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 
 # A completely empty database must also migrate, validate against Hibernate,
 # and remain unchanged on a second application startup.
+log_section "Fresh migration and startup idempotency"
 create_database workflow_fresh
 start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
@@ -978,4 +991,4 @@ END;
 $$;
 SQL
 
-echo "PostgreSQL migration tests passed (fresh, V001 upgrade, repository queries, constraints, idempotency)."
+log_pass "PostgreSQL migration tests passed: fresh migration, V001 upgrade, repository queries, constraints, and idempotency ($(format_duration "$((SECONDS - TEST_START))"))."

@@ -84,14 +84,9 @@ V007の旧列削除を行う。以後は`true`を維持する。`true`側ではF
 後続migrationもlatestまで適用する。詳細は
 [`docs/backend/flyway.md`](../docs/backend/flyway.md)を参照する。
 
-`terraform.tfvars`、plan、stateはGitへ追加しない。検証は資格情報なしでも実行できる。
+`terraform.tfvars`、plan、stateはGitへ追加しない。リポジトリrootからの静的検証は資格情報なしで
+実行でき、Terraform以外のインフラ不変条件も同時に確認する。
 
 ```bash
-terraform fmt -check -recursive infra
-terraform -chdir=infra/bootstrap init -backend=false
-terraform -chdir=infra/bootstrap validate
-terraform -chdir=infra/environments/staging init -backend=false
-terraform -chdir=infra/environments/staging validate
-terraform -chdir=infra/environments/production init -backend=false
-terraform -chdir=infra/environments/production validate
+make verify-infra
 ```

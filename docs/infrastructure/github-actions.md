@@ -9,9 +9,11 @@
 - `deploy-staging.yml`: main CI成功後のSHA image build/pushと自動apply
 - `deploy-production.yml`: 指定済みSHA imageを再buildせず手動昇格
 
-PRでは`ci.yml`の全テストとimage build、`dependency-review.yml`のdependency reviewと
-`npm audit`を実行する。Terraformまたはplan workflowの変更時は`terraform-plan.yml`が
-fmt、3つのrootのvalidate、staging/production planを実行する。mainへのpushでCIが成功すると
+PRでは`ci.yml`の`make test`、`make verify`とimage build、`dependency-review.yml`の
+dependency reviewと`make audit`を実行する。Terraform、インフラ検証スクリプト、Makefile、
+またはplan workflowの変更時は`terraform-plan.yml`が`make verify-infra`でfmt、独自の
+インフラ不変条件、3つのrootのvalidateを確認してからstaging/production planを実行する。
+mainへのpushでCIが成功すると
 `workflow_run`から`deploy-staging.yml`を開始する。staging deployは同じ40文字commit SHAで
 Frontend、Backend、Keycloak、staging専用seedの4 imageをbuildしてACRへpushし、Terraform
 apply、Keycloak realm/client設定、public smoke testまでを行う。
@@ -97,7 +99,7 @@ phaseを手動で選択する。
 追加しない。applyは実デプロイ用workflowからのみ実行する。
 
 GitHub dependency reviewはrepositoryのDependency graphが利用できる場合だけ有効である。
-未対応の場合はworkflowを失敗させず、frontend/E2Eの`npm audit`とDependabotによる
+未対応の場合はworkflowを失敗させず、`make audit`によるfrontend/E2Eの`npm audit`とDependabotによる
 GitHub Actions、npm、Maven、Docker dependency更新を代替とする。
 
 Docker Hubからbase imageを取得するbuildで`i/o timeout`など一時的な通信エラーだけが

@@ -88,10 +88,11 @@ docker run --rm \
 
 ```bash
 make test-frontend
+make audit-frontend
 ```
 
-このテストはDocker内でlint、TypeScript、単体テスト、production buildを実行し、
-production dependencyを`npm audit --omit=dev`で監査する。
+`make test-frontend`はDocker内でlint、TypeScript、単体テスト、production buildを実行する。
+production dependencyの`npm audit --omit=dev`は責務を分離した`make audit-frontend`で実行する。
 
 ## 公式資料
 

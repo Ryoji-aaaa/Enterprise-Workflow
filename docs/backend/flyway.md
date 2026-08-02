@@ -75,6 +75,9 @@ make verify
 - email正規化の事前検査、排他制約、追記専用trigger
 - 二回目起動時のFlyway・基盤seedの冪等性
 
+実行ログは事前検査、V001 upgradeとExpand-Contract、reconciliation、PostgreSQL固有query・
+制約、fresh migrationと冪等性のsectionに分け、失敗した検証を`[FAIL]`で表示する。
+
 適用状況はPostgreSQLコンテナ内で確認する。
 
 ```bash
