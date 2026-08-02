@@ -11,6 +11,10 @@ staging・productionでは実行しない。
 ユーザーを各1名作成する。この2名は`ORGANIZATION_CHART_VIEWER`を持つがBackendで閲覧を
 拒否される。
 
+各有人組織の責任者と経理課の一般ユーザーには`WORKFLOW_APPROVER`を付与する。経理課の有効な
+所属ユーザーは全員が経費承認Candidateになるため、一般ユーザーにも承認Permissionを明示する。
+個別申請の処理にはこのPermissionに加えて、申請時に保存したCandidateとの一致が必要である。
+
 Initializerは組織コード、email、役職コードを自然キーとして存在しない行だけを追加する。
 既存行の手動変更は上書きせず、所属・ロールは期間重複検査で再起動時の重複を防ぐ。
 
@@ -56,7 +60,7 @@ manual_seed_result target=keycloak created=... existing=... updated=... failed=.
 行い、返されたexecution名とログの集計を保存する。
 
 DB seedはFlyway migrationを実行しない。seed imageは起動時に
-`--spring.flyway.enabled=false`を指定するため、通常Backend revisionでV008までの適用が
+`--spring.flyway.enabled=false`を指定するため、通常Backend revisionでV009までの適用が
 完了していることが必須である。`employment_type does not exist`が発生した状態でseedを
 再試行せず、先に通常Backendのmigration設定と履歴を直す。
 
@@ -77,7 +81,7 @@ Keycloakを個別に実行する。stagingで確認済みの運用順は次の�
    Identityに参照権限があることを確認する。secret値は画面共有やログへ表示しない。
 2. `Deploy staging`を実行し、対象SHAのBackend、Frontend、Keycloak、seed imageと3つのJobを
    Terraformで反映する。
-3. 通常BackendのConsole logと`flyway_schema_history`でV008の成功を確認する。
+3. 通常BackendのConsole logと`flyway_schema_history`でV009の成功を確認する。
 4. `job-ewf-stg-seed-db`を開始し、`manual_seed_result target=db ... failed=0`を確認する。
 5. `job-ewf-stg-seed-kc`を開始し、
    `manual_seed_result target=keycloak ... failed=0`を確認する。

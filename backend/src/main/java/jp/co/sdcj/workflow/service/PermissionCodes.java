@@ -16,6 +16,9 @@ public final class PermissionCodes {
     public static final String WORKFLOW_SUBMIT = "WORKFLOW_SUBMIT";
     public static final String WORKFLOW_APPROVE = "WORKFLOW_APPROVE";
     public static final String WORKFLOW_ROUTE_MANAGE = "WORKFLOW_ROUTE_MANAGE";
+    public static final String EXPENSE_APPLICATION_CREATE = "EXPENSE_APPLICATION_CREATE";
+    public static final String EXPENSE_APPLICATION_READ_OWN = "EXPENSE_APPLICATION_READ_OWN";
+    public static final String EXPENSE_APPLICATION_APPROVE = "EXPENSE_APPLICATION_APPROVE";
 
     private PermissionCodes() {
     }

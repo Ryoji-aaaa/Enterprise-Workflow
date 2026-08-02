@@ -15,7 +15,8 @@
 - Frontend UI: [shadcn/ui・Tailwind CSS](frontend/shadcn-tailwind.md)
 - Frontend features:
   [組織図](frontend/organization-chart.md) /
-  [ユーザー管理](frontend/user-management.md)
+  [ユーザー管理](frontend/user-management.md) /
+  [経費精算申請](frontend/expense-application.md)
 - Backend:
   [Spring Boot](backend/spring-boot.md) /
   [Flyway](backend/flyway.md) /
@@ -23,6 +24,7 @@
   [組織・所属・役職管理](backend/organization-management.md) /
   [業務認可](backend/authorization.md) /
   [監査ログ](backend/audit-logging.md) /
+  [経費精算申請](backend/expense-application.md) /
   [開発・staging用seedデータ](backend/development-seed-data.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
@@ -56,6 +58,7 @@
 - [ADR-0011: 業務ユーザーと外部認証IDの分離](decisions/ADR-0011-separate-business-users-from-external-identities.md)
 - [ADR-0012: 組織・役職・業務権限の分離](decisions/ADR-0012-separate-organization-position-and-authorization.md)
 - [ADR-0013: 追記専用の監査ログと変更履歴](decisions/ADR-0013-append-only-audit-and-change-history.md)
+- [ADR-0014: 経費承認経路の申請時確定](decisions/ADR-0014-expense-approval-route-resolution.md)
 
 ## 履歴資料
 

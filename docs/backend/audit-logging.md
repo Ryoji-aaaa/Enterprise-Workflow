@@ -134,7 +134,8 @@ Authorization header
 
 ## 承認経路との関係
 
-今回の`audit_logs`は管理基盤の横断監査を対象とする。将来の申請・承認では、各stepの
-判断、comment、代理承認、差戻しなどの業務証跡をワークフロー実行テーブルへ保持し、
-管理操作の監査ログだけで承認履歴を代用しない。必要に応じてrequest/correlation IDで
-両者を関連付ける。
+経費申請・承認では、各Stepの判断、comment、差戻しを経費承認実行テーブルへ保持し、作成、
+更新、申請、再申請、取下げ、Step承認、差戻し、最終承認の横断イベントを`audit_logs`へも
+追記する。業務更新と成功監査は同じtransactionに含める。承認履歴を管理監査ログだけで
+代用せず、必要に応じてrequest/correlation IDで関連付ける。Candidate外・自己承認・所有者外の
+参照または更新は、拒否された業務transactionから独立した`DENIED`監査として保持する。

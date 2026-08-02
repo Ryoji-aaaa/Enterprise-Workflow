@@ -48,6 +48,7 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
 
     private static final LocalDate SEED_DATE = LocalDate.of(2026, 1, 1);
     private static final Instant SEED_INSTANT = SEED_DATE.atStartOfDay(ZoneOffset.UTC).toInstant();
+    private static final String ACCOUNTING_UNIT_CODE = "ACCOUNTING_SECTION";
 
     private static final Map<String, PositionSeed> POSITION_SEEDS = Map.of(
             "PRESIDENT", new PositionSeed("社長", 100, 100),
@@ -161,6 +162,9 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
             assignRoles(member, actor, report,
                     RoleCodes.APPLICATION_USER,
                     RoleCodes.ORGANIZATION_CHART_VIEWER);
+            if (definition.code().equals(ACCOUNTING_UNIT_CODE)) {
+                assignRoles(member, actor, report, RoleCodes.WORKFLOW_APPROVER);
+            }
         }
     }
 

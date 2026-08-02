@@ -220,6 +220,12 @@ services:
       DEV_PRESIDENT_PASSWORD: ${DEV_SEED_PASSWORD:-password}
       DEV_PART_TIME_EMAIL: example.parttime1@sdcj.co.jp
       DEV_PART_TIME_PASSWORD: ${DEV_SEED_PASSWORD:-password}
+      DEV_EXPENSE_USER_EMAIL: first-si-sales-section.user@sdcj.co.jp
+      DEV_EXPENSE_MANAGER_EMAIL: first-si-sales-section.head@sdcj.co.jp
+      DEV_EXPENSE_DIVISION_HEAD_EMAIL: first-si-division.head@sdcj.co.jp
+      DEV_EXPENSE_ACCOUNTING_EMAIL: accounting-section.user@sdcj.co.jp
+      DEV_EXPENSE_OUTSIDER_EMAIL: second-si-sales-section.head@sdcj.co.jp
+      DEV_EXPENSE_PASSWORD: ${DEV_SEED_PASSWORD:-password}
     volumes:
       - ./tests/e2e/playwright-report:/workspace/playwright-report
       - ./tests/e2e/test-results:/workspace/test-results

@@ -15,7 +15,7 @@ Composeの`test` profileだけに`e2e`サービスを定義し、通常の`make 
 1. ローカル設定と全サービスのhealthを確認する
 2. 内部Admin REST APIでKeycloak設定を冪等更新する
 3. E2E imageをbuildする
-4. 未登録テストユーザーの申請と対象Mailpit通知だけを初期化する
+4. 未登録テストユーザーの申請、`E2E`接頭辞の経費申請、対象Mailpit通知だけを初期化する
 5. Playwrightを1 workerで実行する
 6. DB、Mailpit、JWT拒否、Composeと実コンテナのnetwork境界を事後検証する
 
@@ -45,6 +45,9 @@ Composeの`test` profileだけに`e2e`サービスを定義し、通常の`make 
 14. 社長の組織図で社長・責任者・一般ユーザーに編集操作が表示され、対象編集画面へ遷移する
 15. 一般ユーザーには編集操作を表示せず、編集URLへの直接アクセスもBackendが403で拒否する
 16. `md`未満で権限に応じた組織図・ユーザー管理のモバイルナビゲーションを表示する
+17. 一般ユーザー、課長、事業部長の経費申請経路をBFF経由で完了する
+18. 経費申請を理由付きで差し戻し、新しいRunで再申請・承認する
+19. 候補者外ユーザーの経費承認を403で拒否し、Mailpit通知を確認する
 
 雇用区分のBackend境界は正社員・準社員を許可し、パート・嘱託を権限保持時も拒否するAPI
 統合テストで確認する。Frontend単体テストは`PART_TIME`、`CONTRACT_EMPLOYEE`、`SYSTEM`を
@@ -71,6 +74,7 @@ Playwright後のコンテナ内検証では、Spring Bootの`/api/me`へJWTな�
 - 件名が`[Workflow] 未登録ユーザーからアクセスがありました`のMailpitメッセージ
 - 前回のPlaywright成果物
 - 中断された前回テストが残した社長の`仮 社長 E2E`表示名と有効な`AUDITOR`割当
+- 件名が`E2E`で始まる経費申請と、その明細・承認Run・Step・Candidate
 
 事後検証では未登録ユーザーの申請が1行、`request_count`が2以上、対象通知が1件
 であることを確認する。他ユーザーのDBデータや別件名のメールは削除しない。

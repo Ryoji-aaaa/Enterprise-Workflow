@@ -71,6 +71,26 @@ public class PermissionAuthorizer {
         return granted;
     }
 
+    public boolean hasAnyPermission(
+            Authentication authentication, String... permissionCodes) {
+        CurrentApplicationUser current;
+        try {
+            current = currentUserProvider.getRequiredUser(authentication);
+        } catch (ApiException exception) {
+            recordDeniedSafely(deniedActor(), String.join("|", permissionCodes), exception.getCode());
+            return false;
+        }
+        for (String permissionCode : permissionCodes) {
+            if (permissionService.hasPermission(current.user().getId(), permissionCode)) {
+                return true;
+            }
+        }
+        recordDeniedSafely(
+                AuditActor.user(current.user()), String.join("|", permissionCodes),
+                "MISSING_PERMISSION");
+        return false;
+    }
+
     private void recordDeniedSafely(AuditActor actor, String permissionCode, String reason) {
         try {
             auditLogService.recordDenied(
