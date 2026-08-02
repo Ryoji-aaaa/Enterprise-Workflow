@@ -41,3 +41,37 @@ Backend ingressはinternalのままとし、外部URLやBrowserから直接疎�
 `BACKEND_UNAVAILABLE`が続く場合はFrontendログで接続先とproxy errorを確認し、Backend
 ログで`/api/me`到達を確認する。環境変数をPortalから修正せず、Terraformの生成値を直して
 Frontend revisionを更新する。
+
+## stagingの確認項目
+
+stagingではPostgreSQL、Key Vault、3つの通常Container Apps、3つの手動seed JobがTerraform
+stateと一致することを確認する。現在の業務DBはFlyway V008まで適用済みであり、GitHub
+Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
+
+1. workflow summaryのimage tagが対象の40文字commit SHAである。
+2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
+3. BackendのConsole logでFlywayがV008まで成功し、readinessが成功している。
+4. Keycloak realm/client設定とpublic smoke testが成功している。
+5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
+
+Jobの`Execution history`は開始・終了時刻、状態、execution名を確認する入口である。各executionの
+`Console`にはSpring Bootまたはseed scriptの標準出力・例外、`System`にはimage pull、replica、
+Managed Identity、secret参照などContainer Apps基盤のイベントが出る。アプリケーション例外は
+Consoleを先に確認する。期間をまたいだ検索や複数replicaの照合には、Container Apps Environmentの
+Log Analytics workspaceを使い、Container AppまたはJob名、revision/execution名、時刻で絞り込む。
+
+## 障害調査
+
+失敗時はworkflowの失敗step、Container AppsのrevisionまたはJob execution、Console log、
+System log、Log Analytics、依存先の順に調べる。代表例は次のとおり。
+
+| 症状 | 確認・対応 |
+| --- | --- |
+| `development-seed-password`を参照できない | staging Key Vaultに有効なsecret versionがあることと、JobのUser Assigned Managed Identityに`Key Vault Secrets User`があることを確認する。値はログへ出さない。 |
+| `employment_type does not exist` | 通常Backendが`SPRING_FLYWAY_TARGET=006`で止まっていないか、`CONTRACT_LEGACY_USER_COLUMNS=true`か、`flyway_schema_history`がV008まで成功しているかを確認する。DB seed Job自身はFlywayを無効化している。 |
+| Docker build中のDocker Hub `i/o timeout` | base image取得時だけの一時通信障害ならworkflowを再実行する。コード、migration、Terraformの失敗と混同しない。 |
+| Container Apps Jobが`Failed` | System logだけで判断せず、対象executionのConsole logでSpring例外と`manual_seed_result ... failed=...`を確認する。部分成功後は原因を直し、冪等な対象Jobを再実行する。 |
+| Flyway V007が失敗 | 旧revisionの停止とwrite drain、reconciliation対象データ、Console log、履歴を確認する。`flyway repair`は使用せず、原因を解消してcontract deployを再試行する。 |
+
+PortalでTerraform管理の環境変数、secret参照、probe、trafficを恒久変更しない。調査中に必要な
+構成差分が判明した場合はコードと文書をレビューし、GitHub Actionsからapplyする。

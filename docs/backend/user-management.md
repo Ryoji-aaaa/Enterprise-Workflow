@@ -130,6 +130,8 @@ Mailpit通知を維持する。
 
 ユーザー解決後の業務認可はKeycloak RoleではなくDBのロール・権限を使う。
 ユーザーの現在の状態と有効期間を確認した後に、有効な`user_role_assignments`を解決する。
+`USER_INFORMATION_MANAGER`はユーザー情報、状態、所属、役職、直属上司、ロールの管理に必要な
+権限を束ねる。開発・staging用データでは社長と管理本部長へ全社スコープで付与する。
 詳細は[業務認可](authorization.md)を参照する。
 
 ## 更新、履歴、監査
@@ -184,7 +186,9 @@ V001で許容されていた大文字・小文字だけが異なるemailは自�
 | `GET/POST/DELETE` | `/api/admin/users/{userId}/roles...` | `ROLE_READ` / `ROLE_ASSIGN` / `ROLE_REVOKE` |
 
 emailと外部ID属性は更新APIの対象外である。ユーザー本体と所属の更新は`version`を要求し、
-競合時に409を返す。状態、所属、ロールの変更はサービスを迂回してEntityを直接更新しない。
+競合時に409を返す。所属の`DELETE`は行の物理削除ではなく、現在日で割当を終了して履歴を
+保持する。状態、所属、ロールの変更はサービスを迂回してEntityを直接更新せず、監査ログと
+必要な変更履歴を同じ既存transaction方針で記録する。
 
 ## 承認経路との関係
 

@@ -55,6 +55,11 @@ manual_seed_result target=keycloak created=... existing=... updated=... failed=.
 実行前にstaging Key Vaultへ`development-seed-password`を登録する。実行は対象Jobを明示して
 行い、返されたexecution名とログの集計を保存する。
 
+DB seedはFlyway migrationを実行しない。seed imageは起動時に
+`--spring.flyway.enabled=false`を指定するため、通常Backend revisionでV008までの適用が
+完了していることが必須である。`employment_type does not exist`が発生した状態でseedを
+再試行せず、先に通常Backendのmigration設定と履歴を直す。
+
 ```bash
 az containerapp job start \
   --resource-group rg-enterprise-workflow-staging \
@@ -64,3 +69,27 @@ az containerapp job start \
   --resource-group rg-enterprise-workflow-staging \
   --name job-ewf-stg-seed-kc
 ```
+
+`all` Jobも利用できるが、初回確認と障害復旧では部分成功の境界を明確にするため、DB、
+Keycloakを個別に実行する。stagingで確認済みの運用順は次のとおり。
+
+1. staging Key Vaultに`development-seed-password`の有効なversionがあり、JobのManaged
+   Identityに参照権限があることを確認する。secret値は画面共有やログへ表示しない。
+2. `Deploy staging`を実行し、対象SHAのBackend、Frontend、Keycloak、seed imageと3つのJobを
+   Terraformで反映する。
+3. 通常BackendのConsole logと`flyway_schema_history`でV008の成功を確認する。
+4. `job-ewf-stg-seed-db`を開始し、`manual_seed_result target=db ... failed=0`を確認する。
+5. `job-ewf-stg-seed-kc`を開始し、
+   `manual_seed_result target=keycloak ... failed=0`を確認する。
+6. `president@sdcj.co.jp`でログインし、組織図とユーザー管理を表示できることを確認する。
+7. 一般ユーザーの編集不可と、パート・嘱託の組織図閲覧不可を確認する。
+
+Portalでは対象Jobの`Execution history`からexecutionを選び、`Console`で
+`manual_seed_result`とSpring例外を確認する。`System`はimage pull、replica作成、Managed
+Identity、secret参照など基盤側の調査に使う。アプリケーション例外の正本はConsole logであり、
+System logだけを見て原因を判断しない。長期検索はContainer Apps Environmentに接続された
+Log Analytics workspaceで対象Job名、execution名、時刻を絞り込む。
+
+同じJobは冪等に再実行できる。実行履歴、execution名、対象image SHA、2種類の
+`manual_seed_result`を運用記録へ残す。productionにはJobも
+`development-seed-password`も作成せず、staging用imageをproductionで実行しない。

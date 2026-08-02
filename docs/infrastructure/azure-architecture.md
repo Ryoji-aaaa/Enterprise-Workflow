@@ -39,5 +39,12 @@ Backendをexternalへ変更せず、Browserからの業務APIアクセスは引�
 Container Appsは当初min/max replicaを1とする。Keycloakの複数replica化、cache stack、
 zone冗長化、メールサービス、custom domain/WAFは今回の対象外である。
 
+stagingでは通常のFrontend、Backend、Keycloak Container Appsに加え、開発用データを手動で
+投入する`job-ewf-stg-seed-db`、`job-ewf-stg-seed-kc`、`job-ewf-stg-seed-all`を同じ
+Container Apps Environmentに置く。Jobはscheduleを持たず、通常deployから自動開始しない。
+seed passwordはstaging Key Vaultの`development-seed-password`をManaged Identityで参照する。
+productionではこれらのJobとsecretを作成しない。詳細は
+[開発・staging用seedデータ](../backend/development-seed-data.md)を参照する。
+
 Container Appsを含むTerraform管理リソースをAzure Portalから直接変更しない。Portalは
 revision、traffic、replica、ログの確認に使用し、構成変更はTerraformへ反映してapplyする。

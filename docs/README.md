@@ -22,8 +22,8 @@
   [ユーザー管理](backend/user-management.md) /
   [組織・所属・役職管理](backend/organization-management.md) /
   [業務認可](backend/authorization.md) /
-  [監査ログ](backend/audit-logging.md)
-  [開発用組織データ](backend/development-seed-data.md)
+  [監査ログ](backend/audit-logging.md) /
+  [開発・staging用seedデータ](backend/development-seed-data.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
   [Keycloak](infrastructure/keycloak.md) /

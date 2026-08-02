@@ -14,6 +14,19 @@ FROM flyway_schema_history
 ORDER BY installed_rank;
 ```
 
-初回はV001がchecksum付きで1回だけ成功していることを確認する。失敗したmigrationを
-書き換えず、原因を直した新versionを追加する。破壊的変更はExpand and Contractで行い、
-productionではbackup/restore、互換期間、切り戻し不能点を含む個別計画を承認する。
+stagingではV001からV008がchecksum付きで1回ずつ成功していることを確認済みである。V008は
+`employment_type`、`PROJECT`組織種別、`ORGANIZATION_CHART_READ`、
+`ORGANIZATION_CHART_VIEWER`、`USER_INFORMATION_MANAGER`、`WORKFLOW_APPROVER`を追加する。
+手動DB seed JobはFlywayを無効化するため、V008確認より先に実行しない。
+
+V006からV007への切替では、GitHub Environmentの
+`CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
+`SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから
+`CONTRACT_LEGACY_USER_COLUMNS=true`へ変更して新しいdeployを開始する。`true`ではtargetを
+渡さないためV007以降が適用される。V007を適用した環境は旧列へ戻せないため、フラグを以後
+`true`に保つ。stagingはV007とV008を適用済みである。
+
+失敗したmigrationを書き換えず、原因を直した新versionを追加する。V007がデータ照合や
+lock競合で失敗した場合も`flyway repair`を使わず、transaction rollbackと履歴を確認して原因を
+解消する。破壊的変更はExpand and Contractで行い、productionではbackup/restore、互換期間、
+切り戻し不能点を含む個別計画を承認する。詳細は[Flyway仕様](../backend/flyway.md)を参照する。

@@ -9,7 +9,8 @@
 5. Better AuthがOAuth state、session、provider accountを暗号化したHTTP-only Cookieへ保存する。
 6. Next.jsがサーバー側でaccess tokenを取得し、Spring Bootの`GET /api/me`へ送る。
 7. Spring BootがJWTを検証し、`issuer + subject`から外部ID対応と業務ユーザーを解決する。
-8. Spring Bootがアカウント状態・有効期間とDB上の業務権限を確認し、業務ユーザー情報を返す。
+8. Spring Bootがアカウント状態・有効期間とDB上の業務権限を確認し、`employmentType`と
+   `permissions`を含む業務ユーザー情報を返す。
 9. Next.jsが業務情報を`/top`へ表示する。
 
 access token、refresh token、ID tokenはブラウザJavaScript、localStorage、
@@ -32,7 +33,9 @@ Spring Bootは初回だけ`user_external_identities`へissuerとsubjectを登録
 トランザクションでユーザーを`ACTIVE`へ変更し、状態変更履歴と監査ログを追記する。
 
 連携後はemailではなく`issuer + subject`から業務ユーザーを解決する。Keycloak Roleは
-業務認可に使用しない。
+業務認可に使用しない。`GET /api/me`が返す`ORGANIZATION_CHART_READ`などの権限は
+PostgreSQLの現在のロール割当から解決する。Frontendは表示制御に利用するが、Spring Bootも
+各APIで同じDB認可を必ず実行する。
 
 ## ログアウト
 

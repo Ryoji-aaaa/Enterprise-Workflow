@@ -28,6 +28,12 @@ SYSTEM・マスタseedと既存データ移行、V007は切替後の旧列削除
 適用履歴、ファイル名、checksum、成功状態はPostgreSQLの
 `flyway_schema_history`に記録される。
 
+stagingではV001からV008までの適用成功を確認済みである。V007によって旧ユーザー列を
+contract済みであり、GitHub Environment `staging`の
+`CONTRACT_LEGACY_USER_COLUMNS`は以後`true`を維持する。通常Backendは最新migrationまでを
+適用し、V008の`employment_type`、`PROJECT`、`ORGANIZATION_CHART_READ`と関連ロールを
+利用できる状態を前提とする。
+
 V003の期間重複排他制約は`btree_gist`を使用する。Azure Database for PostgreSQL
 Flexible ServerではTerraformが`azure.extensions=BTREE_GIST`を設定し、backendの
 database bootstrapが管理者権限で拡張を先に作成する。Flyway実行ユーザーへ
@@ -42,8 +48,8 @@ V{3桁連番}__{英小文字の説明}.sql
 例:
 
 ```text
-V008__create_workflow_requests.sql
-V009__add_approval_status.sql
+V009__create_workflow_requests.sql
+V010__add_approval_status.sql
 ```
 
 番号は既存ファイルの最大値から1つ進める。versionは重複させず、説明には英小文字と
@@ -92,6 +98,11 @@ SYSTEMユーザー、初期ロール・権限、移行に必要な組織など�
 Flywayで冪等に投入する。開発用管理者・一般ユーザーは`DevelopmentUserInitializer`が投入し、
 `workflow.seed.enabled`で有効・無効を切り替える。環境依存の開発データを
 migrationへ含めない。
+
+stagingの手動seed Jobは`--spring.flyway.enabled=false`で動作し、migrationを実行しない。
+schema更新は通常Backend revisionの起動で先に完了させる。DB seedは少なくともV008まで
+成功し、`employment_type`など必要なschemaが存在することを確認してから実行する。
+seed Jobの詳細は[開発・staging用seedデータ](development-seed-data.md)を参照する。
 
 ## ローカル環境での確認方法
 
@@ -143,6 +154,10 @@ V006とV007を同じContainer Apps revision作成中に適用しない。Terrafo
    再deployしてV007を適用する。
 6. V007のユーザー単位reconciliation成功と旧列削除を確認し、フラグを以後`true`に保つ。
    `true`では`SPRING_FLYWAY_TARGET`を渡さないため、V008以降も通常どおりlatestまで適用される。
+
+V007の失敗時は`flyway repair`で履歴を合わせない。V007はtransaction内で失敗を
+rollbackするため、Console logと`flyway_schema_history`、旧revisionの停止、reconciliation
+対象データを確認して原因を解消し、contract deployを再実行する。
 
 V007は外部ID、主所属、旧ロールに欠落があればDDL実行前に失敗する。V006までなら旧アプリへ
 戻せるが、V007後は旧列へ依存するimageへ戻さず、前進修正または承認済みbackup restoreを行う。
