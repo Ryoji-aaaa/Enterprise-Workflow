@@ -15,3 +15,7 @@ soft deleteを必須とする。
 
 既存Portal resourceを管理へ取り込む場合は、同名resourceのapplyより前に
 `terraform import`する。importせずTerraform管理外のAzure app resourceを増やさない。
+
+`environment-stack`はstaging workload構築時だけ、DB、Keycloak、両方を対象にした3個の
+手動Container Apps Jobを作る。Jobにschedule/event triggerはなく、通常deployからも開始しない。
+productionでは`for_each`が空になり、seed Jobを作成しない。

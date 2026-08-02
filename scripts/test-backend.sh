@@ -7,6 +7,10 @@ readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 
 cd "${PROJECT_DIRECTORY}"
 
+diff --unified \
+  <(tail -n +2 keycloak/development-users.tsv) \
+  <(tail -n +3 backend/seed/development-users.tsv)
+
 docker build \
   --build-arg "JAVA_VERSION=${JAVA_VERSION:-21}" \
   --build-arg "MAVEN_VERSION=${MAVEN_VERSION:-3.9.16}" \

@@ -36,7 +36,7 @@ import jp.co.sdcj.workflow.service.UserOrganizationAssignmentService;
 import jp.co.sdcj.workflow.service.UserRoleAssignmentService;
 
 @Component
-@Profile("development")
+@Profile({"development", "manual-seed"})
 @Order(10)
 @ConditionalOnProperty(
         name = "workflow.seed.enabled",
@@ -59,6 +59,9 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
     private final AuditLogService auditLogService;
     private final String adminEmail;
     private final String userEmail;
+
+    @Value("${workflow.seed.automatic:true}")
+    private boolean automatic = true;
 
     public DevelopmentUserInitializer(
             AppUserRepository appUserRepository,
@@ -90,20 +93,34 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments arguments) {
-        upsert(adminEmail, "開発管理者",
+        if (automatic) {
+            seed(new SeedReport());
+        }
+    }
+
+    @Transactional
+    public void seed(SeedReport report) {
+        upsert(report, adminEmail, "開発管理者",
                 RoleCodes.SYSTEM_ADMIN, RoleCodes.ORGANIZATION_CHART_VIEWER);
-        upsert(userEmail, "開発一般ユーザー",
+        upsert(report, userEmail, "開発一般ユーザー",
                 RoleCodes.APPLICATION_USER, RoleCodes.ORGANIZATION_CHART_VIEWER);
     }
 
-    private void upsert(String email, String displayName, String... roleCodes) {
+    private void upsert(SeedReport report, String email, String displayName, String... roleCodes) {
         AuditActor actor = AuditActor.system();
         Instant now = Instant.now();
         LocalDate today = LocalDate.ofInstant(now, ZoneOffset.UTC);
         Instant seedValidFrom = today.atStartOfDay(ZoneOffset.UTC).toInstant();
-        AppUser user = appUserRepository.findByEmailIgnoreCase(email).orElseGet(() ->
-                userAccountService.register(
-                        null, email, displayName, seedValidFrom, null, actor));
+        var existingUser = appUserRepository.findByEmailIgnoreCase(email);
+        AppUser user;
+        if (existingUser.isPresent()) {
+            user = existingUser.get();
+            report.existing();
+        } else {
+            user = userAccountService.register(
+                    null, email, displayName, seedValidFrom, null, actor);
+            report.created();
+        }
         if (user.getAccountStatus() == AccountStatus.PRE_REGISTERED) {
             user = userAccountService.changeStatus(
                     user.getId(),
@@ -113,6 +130,7 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
                     now,
                     actor,
                     AccountStatusChangeSource.SYSTEM);
+            report.updated();
         }
         if (!Objects.equals(user.getDisplayName(), displayName)) {
             String previousDisplayName = user.getDisplayName();
@@ -132,6 +150,7 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
                     Map.of("displayName", previousDisplayName),
                     Map.of("displayName", displayName),
                     "Development seed synchronization");
+            report.updated();
         }
 
         for (String roleCode : roleCodes) {
@@ -148,6 +167,9 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
                         "Development seed",
                         actor,
                         AccountStatusChangeSource.SYSTEM);
+                report.created();
+            } else {
+                report.existing();
             }
         }
 
@@ -171,6 +193,9 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
                     today,
                     null,
                     actor);
+            report.created();
+        } else {
+            report.existing();
         }
     }
 }

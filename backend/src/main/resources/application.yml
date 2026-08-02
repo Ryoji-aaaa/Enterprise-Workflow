@@ -36,6 +36,7 @@ management:
       show-details: never
 
 workflow:
+  deployment-environment: ${WORKFLOW_DEPLOYMENT_ENVIRONMENT:development}
   security:
     issuer: ${KEYCLOAK_ISSUER:http://localhost:8180/realms/workflow}
     client-id: ${KEYCLOAK_CLIENT_ID:workflow-web}
@@ -46,5 +47,8 @@ workflow:
     cooldown: ${ACCESS_REQUEST_NOTIFICATION_COOLDOWN:15m}
   seed:
     enabled: true
+    automatic: ${WORKFLOW_SEED_AUTOMATIC:true}
     admin-email: ${DEV_ADMIN_EMAIL:example.admin1@sdcj.co.jp}
     user-email: ${DEV_USER_EMAIL:example.user1@sdcj.co.jp}
+  manual-seed:
+    enabled: ${WORKFLOW_MANUAL_SEED_ENABLED:false}

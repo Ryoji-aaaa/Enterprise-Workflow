@@ -56,7 +56,7 @@ terraform init \
 1. `provision_workloads=false`でapplyし、VNet、Log Analytics、Container Apps
    Environment、Managed Identity、Key Vaultを作成する。
 2. 人間がKey Vaultへ秘密値を登録する。
-3. SHA tagの3イメージをACRへpushする。
+3. SHA tagの通常3イメージをACRへpushし、stagingでは同じtagのseed専用イメージもpushする。
 4. `provision_workloads=true`、`image_tag=<40文字SHA>`でapplyする。
 
 GitHub Environmentの`PROVISION_WORKLOADS`は最初`false`にする。foundation applyと

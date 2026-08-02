@@ -10,3 +10,8 @@ output "postgres_fqdn" {
   value     = var.provision_workloads ? module.postgres[0].fqdn : null
   sensitive = true
 }
+output "manual_seed_job_names" {
+  value = {
+    for target, job in azurerm_container_app_job.manual_seed : target => job.name
+  }
+}

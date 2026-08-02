@@ -9,3 +9,4 @@ output "postgres_fqdn" {
   value     = module.environment.postgres_fqdn
   sensitive = true
 }
+output "manual_seed_job_names" { value = module.environment.manual_seed_job_names }

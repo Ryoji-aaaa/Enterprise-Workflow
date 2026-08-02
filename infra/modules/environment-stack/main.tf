@@ -90,16 +90,17 @@ module "backend" {
   external_enabled             = false
   key_vault_uri                = module.key_vault.vault_uri
   environment_variables = merge({
-    SPRING_DATASOURCE_URL      = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
-    SPRING_DATASOURCE_USERNAME = "workflow"
-    KEYCLOAK_ISSUER            = local.keycloak_issuer
-    KEYCLOAK_INTERNAL_ISSUER   = local.keycloak_issuer
-    KEYCLOAK_CLIENT_ID         = var.keycloak_client_id
-    ALLOWED_EMAIL_DOMAIN       = var.allowed_email_domain
-    MAIL_HOST                  = var.mail_host
-    MAIL_PORT                  = tostring(var.mail_port)
-    MAIL_FROM                  = var.mail_from
-    WORKFLOW_SEED_ENABLED      = "false"
+    SPRING_DATASOURCE_URL           = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
+    SPRING_DATASOURCE_USERNAME      = "workflow"
+    KEYCLOAK_ISSUER                 = local.keycloak_issuer
+    KEYCLOAK_INTERNAL_ISSUER        = local.keycloak_issuer
+    KEYCLOAK_CLIENT_ID              = var.keycloak_client_id
+    ALLOWED_EMAIL_DOMAIN            = var.allowed_email_domain
+    MAIL_HOST                       = var.mail_host
+    MAIL_PORT                       = tostring(var.mail_port)
+    MAIL_FROM                       = var.mail_from
+    WORKFLOW_DEPLOYMENT_ENVIRONMENT = var.environment
+    WORKFLOW_SEED_ENABLED           = "false"
     }, var.contract_legacy_user_columns ? tomap({}) : tomap({
       # Pin only the application-switch deployment. Once the legacy contract is
       # approved, omitting the target lets later Flyway versions apply normally.
@@ -245,6 +246,129 @@ module "frontend" {
   readiness_probe = {
     path = "/login"
     port = 3000
+  }
+
+  depends_on = [
+    module.backend,
+    module.keycloak,
+    module.key_vault,
+    azurerm_role_assignment.acr_pull,
+  ]
+}
+
+locals {
+  manual_seed_job_names_by_target = {
+    db       = "job-ewf-stg-seed-db"
+    keycloak = "job-ewf-stg-seed-kc"
+    all      = "job-ewf-stg-seed-all"
+  }
+  manual_seed_jobs = var.provision_workloads && var.environment == "staging" ? local.manual_seed_job_names_by_target : {}
+}
+
+resource "azurerm_container_app_job" "manual_seed" {
+  for_each = local.manual_seed_jobs
+
+  name                         = each.value
+  location                     = var.location
+  resource_group_name          = data.azurerm_resource_group.this.name
+  container_app_environment_id = module.container_app_environment.id
+  replica_timeout_in_seconds   = 1800
+  replica_retry_limit          = 0
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [module.runtime_identity.id]
+  }
+
+  registry {
+    server   = module.registry.login_server
+    identity = module.runtime_identity.id
+  }
+
+  secret {
+    name                = "workflow-db-password"
+    identity            = module.runtime_identity.id
+    key_vault_secret_id = "${module.key_vault.vault_uri}secrets/workflow-db-password"
+  }
+
+  secret {
+    name                = "keycloak-bootstrap-admin-password"
+    identity            = module.runtime_identity.id
+    key_vault_secret_id = "${module.key_vault.vault_uri}secrets/keycloak-bootstrap-admin-password"
+  }
+
+  secret {
+    name                = "development-seed-password"
+    identity            = module.runtime_identity.id
+    key_vault_secret_id = "${module.key_vault.vault_uri}secrets/development-seed-password"
+  }
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  template {
+    container {
+      name    = "manual-seed-${each.key}"
+      image   = "${module.registry.login_server}/enterprise-workflow-seed:${var.image_tag}"
+      cpu     = 0.5
+      memory  = "1Gi"
+      command = ["/app/manual-seed.sh"]
+
+      env {
+        name  = "WORKFLOW_MANUAL_SEED_ENABLED"
+        value = "true"
+      }
+      env {
+        name  = "WORKFLOW_DEPLOYMENT_ENVIRONMENT"
+        value = var.environment
+      }
+      env {
+        name  = "WORKFLOW_MANUAL_SEED_TARGET"
+        value = each.key
+      }
+      env {
+        name  = "SPRING_DATASOURCE_URL"
+        value = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
+      }
+      env {
+        name  = "SPRING_DATASOURCE_USERNAME"
+        value = "workflow"
+      }
+      env {
+        name        = "SPRING_DATASOURCE_PASSWORD"
+        secret_name = "workflow-db-password"
+      }
+      env {
+        name  = "KEYCLOAK_URL"
+        value = local.keycloak_url
+      }
+      env {
+        name  = "KEYCLOAK_ADMIN_USERNAME"
+        value = "admin"
+      }
+      env {
+        name        = "KEYCLOAK_ADMIN_PASSWORD"
+        secret_name = "keycloak-bootstrap-admin-password"
+      }
+      env {
+        name  = "KEYCLOAK_REALM"
+        value = var.keycloak_realm
+      }
+      env {
+        name        = "DEV_SEED_PASSWORD"
+        secret_name = "development-seed-password"
+      }
+      env {
+        name  = "DEV_ADMIN_EMAIL"
+        value = "example.admin1@${var.allowed_email_domain}"
+      }
+      env {
+        name  = "DEV_USER_EMAIL"
+        value = "example.user1@${var.allowed_email_domain}"
+      }
+    }
   }
 
   depends_on = [

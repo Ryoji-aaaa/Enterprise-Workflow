@@ -118,3 +118,10 @@ better-auth-secret
 
 値をGitHub Secretsやtfvarsへ複製しない。登録後、GitHub Environmentの
 `PROVISION_WORKLOADS=true`としてworkload deployへ進む。
+
+stagingで手動seed Jobを利用する場合だけ、staging Vaultへ次も登録する。production Vaultへは
+登録しない。
+
+```text
+development-seed-password
+```

@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -38,9 +39,9 @@ import jp.co.sdcj.workflow.service.UserAccountService;
 import jp.co.sdcj.workflow.service.UserOrganizationAssignmentService;
 import jp.co.sdcj.workflow.service.UserRoleAssignmentService;
 
-/** Creates the organization-chart fixture only in a local development profile. */
+/** Creates the organization-chart fixture in development or a guarded one-shot seed. */
 @Component
-@Profile("development")
+@Profile({"development", "manual-seed"})
 @Order(20)
 @ConditionalOnProperty(name = "workflow.seed.enabled", havingValue = "true")
 public class DevelopmentOrganizationInitializer implements ApplicationRunner {
@@ -68,6 +69,9 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
     private final UserOrganizationAssignmentService assignmentService;
     private final UserRoleAssignmentService roleAssignmentService;
 
+    @Value("${workflow.seed.automatic:true}")
+    private boolean automatic = true;
+
     public DevelopmentOrganizationInitializer(
             OrganizationRepository organizationRepository,
             OrganizationUnitRepository unitRepository,
@@ -94,17 +98,25 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments arguments) {
+        if (automatic) {
+            seed(new SeedReport());
+        }
+    }
+
+    @Transactional
+    public void seed(SeedReport report) {
         AuditActor actor = AuditActor.system();
         Organization organization = organizationRepository
                 .findByOrganizationCode(DevelopmentSeedData.ORGANIZATION_CODE)
                 .orElseThrow(() -> new IllegalStateException("SDCJ organization is missing"));
-        Map<String, OrganizationUnit> units = createUnits(organization, actor);
-        Map<String, Position> positions = createPositions(actor);
+        report.existing();
+        Map<String, OrganizationUnit> units = createUnits(organization, actor, report);
+        Map<String, Position> positions = createPositions(actor, report);
 
         AppUser president = createUser(
-                DevelopmentSeedData.PRESIDENT_EMAIL, "仮 社長", actor);
-        assignOrganization(president, units.get("SDCJ"), positions.get("PRESIDENT"), null, actor);
-        assignRoles(president, actor,
+                DevelopmentSeedData.PRESIDENT_EMAIL, "仮 社長", actor, report);
+        assignOrganization(president, units.get("SDCJ"), positions.get("PRESIDENT"), null, actor, report);
+        assignRoles(president, actor, report,
                 RoleCodes.APPLICATION_USER,
                 RoleCodes.ORGANIZATION_CHART_VIEWER,
                 RoleCodes.WORKFLOW_APPROVER,
@@ -112,10 +124,10 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
 
         createAccessControlUser(
                 DevelopmentSeedData.PART_TIME_EMAIL, "組織図制御 パート",
-                EmploymentType.PART_TIME, actor);
+                EmploymentType.PART_TIME, actor, report);
         createAccessControlUser(
                 DevelopmentSeedData.CONTRACT_EMAIL, "組織図制御 嘱託",
-                EmploymentType.CONTRACT_EMPLOYEE, actor);
+                EmploymentType.CONTRACT_EMPLOYEE, actor, report);
 
         Map<String, AppUser> heads = new HashMap<>();
         heads.put("SDCJ", president);
@@ -130,99 +142,128 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
             AppUser head = createUser(
                     DevelopmentSeedData.email(definition.code(), true),
                     "仮 " + definition.name() + "責任者",
-                    actor);
-            assignOrganization(head, unit, headPosition, manager, actor);
-            assignRoles(head, actor,
+                    actor, report);
+            assignOrganization(head, unit, headPosition, manager, actor, report);
+            assignRoles(head, actor, report,
                     RoleCodes.APPLICATION_USER,
                     RoleCodes.ORGANIZATION_CHART_VIEWER,
                     RoleCodes.WORKFLOW_APPROVER);
             if (definition.code().equals("MANAGEMENT_HEADQUARTERS")) {
-                assignRoles(head, actor, RoleCodes.USER_INFORMATION_MANAGER);
+                assignRoles(head, actor, report, RoleCodes.USER_INFORMATION_MANAGER);
             }
             heads.put(definition.code(), head);
 
             AppUser member = createUser(
                     DevelopmentSeedData.email(definition.code(), false),
                     "仮 " + definition.name() + "一般",
-                    actor);
-            assignOrganization(member, unit, positions.get("MEMBER"), head, actor);
-            assignRoles(member, actor,
+                    actor, report);
+            assignOrganization(member, unit, positions.get("MEMBER"), head, actor, report);
+            assignRoles(member, actor, report,
                     RoleCodes.APPLICATION_USER,
                     RoleCodes.ORGANIZATION_CHART_VIEWER);
         }
     }
 
     private Map<String, OrganizationUnit> createUnits(
-            Organization organization, AuditActor actor) {
+            Organization organization, AuditActor actor, SeedReport report) {
         Map<String, OrganizationUnit> units = new HashMap<>();
         OrganizationUnit root = unitRepository
                 .findByOrganizationIdAndUnitCode(organization.getId(), "SDCJ")
                 .orElseThrow(() -> new IllegalStateException("SDCJ root unit is missing"));
         units.put("SDCJ", root);
+        report.existing();
         for (DevelopmentSeedData.UnitDefinition definition : DevelopmentSeedData.UNITS) {
             OrganizationUnit parent = units.get(definition.parentCode());
             if (parent == null) {
                 throw new IllegalStateException("Missing seed parent: " + definition.parentCode());
             }
-            OrganizationUnit unit = unitRepository
-                    .findByOrganizationIdAndUnitCode(organization.getId(), definition.code())
-                    .orElseGet(() -> unitRepository.save(new OrganizationUnit(
-                            organization.getId(), parent.getId(), definition.code(),
-                            definition.name(), definition.type(), definition.displayOrder(),
-                            SEED_DATE, null, actor.userId())));
+            var existingUnit = unitRepository
+                    .findByOrganizationIdAndUnitCode(organization.getId(), definition.code());
+            OrganizationUnit unit;
+            if (existingUnit.isPresent()) {
+                unit = existingUnit.get();
+                report.existing();
+            } else {
+                unit = unitRepository.save(new OrganizationUnit(
+                        organization.getId(), parent.getId(), definition.code(),
+                        definition.name(), definition.type(), definition.displayOrder(),
+                        SEED_DATE, null, actor.userId()));
+                report.created();
+            }
             units.put(definition.code(), unit);
         }
         return units;
     }
 
-    private Map<String, Position> createPositions(AuditActor actor) {
+    private Map<String, Position> createPositions(AuditActor actor, SeedReport report) {
         Map<String, Position> positions = new HashMap<>();
-        POSITION_SEEDS.forEach((code, seed) -> positions.put(code,
-                positionRepository.findByPositionCode(code).orElseGet(() ->
-                        positionRepository.save(new Position(
-                                code, seed.name(), seed.rank(), seed.approvalLevel(), actor.userId())))));
+        POSITION_SEEDS.forEach((code, seed) -> {
+            var existingPosition = positionRepository.findByPositionCode(code);
+            if (existingPosition.isPresent()) {
+                positions.put(code, existingPosition.get());
+                report.existing();
+            } else {
+                positions.put(code, positionRepository.save(new Position(
+                        code, seed.name(), seed.rank(), seed.approvalLevel(), actor.userId())));
+                report.created();
+            }
+        });
         return positions;
     }
 
-    private AppUser createUser(String email, String displayName, AuditActor actor) {
-        AppUser user = userRepository.findByEmailIgnoreCase(email).orElseGet(() ->
-                userAccountService.register(
-                        null, email, displayName, SEED_INSTANT, null, actor));
+    private AppUser createUser(
+            String email, String displayName, AuditActor actor, SeedReport report) {
+        var existingUser = userRepository.findByEmailIgnoreCase(email);
+        AppUser user;
+        if (existingUser.isPresent()) {
+            user = existingUser.get();
+            report.existing();
+        } else {
+            user = userAccountService.register(
+                    null, email, displayName, SEED_INSTANT, null, actor);
+            report.created();
+        }
         if (user.getAccountStatus() == AccountStatus.PRE_REGISTERED) {
-            return userAccountService.changeStatus(
+            user = userAccountService.changeStatus(
                     user.getId(), AccountStatus.ACTIVE,
                     "DEVELOPMENT_SEED", "Organization chart fixture",
                     Instant.now(), actor, AccountStatusChangeSource.SYSTEM);
+            report.updated();
         }
         return user;
     }
 
     private void createAccessControlUser(
             String email, String displayName, EmploymentType employmentType,
-            AuditActor actor) {
-        AppUser user = createUser(email, displayName, actor);
+            AuditActor actor, SeedReport report) {
+        AppUser user = createUser(email, displayName, actor, report);
         if (user.getEmploymentType() != employmentType) {
             user = userAccountService.updateProfile(
                     user.getId(), user.getEmployeeCode(), user.getDisplayName(),
                     employmentType, user.getValidFrom(), user.getValidUntil(),
                     user.getVersion(), actor);
+            report.updated();
         }
-        assignRoles(user, actor,
+        assignRoles(user, actor, report,
                 RoleCodes.APPLICATION_USER, RoleCodes.ORGANIZATION_CHART_VIEWER);
     }
 
     private void assignOrganization(
             AppUser user, OrganizationUnit unit, Position position,
-            AppUser manager, AuditActor actor) {
+            AppUser manager, AuditActor actor, SeedReport report) {
         if (!assignmentRepository.existsOverlappingAssignment(
                 user.getId(), unit.getId(), position.getId(), SEED_DATE, null)) {
             assignmentService.assign(
                     user.getId(), unit.getId(), position.getId(), AssignmentType.PRIMARY,
                     true, manager == null ? null : manager.getId(), SEED_DATE, null, actor);
+            report.created();
+        } else {
+            report.existing();
         }
     }
 
-    private void assignRoles(AppUser user, AuditActor actor, String... roleCodes) {
+    private void assignRoles(
+            AppUser user, AuditActor actor, SeedReport report, String... roleCodes) {
         for (String roleCode : roleCodes) {
             Role role = roleRepository.findByRoleCode(roleCode).orElseThrow(() ->
                     new IllegalStateException("Missing development role: " + roleCode));
@@ -232,6 +273,9 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
                         user.getId(), role.getId(), null, SEED_INSTANT, null,
                         "Development organization fixture", actor,
                         AccountStatusChangeSource.SYSTEM);
+                report.created();
+            } else {
+                report.existing();
             }
         }
     }
