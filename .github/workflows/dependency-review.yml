@@ -21,9 +21,5 @@ jobs:
           echo "::notice::GitHub dependency review is unavailable; npm audits and Dependabot remain active."
           echo "GitHub dependency review was unavailable for this repository." \
             >> "$GITHUB_STEP_SUMMARY"
-      - name: Audit frontend production dependencies
-        working-directory: frontend
-        run: npm ci && npm audit --omit=dev
-      - name: Audit E2E production dependencies
-        working-directory: tests/e2e
-        run: npm ci && npm audit --omit=dev
+      - name: Audit production npm dependencies
+        run: make audit

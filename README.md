@@ -27,12 +27,14 @@ Spring BootとPostgreSQLはホストへポートを公開しません。Next.js�
 - GNU Make
 - Git
 - `curl`、`jq`、`openssl`、`envsubst`、`grep`
+- Terraform CLI（`make verify-infra`とインフラ作業時のみ）
 - 利用ポート: `3000`、`8180`、`8025`
 
 Ubuntu/WSL2では`bash scripts/install-host-dependencies.sh`でホスト依存を導入できます。
 Ubuntu標準のDockerパッケージが導入済みの場合は、イメージ、コンテナ、volumeを
 保持したまま、実行中のコンテナを停止してBuildxとComposeを含むDocker公式
 パッケージへ自動的に置き換えます。
+Terraform CLIはこのスクリプトの導入対象外で、インフラ検証・作業時だけ別途必要です。
 Node.js、Java、Maven、PostgreSQL、Keycloak、Playwrightはコンテナ内で実行します。
 
 ## 初回セットアップ
@@ -65,8 +67,15 @@ make ps
 make logs
 ```
 
-`make down`はDocker volumeを保持します。開発データを削除して完全に作り直す場合だけ、
-次を実行します。
+`make down`はDocker volumeと生成物を保持します。開発データを残したまま生成物だけを
+削除する場合は次を実行します。
+
+```bash
+make clean
+```
+
+`make clean`はサービスを停止してFrontend・Backend・Playwright・Keycloak生成物を削除しますが、
+Docker volumeと開発DBは保持します。開発データも削除する破壊的な再初期化は次だけです。
 
 ```bash
 make reset
@@ -77,16 +86,51 @@ make reset
 ## テスト
 
 ```bash
-make verify
 make test
 make test-backend
 make test-frontend
 make test-e2e
 ```
 
-`make test`はSpring Boot結合テスト、frontendのlint・型検査・production build・
-production依存監査、Playwright E2E、E2E後のDB・通知・JWT・ネットワーク境界検証を
-実行します。
+`make test`は`test-backend`、`test-frontend`、`test-e2e`を順に実行する全自動テストです。
+BackendのSpring Boot結合テストとPostgreSQL migration、Frontendのlint・型検査・単体テスト・
+production build、自己完結した環境準備を含むPlaywright E2Eと事後検証が対象です。
+
+起動済みのローカル統合環境とアーキテクチャ境界を確認する場合は、テストコードを実行する
+`make test`ではなく次を使用します。
+
+```bash
+make verify
+```
+
+`make verify`はコンテナhealth、PostgreSQLとKeycloakの初期化、Flywayと開発seed、
+FrontendからBackendへの接続、DB資格情報の非注入、公開ポート・Docker network・非root実行を
+検証します。`./scripts/verify.sh backend frontend`のようにサービスを指定した部分検証も可能です。
+
+Terraformのformat・validateと、Backend probe、内部URL、staging限定seed Jobなどの
+インフラ不変条件は次で検証します。Terraformの初期化により各rootへ`.terraform/`が生成されます。
+
+```bash
+make verify-infra
+```
+
+旧`make terraform-check`は互換エイリアスとして警告付きで残しています。新しい手順とCIでは
+`make verify-infra`を使用します。
+
+production npm依存関係の既知の脆弱性はテストと分離して監査します。
+
+```bash
+make audit
+make audit-frontend
+make audit-e2e
+```
+
+`make audit`はFrontendとPlaywright E2Eの両方を対象にし、個別ターゲットは対象を限定します。
+いずれもDocker内で実行するため、ホストのNode.jsは不要ですが、npm registryへの接続が必要です。
+
+コマンド名は、テストコード・静的解析・build検証を`test`、起動環境・生成結果・設計境界の確認を
+`verify`、依存脆弱性検査を`audit`とします。`check`は単一目的の軽量な静的検査用で、現在は
+`verify-infra`から呼ぶ内部スクリプトに限定し、公開Makeターゲットを増やしていません。
 
 Keycloak設定JSONだけを生成する場合は次を実行します。
 

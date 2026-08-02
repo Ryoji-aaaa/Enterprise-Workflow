@@ -187,7 +187,8 @@ completion:
 - User flow, authentication, authorization, or navigation changes: `make test-e2e`
 - Cross-cutting, database, authentication, or infrastructure changes: `make test` and
   `make verify`
-- Terraform changes: `make terraform-check`
+- Terraform or infrastructure configuration changes: `make verify-infra`
+- Frontend or E2E dependency changes: `make audit`
 - All changes: `git diff --check`
 
 Use additional existing checks invoked by the affected scripts or workflows. Do not

@@ -4,11 +4,11 @@ SHELL := /usr/bin/env bash
 COMPOSE := docker compose
 
 .PHONY: help setup init build up down restart logs ps clean reset \
-	test test-backend test-frontend test-e2e verify render-keycloak-config \
-	terraform-check
+	test test-backend test-frontend test-e2e verify verify-infra \
+	audit audit-frontend audit-e2e render-keycloak-config terraform-check
 
 help: ## Show available targets
-	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-24s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 setup: ## Prepare local configuration and validate host dependencies
 	@./scripts/setup.sh
@@ -39,31 +39,34 @@ clean: ## Stop services and remove generated build/test artifacts
 reset: setup ## Recreate development volumes and initialize all services
 	@./scripts/reset.sh
 
-test: test-backend test-frontend test-e2e ## Run all automated tests
+test: test-backend test-frontend test-e2e ## Run all backend, frontend, and end-to-end tests
 
-test-backend: ## Run Spring Boot tests
+test-backend: ## Run backend tests and PostgreSQL migration checks
 	@./scripts/test-backend.sh
 
-test-frontend: ## Run frontend lint and type checks
+test-frontend: ## Run frontend lint, type checks, unit tests, and production build
 	@./scripts/test-frontend.sh
 
-test-e2e: ## Run Playwright end-to-end tests
+test-e2e: ## Prepare the environment and run Playwright end-to-end tests
 	@./scripts/test-e2e.sh
 
-verify: ## Verify service readiness
-	./scripts/verify.sh
+verify: ## Verify the running local environment and architecture boundaries
+	@./scripts/verify.sh
+
+verify-infra: ## Validate Terraform and infrastructure configuration
+	@./scripts/verify-infra.sh
+
+audit: audit-frontend audit-e2e ## Audit all production npm dependencies
+
+audit-frontend: ## Audit frontend production npm dependencies
+	@./scripts/audit-dependencies.sh frontend
+
+audit-e2e: ## Audit E2E production npm dependencies
+	@./scripts/audit-dependencies.sh e2e
 
 render-keycloak-config: ## Render local Keycloak realm configuration
 	./keycloak/scripts/initialize-keycloak.sh render
 
-terraform-check: ## Format-check and validate all Terraform roots
-	terraform fmt -check -recursive infra
-	./scripts/check-backend-probes.sh
-	./scripts/check-backend-internal-url.sh
-	./scripts/check-manual-seed-job-names.sh
-	terraform -chdir=infra/bootstrap init -backend=false
-	terraform -chdir=infra/bootstrap validate
-	terraform -chdir=infra/environments/staging init -backend=false
-	terraform -chdir=infra/environments/staging validate
-	terraform -chdir=infra/environments/production init -backend=false
-	terraform -chdir=infra/environments/production validate
+terraform-check: ## Deprecated alias for verify-infra
+	@printf '%s\n' "[WARN] 'make terraform-check' is deprecated. Use 'make verify-infra'."
+	@$(MAKE) --no-print-directory verify-infra

@@ -2,14 +2,21 @@
 
 set -Eeuo pipefail
 
-readonly SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIRECTORY
+PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+readonly PROJECT_DIRECTORY
 readonly COMPOSE=(docker compose)
+# shellcheck source=scripts/lib/log.sh
+source "${SCRIPT_DIRECTORY}/lib/log.sh"
+enable_error_logging
+
+readonly VERIFY_START=${SECONDS}
 
 cd "${PROJECT_DIRECTORY}"
 
 [[ -r .env ]] || {
-  echo ".env does not exist. Run make setup first." >&2
+  log_fail ".env does not exist. Run make setup first."
   exit 1
 }
 
@@ -36,13 +43,29 @@ contains_service() {
   return 1
 }
 
+fail_check() {
+  local description="$1"
+  local expected="${2:-}"
+  local actual="${3:-}"
+
+  log_fail "${description}"
+  if [[ -n "${expected}" ]]; then
+    printf '       Expected: %s\n' "${expected}" >&2
+  fi
+  if [[ -n "${actual}" ]]; then
+    printf '       Actual:   %s\n' "${actual}" >&2
+  fi
+  # Keep the ERR trap from duplicating this structured failure in a subshell.
+  exit 97
+}
+
 container_id() {
   local service="$1"
   local id
   id="$("${COMPOSE[@]}" ps --quiet "${service}")"
   [[ -n "${id}" ]] || {
-    echo "Service ${service} does not have a running container." >&2
-    exit 1
+    fail_check "Service ${service} does not have a running container." \
+      "a running, healthy container" "no container ID"
   }
   printf '%s\n' "${id}"
 }
@@ -58,11 +81,12 @@ assert_no_published_ports() {
     ]
     | length == 0
   ' >/dev/null || {
-    echo "${service} unexpectedly publishes a host port." >&2
-    exit 1
+    fail_check "${service} unexpectedly publishes a host port." \
+      "no published host ports" "one or more published ports"
   }
 }
 
+log_section "Container health"
 for service in "${requested_services[@]}"; do
   id="$(container_id "${service}")"
   state="$(
@@ -70,14 +94,17 @@ for service in "${requested_services[@]}"; do
       "${id}"
   )"
   [[ "${state}" == "running healthy" ]] || {
-    echo "Service ${service} is not healthy: ${state}" >&2
+    log_fail "Service ${service} is not healthy."
+    printf '       Expected: running healthy\n       Actual:   %s\n' "${state}" >&2
     "${COMPOSE[@]}" logs --no-color --tail=100 "${service}" >&2 || true
     exit 1
   }
+  log_pass "${service} is running and healthy"
 done
 
 if contains_service postgres; then
-  echo "Checking PostgreSQL readiness and database isolation..."
+  log_section "PostgreSQL initialization and isolation"
+  log_info "Checking PostgreSQL readiness, databases, roles, and access boundaries..."
   "${COMPOSE[@]}" exec -T postgres \
     pg_isready --username postgres --dbname postgres
 
@@ -87,8 +114,7 @@ if contains_service postgres; then
       --command "SELECT count(*) FROM pg_database WHERE datname IN ('${WORKFLOW_DB_NAME:-workflow}', '${KEYCLOAK_DB_NAME:-keycloak}');"
   )"
   [[ "${database_count}" == "2" ]] || {
-    echo "Expected workflow and Keycloak databases were not both initialized." >&2
-    exit 1
+    fail_check "Expected databases were not both initialized." "2" "${database_count}"
   }
 
   role_count="$(
@@ -97,8 +123,7 @@ if contains_service postgres; then
       --command "SELECT count(*) FROM pg_roles WHERE rolname IN ('${WORKFLOW_DB_USER:-workflow}', '${KEYCLOAK_DB_USER:-keycloak}');"
   )"
   [[ "${role_count}" == "2" ]] || {
-    echo "Expected workflow and Keycloak roles were not both initialized." >&2
-    exit 1
+    fail_check "Expected database roles were not both initialized." "2" "${role_count}"
   }
 
   isolation_count="$(
@@ -116,21 +141,25 @@ if contains_service postgres; then
         WHERE passed;"
   )"
   [[ "${isolation_count}" == "4" ]] || {
-    echo "Workflow and Keycloak database roles are not isolated." >&2
-    exit 1
+    fail_check "Workflow and Keycloak database roles are not isolated." \
+      "4 passing access checks" "${isolation_count} passing access checks"
   }
 
   assert_no_published_ports postgres
+  log_pass "PostgreSQL initialization and database-role isolation are valid"
 fi
 
 if contains_service mailpit; then
-  echo "Checking Mailpit readiness..."
+  log_section "Mailpit readiness"
+  log_info "Checking the Mailpit readiness endpoint..."
   curl --fail --silent --show-error \
     "http://localhost:${MAILPIT_UI_PORT:-8025}/readyz" >/dev/null
+  log_pass "Mailpit is ready"
 fi
 
 if contains_service keycloak; then
-  echo "Checking Keycloak /health/ready and realm discovery..."
+  log_section "Keycloak configuration"
+  log_info "Checking Keycloak health, realm discovery, client, and development users..."
   "${COMPOSE[@]}" exec -T keycloak \
     bash /opt/keycloak/healthcheck.sh
   curl --fail --silent --show-error \
@@ -143,10 +172,12 @@ if contains_service keycloak; then
     --no-deps \
     keycloak-init \
     /opt/workflow/verify-keycloak.sh
+  log_pass "Keycloak health and realm configuration are valid"
 fi
 
 if contains_service backend; then
-  echo "Checking Spring Boot Actuator health, Flyway migration, and business seed data..."
+  log_section "Backend health and database state"
+  log_info "Checking Actuator health, authentication rejection, migrations, and seed data..."
   "${COMPOSE[@]}" exec -T backend \
     bash /app/healthcheck.sh
 
@@ -158,8 +189,8 @@ if contains_service backend; then
         http://localhost:8080/api/me
   )"
   [[ "${unauthenticated_status}" == "401" ]] || {
-    echo "Expected unauthenticated /api/me to return HTTP 401, got ${unauthenticated_status}." >&2
-    exit 1
+    fail_check "Unauthenticated /api/me returned an unexpected status." \
+      "HTTP 401" "HTTP ${unauthenticated_status}"
   }
 
   schema_table_count="$(
@@ -192,8 +223,8 @@ WHERE table_schema = 'public'
 SQL
   )"
   [[ "${schema_table_count}" == "15" ]] || {
-    echo "Expected Flyway history and workflow schema tables were not initialized." >&2
-    exit 1
+    fail_check "Flyway history and workflow schema tables were not initialized." \
+      "15 tables" "${schema_table_count} tables"
   }
 
   migration_summary="$(
@@ -222,8 +253,8 @@ FROM flyway_schema_history;
 SQL
   )"
   [[ "${migration_summary}" == "8:8" ]] || {
-    echo "Expected all eight Flyway migrations to be applied successfully with checksums." >&2
-    exit 1
+    fail_check "Flyway migration history is incomplete or invalid." \
+      "8 total migrations:8 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(
@@ -236,8 +267,8 @@ SQL
         --command "SELECT count(*) FROM pg_extension WHERE extname = 'btree_gist';"
   )"
   [[ "${extension_count}" == "1" ]] || {
-    echo "Expected the btree_gist extension required by temporal constraints." >&2
-    exit 1
+    fail_check "The btree_gist extension required by temporal constraints is missing." \
+      "1" "${extension_count}"
   }
 
   seed_count="$(
@@ -258,8 +289,7 @@ WHERE (u.email = :'admin_email' AND r.role_code = 'SYSTEM_ADMIN')
 SQL
   )"
   [[ "${seed_count}" == "2" ]] || {
-    echo "Expected development business users were not initialized." >&2
-    exit 1
+    fail_check "Development business users were not initialized." "2" "${seed_count}"
   }
 
   development_organization_summary="$(
@@ -285,8 +315,9 @@ SELECT
 SQL
   )"
   [[ "${development_organization_summary}" == "69:39:7:71:183" ]] || {
-    echo "Development organization seed data does not match the expected users, units, positions, assignments, and role assignments." >&2
-    exit 1
+    fail_check "Development organization seed data does not match." \
+      "users:units:positions:assignments:roles = 69:39:7:71:183" \
+      "${development_organization_summary}"
   }
 
   legacy_column_count="$(
@@ -311,20 +342,22 @@ WHERE table_schema = 'public'
 SQL
   )"
   [[ "${legacy_column_count}" == "0" ]] || {
-    echo "Legacy app_users columns remain after the contract migration." >&2
-    exit 1
+    fail_check "Legacy app_users columns remain after the contract migration." \
+      "0" "${legacy_column_count}"
   }
 
   assert_no_published_ports backend
   backend_id="$(container_id backend)"
   [[ "$(docker inspect --format '{{.Config.User}}' "${backend_id}")" != "" ]] || {
-    echo "Backend runtime container must not run as the default root user." >&2
-    exit 1
+    fail_check "Backend runtime container uses the default root user." \
+      "an explicit non-root user" "empty container user"
   }
+  log_pass "Backend health, database state, and runtime user are valid"
 fi
 
 if contains_service frontend; then
-  echo "Checking frontend HTTP and internal backend connectivity..."
+  log_section "Frontend and BFF connectivity"
+  log_info "Checking frontend HTTP, backend connectivity, and database isolation..."
   curl --fail --silent --show-error \
     http://localhost:3000/login >/dev/null
   "${COMPOSE[@]}" exec -T frontend node -e \
@@ -334,14 +367,15 @@ if contains_service frontend; then
 
   frontend_id="$(container_id frontend)"
   [[ "$(docker inspect --format '{{.Config.User}}' "${frontend_id}")" == "node" ]] || {
-    echo "Frontend runtime container must run as the node user." >&2
-    exit 1
+    fail_check "Frontend runtime container uses an unexpected user." \
+      "node" "$(docker inspect --format '{{.Config.User}}' "${frontend_id}")"
   }
   if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
     "${frontend_id}" | grep -Ei '^(DATABASE|DB_|POSTGRES)'; then
-    echo "Frontend container contains database connection environment variables." >&2
-    exit 1
+    fail_check "Frontend container contains database connection environment variables." \
+      "no DATABASE, DB_, or POSTGRES variables" "one or more matching variables"
   fi
+  log_pass "Frontend connectivity and database isolation are valid"
 fi
 
 if contains_service postgres \
@@ -349,7 +383,8 @@ if contains_service postgres \
   && contains_service keycloak \
   && contains_service backend \
   && contains_service frontend; then
-  echo "Checking Compose and actual Docker network boundaries..."
+  log_section "Docker network boundaries"
+  log_info "Checking Compose declarations and actual container network membership..."
   compose_json="$(mktemp)"
   network_json="$(mktemp)"
   trap 'rm -f -- "${compose_json}" "${network_json}"' EXIT
@@ -414,6 +449,7 @@ if contains_service postgres \
 
   rm -f -- "${compose_json}" "${network_json}"
   trap - EXIT
+  log_pass "Compose and actual Docker network boundaries are valid"
 fi
 
-echo "Requested service checks passed: ${requested_services[*]}"
+log_pass "Requested service checks passed: ${requested_services[*]} ($(format_duration "$((SECONDS - VERIFY_START))"))"

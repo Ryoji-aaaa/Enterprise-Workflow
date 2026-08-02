@@ -19,6 +19,10 @@ Composeの`test` profileだけに`e2e`サービスを定義し、通常の`make 
 5. Playwrightを1 workerで実行する
 6. DB、Mailpit、JWT拒否、Composeと実コンテナのnetwork境界を事後検証する
 
+ログは環境準備、Keycloak設定、imageとデータ準備、Playwright実行、事後検証のsectionに分け、
+各処理の開始、成否、所要時間を表示する。CI、非対話出力、`NO_COLOR`指定時はANSI colorを
+使用しない。
+
 ## ブラウザシナリオ
 
 各テストは独立したBrowserContextを使用し、Cookieとセッションを共有しない。
@@ -81,6 +85,7 @@ tests/e2e/playwright-report/report/
 ```
 
 成果物はGit管理対象外である。traceはPlaywright Trace Viewerで開ける。
+Playwrightが失敗した場合、実行ログにもこの2つの保存先を表示する。
 
 ## network
 

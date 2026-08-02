@@ -18,7 +18,8 @@ UIテーマ、コンポーネント追加方針、関連設定は
 Next.js 16.2.11が直接固定する古いPostCSSとoptional dependencyのsharpには
 公開済みsecurity advisoryがあるため、`overrides`でPostCSS 8.5.23とsharp 0.35.3を使用する。
 Next.jsとBetter Authの指定バージョンは変更しない。production dependencyは
-`npm audit --omit=dev`で既知の脆弱性が0件であることを確認する。
+`make audit-frontend`がDocker内で`npm audit --omit=dev`を実行し、既知の脆弱性が0件で
+あることを確認する。
 
 ## データベースなしのセッション
 
@@ -101,7 +102,8 @@ sessionStorageへ渡さない。
 
 ## 検証
 
-`make test-frontend`、`make test-e2e`、`make verify`はDockerボリュームを削除せず、
+`make test-frontend`、`make test-e2e`、`make verify`、`make audit-frontend`は
+Dockerボリュームを削除せず、
 次を確認する。
 
 - frontendのlint、TypeScript、production build

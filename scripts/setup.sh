@@ -2,8 +2,10 @@
 
 set -Eeuo pipefail
 
-readonly SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIRECTORY
+PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+readonly PROJECT_DIRECTORY
 
 cd "${PROJECT_DIRECTORY}"
 
@@ -36,7 +38,7 @@ mkdir -p \
   tests/e2e/playwright-report \
   tests/e2e/test-results
 
-chmod +x backend/scripts/*.sh keycloak/scripts/*.sh scripts/*.sh
+chmod +x keycloak/scripts/*.sh scripts/*.sh
 
 if grep -Eq '=(replace-with-|password$)' .env; then
   echo "WARNING: .env contains sample development secrets." >&2
