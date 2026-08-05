@@ -11,6 +11,8 @@ import jp.co.sdcj.workflow.domain.ExpenseApplicationStatus;
 import jp.co.sdcj.workflow.domain.ExpenseApprovalStepStatus;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.service.ExpenseApplicationDetails;
+import jp.co.sdcj.workflow.service.PermissionCodes;
+import jp.co.sdcj.workflow.service.PermissionService;
 
 public record ExpenseApplicationResponse(
         UUID id,
@@ -52,13 +54,16 @@ public record ExpenseApplicationResponse(
 
     static ExpenseApplicationResponse from(
             ExpenseApplicationDetails details, AppUser currentUser,
-            ExpenseApprovalCandidateRepository candidateRepository) {
+            ExpenseApprovalCandidateRepository candidateRepository,
+            PermissionService permissionService) {
         var application = details.application();
         var pending = details.currentSteps().stream()
                 .filter(step -> step.getStatus() == ExpenseApprovalStepStatus.PENDING)
                 .findFirst().orElse(null);
         boolean owner = application.getApplicantUserId().equals(currentUser.getId());
         boolean canApprove = pending != null && !owner
+                && permissionService.hasPermission(
+                        currentUser.getId(), PermissionCodes.EXPENSE_APPLICATION_APPROVE)
                 && candidateRepository.existsByApprovalStepIdAndCandidateUserId(
                         pending.getId(), currentUser.getId());
         ApprovalRun run = details.currentRun() == null ? null : new ApprovalRun(

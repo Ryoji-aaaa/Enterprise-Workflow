@@ -20,6 +20,7 @@ import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.ExpenseApplicationService;
 import jp.co.sdcj.workflow.service.ExpenseApprovalService;
+import jp.co.sdcj.workflow.service.PermissionService;
 
 @RestController
 @RequestMapping("/api/expense-approvals")
@@ -28,16 +29,19 @@ public class ExpenseApprovalController {
     private final ExpenseApplicationService applicationService;
     private final CurrentUserProvider currentUserProvider;
     private final ExpenseApprovalCandidateRepository candidateRepository;
+    private final PermissionService permissionService;
 
     public ExpenseApprovalController(
             ExpenseApprovalService approvalService,
             ExpenseApplicationService applicationService,
             CurrentUserProvider currentUserProvider,
-            ExpenseApprovalCandidateRepository candidateRepository) {
+            ExpenseApprovalCandidateRepository candidateRepository,
+            PermissionService permissionService) {
         this.approvalService = approvalService;
         this.applicationService = applicationService;
         this.currentUserProvider = currentUserProvider;
         this.candidateRepository = candidateRepository;
+        this.permissionService = permissionService;
     }
 
     @GetMapping("/pending")
@@ -59,7 +63,7 @@ public class ExpenseApprovalController {
         var result = approvalService.approve(stepId, request == null ? null : request.comment(), user);
         return ExpenseApplicationResponse.from(
                 applicationService.getAccessible(result.application().getId(), user), user,
-                candidateRepository);
+                candidateRepository, permissionService);
     }
 
     @PostMapping("/{stepId}/return")
@@ -72,7 +76,7 @@ public class ExpenseApprovalController {
         var result = approvalService.returnApplication(stepId, request.comment(), user);
         return ExpenseApplicationResponse.from(
                 applicationService.getAccessible(result.application().getId(), user), user,
-                candidateRepository);
+                candidateRepository, permissionService);
     }
 
     private AppUser current(Authentication authentication) {

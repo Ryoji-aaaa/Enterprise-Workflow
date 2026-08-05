@@ -349,6 +349,63 @@ class ExpenseApplicationApiIntegrationTest {
     }
 
     @Test
+    void 候補者でも承認Permissionが失効したら承認操作を許可しない() throws Exception {
+        String applicationId = createAndSubmit(member, "member");
+        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                UUID.fromString(applicationId)).orElseThrow();
+        UUID stepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
+                .getFirst().getId();
+
+        mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
+                        .with(validJwt(sectionHead, "section-head")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingStepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.canApprove").value(true));
+
+        assignRole(sectionHead, applicantRole, Instant.now());
+        roleAssignmentRepository.deleteAll(roleAssignmentRepository
+                .findAllByUserIdOrderByValidFromDesc(sectionHead.getId()).stream()
+                .filter(assignment -> assignment.getRoleId().equals(approverRole.getId()))
+                .toList());
+        roleAssignmentRepository.flush();
+        assertThat(candidateRepository.existsByApprovalStepIdAndCandidateUserId(
+                stepId, sectionHead.getId())).isTrue();
+
+        mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
+                        .with(validJwt(sectionHead, "section-head")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingStepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.canApprove").value(false));
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", stepId)
+                        .with(validJwt(sectionHead, "section-head"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 明細合計が12桁上限を超えたら422で拒否する() throws Exception {
+        String request = """
+                {"category":"OTHER","title":"高額経費テスト","purpose":"上限検証",
+                 "expenseDate":"2026-08-02","remarks":"PoC",
+                 "items":[
+                   {"expenseDate":"2026-08-02","description":"明細1","amount":999999999999},
+                   {"expenseDate":"2026-08-02","description":"明細2","amount":1}
+                 ]}
+                """;
+
+        mockMvc.perform(post("/api/expense-applications")
+                        .with(validJwt(member, "member"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code")
+                        .value("EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED"))
+                .andExpect(jsonPath("$.message")
+                        .value("明細合計は999,999,999,999円以下で入力してください。"));
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from expense_applications", Integer.class)).isZero();
+    }
+
+    @Test
     void 下書き更新と所有者と承認順序と自己承認のAPI境界を守る() throws Exception {
         String created = mockMvc.perform(post("/api/expense-applications")
                         .with(validJwt(member, "member"))

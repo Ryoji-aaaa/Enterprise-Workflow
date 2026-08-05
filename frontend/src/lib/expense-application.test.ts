@@ -2,11 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canShowExpenseApprovalActions,
   categoryFieldLabels,
   expenseErrorMessage,
   isExpenseInputValid,
   totalExpenseAmount,
 } from "./expense-application.ts";
+
+test("承認権限と処理待ちStepがそろう場合だけ承認操作を表示する", () => {
+  const pendingStepId = "00000000-0000-0000-0000-000000000001";
+  assert.equal(canShowExpenseApprovalActions({ canApprove: true, pendingStepId }), true);
+  assert.equal(canShowExpenseApprovalActions({ canApprove: false, pendingStepId }), false);
+  assert.equal(canShowExpenseApprovalActions({ canApprove: true, pendingStepId: null }), false);
+});
 
 test("明細追加・削除後の金額を再計算する", () => {
   const base = {

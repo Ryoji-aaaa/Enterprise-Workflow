@@ -12,7 +12,8 @@
 V009は`expense_applications`、`expense_application_items`、`expense_approval_runs`、
 `expense_approval_steps`、`expense_approval_candidates`と申請番号用sequenceを追加する。
 申請番号は`EXP-YYYYMMDD-000001`形式で、明細合計をBackendが再計算する。通貨はJPYだけを
-許可する。
+許可する。各明細と明細合計は1円以上999,999,999,999円以下の整数とし、合計超過は
+`EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED`の422業務エラーとして保存前に拒否する。
 
 Runは申請・再申請ごとに作成し、Stepは`DEPARTMENT_MANAGER`と`ACCOUNTING`、Candidateは
 そのStepを処理できるユーザーを表す。再申請時も旧Run・Step・Candidateを更新せず、新しい

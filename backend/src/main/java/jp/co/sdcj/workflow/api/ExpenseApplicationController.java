@@ -24,6 +24,7 @@ import jp.co.sdcj.workflow.domain.ExpenseApplicationStatus;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.ExpenseApplicationService;
+import jp.co.sdcj.workflow.service.PermissionService;
 
 @RestController
 @RequestMapping("/api/expense-applications")
@@ -31,14 +32,17 @@ public class ExpenseApplicationController {
     private final ExpenseApplicationService applicationService;
     private final CurrentUserProvider currentUserProvider;
     private final ExpenseApprovalCandidateRepository candidateRepository;
+    private final PermissionService permissionService;
 
     public ExpenseApplicationController(
             ExpenseApplicationService applicationService,
             CurrentUserProvider currentUserProvider,
-            ExpenseApprovalCandidateRepository candidateRepository) {
+            ExpenseApprovalCandidateRepository candidateRepository,
+            PermissionService permissionService) {
         this.applicationService = applicationService;
         this.currentUserProvider = currentUserProvider;
         this.candidateRepository = candidateRepository;
+        this.permissionService = permissionService;
     }
 
     @PostMapping
@@ -49,7 +53,8 @@ public class ExpenseApplicationController {
             Authentication authentication) {
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(
-                applicationService.createDraft(request.toInput(), user), user, candidateRepository);
+                applicationService.createDraft(request.toInput(), user), user, candidateRepository,
+                permissionService);
     }
 
     @GetMapping
@@ -68,7 +73,8 @@ public class ExpenseApplicationController {
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(
-                applicationService.getAccessible(applicationId, user), user, candidateRepository);
+                applicationService.getAccessible(applicationId, user), user, candidateRepository,
+                permissionService);
     }
 
     @PutMapping("/{applicationId}")
@@ -82,7 +88,8 @@ public class ExpenseApplicationController {
         }
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(applicationService.update(
-                applicationId, request.toInput(), request.version(), user), user, candidateRepository);
+                applicationId, request.toInput(), request.version(), user), user, candidateRepository,
+                permissionService);
     }
 
     @PostMapping("/{applicationId}/submit")
@@ -91,7 +98,8 @@ public class ExpenseApplicationController {
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(
-                applicationService.submit(applicationId, user, false), user, candidateRepository);
+                applicationService.submit(applicationId, user, false), user, candidateRepository,
+                permissionService);
     }
 
     @PostMapping("/{applicationId}/resubmit")
@@ -100,7 +108,8 @@ public class ExpenseApplicationController {
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(
-                applicationService.submit(applicationId, user, true), user, candidateRepository);
+                applicationService.submit(applicationId, user, true), user, candidateRepository,
+                permissionService);
     }
 
     @PostMapping("/{applicationId}/cancel")
@@ -109,7 +118,8 @@ public class ExpenseApplicationController {
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(
-                applicationService.cancel(applicationId, user), user, candidateRepository);
+                applicationService.cancel(applicationId, user), user, candidateRepository,
+                permissionService);
     }
 
     private AppUser current(Authentication authentication) {

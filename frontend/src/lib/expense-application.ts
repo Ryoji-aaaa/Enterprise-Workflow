@@ -101,6 +101,12 @@ export type ExpensePage = {
   totalPages: number;
 };
 
+export function canShowExpenseApprovalActions(
+  application: Pick<ExpenseApplication, "canApprove" | "pendingStepId">,
+): boolean {
+  return application.canApprove && application.pendingStepId !== null;
+}
+
 export function totalExpenseAmount(items: ExpenseItem[]): number {
   return items.reduce((total, item) => total + (Number.isFinite(item.amount) ? item.amount : 0), 0);
 }

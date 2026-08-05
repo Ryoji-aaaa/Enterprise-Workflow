@@ -38,6 +38,8 @@ import jp.co.sdcj.workflow.service.ResolvedApprovalRoute.ApplicantOrganizationSn
 
 @Service
 public class ExpenseApplicationService {
+    private static final BigDecimal MAX_TOTAL_AMOUNT = new BigDecimal("999999999999");
+
     private final ExpenseApplicationRepository applicationRepository;
     private final ExpenseApplicationItemRepository itemRepository;
     private final ExpenseApprovalRunRepository runRepository;
@@ -279,6 +281,11 @@ public class ExpenseApplicationService {
                 }
             }
             total = total.add(item.amount());
+            if (total.compareTo(MAX_TOTAL_AMOUNT) > 0) {
+                throw businessError(
+                        "EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED",
+                        "明細合計は999,999,999,999円以下で入力してください。");
+            }
         }
         return total;
     }
