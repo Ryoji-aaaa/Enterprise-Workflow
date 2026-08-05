@@ -19,20 +19,21 @@ backend/src/main/resources/db/migration/
 ├── V005__create_audit_log_schema.sql
 ├── V006__seed_and_migrate_user_organization_authorization_data.sql
 ├── V007__contract_legacy_app_user_columns.sql
-└── V008__add_employment_type_project_and_organization_chart_roles.sql
+├── V008__add_employment_type_project_and_organization_chart_roles.sql
+└── V009__create_expense_application_schema.sql
 ```
 
 V001は従来の`app_users`と`access_requests`、V002からV005は新しい管理基盤、V006は
 SYSTEM・マスタseedと既存データ移行、V007は切替後の旧列削除、V008は雇用区分、PROJECT、
-組織図権限と関連ロールを扱う。
+組織図権限と関連ロールを扱う。V009は経費申請・承認テーブル、申請番号sequence、
+経費Permissionと既存ロールへの割当を追加する。
 適用履歴、ファイル名、checksum、成功状態はPostgreSQLの
 `flyway_schema_history`に記録される。
 
 stagingではV001からV008までの適用成功を確認済みである。V007によって旧ユーザー列を
 contract済みであり、GitHub Environment `staging`の
 `CONTRACT_LEGACY_USER_COLUMNS`は以後`true`を維持する。通常Backendは最新migrationまでを
-適用し、V008の`employment_type`、`PROJECT`、`ORGANIZATION_CHART_READ`と関連ロールを
-利用できる状態を前提とする。
+適用し、V009の経費申請schemaとPermissionを利用できる状態を前提とする。
 
 V003の期間重複排他制約は`btree_gist`を使用する。Azure Database for PostgreSQL
 Flexible ServerではTerraformが`azure.extensions=BTREE_GIST`を設定し、backendの
@@ -62,7 +63,7 @@ underscoreを使用する。
 3. H2上の既存APIテストと、空のPostgreSQLに対する全migrationを検証する。
 
 ```bash
-touch backend/src/main/resources/db/migration/V008__add_example_column.sql
+touch backend/src/main/resources/db/migration/V010__add_example_column.sql
 make test-backend
 make reset
 make verify
@@ -70,8 +71,8 @@ make verify
 
 `make test-backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
 
-- 空DBへのV001からV008とHibernate schema validation
-- V001既存ユーザーからV008までの実データ移行
+- 空DBへのV001からV009とHibernate schema validation
+- V001既存ユーザーからV009までの実データ移行
 - email正規化の事前検査、排他制約、追記専用trigger
 - 二回目起動時のFlyway・基盤seedの冪等性
 
@@ -119,7 +120,7 @@ make restart
 make verify
 ```
 
-最初の検証ではV001からV008が1回ずつ成功していること、再起動後も履歴行とseedが
+最初の検証ではV001からV009が1回ずつ成功していること、再起動後も履歴行とseedが
 重複しないことを確認する。
 
 ## マイグレーション失敗時の確認方法

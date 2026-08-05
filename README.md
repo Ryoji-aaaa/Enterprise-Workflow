@@ -9,6 +9,12 @@ FrontendのUI基盤にはTailwind CSSとshadcn/uiを使用します。
 UI基盤の構成は[shadcn/ui・Tailwind CSS仕様](docs/frontend/shadcn-tailwind.md)に
 記載しています。
 
+経費精算申請PoCは、会食費・交通費・研修費・資格受験費・その他経費の下書き、申請、
+部門長・経理承認、差戻し、再申請、取下げを提供します。申請者画面は`/expenses`、
+承認者画面は`/approvals`です。仕様は
+[Backend経費申請](docs/backend/expense-application.md)と
+[Frontend経費申請](docs/frontend/expense-application.md)を参照してください。
+
 ## アーキテクチャ概要
 
 ```text

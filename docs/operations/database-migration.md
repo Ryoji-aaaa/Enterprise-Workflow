@@ -19,6 +19,12 @@ stagingではV001からV008がchecksum付きで1回ずつ成功しているこ�
 `ORGANIZATION_CHART_VIEWER`、`USER_INFORMATION_MANAGER`、`WORKFLOW_APPROVER`を追加する。
 手動DB seed JobはFlywayを無効化するため、V008確認より先に実行しない。
 
+経費申請PoCを含むrevisionではV009を適用し、経費申請5テーブル、申請番号sequence、3つの
+業務Permissionと既存Roleへの割当を追加する。V009は既存データを削除・変更せず、通常Backendの
+Flyway起動で適用する。適用後は`expense_applications`から`expense_approval_candidates`までの
+5テーブルと`expense_application_number_seq`、`EXPENSE_APPLICATION_CREATE`、
+`EXPENSE_APPLICATION_READ_OWN`、`EXPENSE_APPLICATION_APPROVE`を確認する。手動seed Jobは不要である。
+
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
 `SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから

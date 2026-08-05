@@ -218,13 +218,18 @@ WHERE table_schema = 'public'
     'role_permissions',
     'user_role_assignments',
     'user_role_change_histories',
-    'audit_logs'
+    'audit_logs',
+    'expense_applications',
+    'expense_application_items',
+    'expense_approval_runs',
+    'expense_approval_steps',
+    'expense_approval_candidates'
   );
 SQL
   )"
-  [[ "${schema_table_count}" == "15" ]] || {
+  [[ "${schema_table_count}" == "20" ]] || {
     fail_check "Flyway history and workflow schema tables were not initialized." \
-      "15 tables" "${schema_table_count} tables"
+      "20 tables" "${schema_table_count} tables"
   }
 
   migration_summary="$(
@@ -243,7 +248,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V005__create_audit_log_schema.sql',
     'V006__seed_and_migrate_user_organization_authorization_data.sql',
     'V007__contract_legacy_app_user_columns.sql',
-    'V008__add_employment_type_project_and_organization_chart_roles.sql'
+    'V008__add_employment_type_project_and_organization_chart_roles.sql',
+    'V009__create_expense_application_schema.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -252,9 +258,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "8:8" ]] || {
+  [[ "${migration_summary}" == "9:9" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "8 total migrations:8 successful checksummed migrations" "${migration_summary}"
+      "9 total migrations:9 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(
@@ -314,9 +320,9 @@ SELECT
       AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP));
 SQL
   )"
-  [[ "${development_organization_summary}" == "69:39:7:71:183" ]] || {
+  [[ "${development_organization_summary}" == "69:39:7:71:184" ]] || {
     fail_check "Development organization seed data does not match." \
-      "users:units:positions:assignments:roles = 69:39:7:71:183" \
+      "users:units:positions:assignments:roles = 69:39:7:71:184" \
       "${development_organization_summary}"
   }
 

@@ -5,6 +5,8 @@ set -Eeuo pipefail
 readonly SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 readonly NOTIFICATION_SUBJECT="[Workflow] 未登録ユーザーからアクセスがありました"
+readonly EXPENSE_APPROVAL_SUBJECT="[Workflow] 経費申請の承認依頼"
+readonly EXPENSE_UPDATE_SUBJECT="[Workflow] 経費申請の更新"
 
 cd "${PROJECT_DIRECTORY}"
 
@@ -32,6 +34,27 @@ docker compose exec -T postgres \
     --set ON_ERROR_STOP=1 \
     --set "pending_email=${DEV_PENDING_EMAIL}" <<'SQL'
 DELETE FROM access_requests WHERE email = :'pending_email';
+
+DELETE FROM expense_approval_candidates
+WHERE approval_step_id IN (
+    SELECT step.id
+    FROM expense_approval_steps step
+    JOIN expense_approval_runs run ON run.id = step.approval_run_id
+    JOIN expense_applications application ON application.id = run.expense_application_id
+    WHERE application.title LIKE 'E2E%'
+);
+DELETE FROM expense_approval_steps
+WHERE approval_run_id IN (
+    SELECT run.id
+    FROM expense_approval_runs run
+    JOIN expense_applications application ON application.id = run.expense_application_id
+    WHERE application.title LIKE 'E2E%'
+);
+DELETE FROM expense_approval_runs
+WHERE expense_application_id IN (
+    SELECT id FROM expense_applications WHERE title LIKE 'E2E%'
+);
+DELETE FROM expense_applications WHERE title LIKE 'E2E%';
 
 UPDATE app_users
 SET display_name = '仮 社長',
@@ -61,4 +84,16 @@ curl --fail --silent --show-error \
   --data-urlencode "query=subject:\"${NOTIFICATION_SUBJECT}\"" \
   "http://localhost:${MAILPIT_UI_PORT:-8025}/api/v1/search" >/dev/null
 
-echo "Prepared isolated pending-user and Mailpit state for E2E."
+curl --fail --silent --show-error \
+  --request DELETE \
+  --get \
+  --data-urlencode "query=subject:\"${EXPENSE_APPROVAL_SUBJECT}\"" \
+  "http://localhost:${MAILPIT_UI_PORT:-8025}/api/v1/search" >/dev/null
+
+curl --fail --silent --show-error \
+  --request DELETE \
+  --get \
+  --data-urlencode "query=subject:\"${EXPENSE_UPDATE_SUBJECT}\"" \
+  "http://localhost:${MAILPIT_UI_PORT:-8025}/api/v1/search" >/dev/null
+
+echo "Prepared isolated pending-user, E2E expense, and Mailpit state for E2E."

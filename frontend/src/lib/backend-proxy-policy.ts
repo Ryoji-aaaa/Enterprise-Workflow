@@ -12,6 +12,24 @@ const rules: readonly Rule[] = [
     path: /^\/admin\/(?:audit-logs|organization-units|positions|roles)$/,
   },
   { methods: new Set(["GET"]), path: /^\/admin\/users$/ },
+  { methods: new Set(["GET", "POST"]), path: /^\/expense-applications$/ },
+  { methods: new Set(["GET"]), path: /^\/expense-approvals\/pending$/ },
+  {
+    methods: new Set(["GET", "PUT"]),
+    path: new RegExp(`^/expense-applications/${UUID_PATTERN}$`),
+  },
+  {
+    methods: new Set(["POST"]),
+    path: new RegExp(
+      `^/expense-applications/${UUID_PATTERN}/(?:submit|resubmit|cancel)$`,
+    ),
+  },
+  {
+    methods: new Set(["POST"]),
+    path: new RegExp(
+      `^/expense-approvals/${UUID_PATTERN}/(?:approve|return)$`,
+    ),
+  },
   {
     methods: new Set(["GET", "PATCH"]),
     path: new RegExp(`^/admin/users/${UUID_PATTERN}$`),

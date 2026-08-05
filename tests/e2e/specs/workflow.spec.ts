@@ -1,4 +1,4 @@
-import { expect, request as playwrightRequest, test, type Page } from "@playwright/test";
+import { expect, request as playwrightRequest, test, type Browser, type Page } from "@playwright/test";
 
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const mailpitUrl = process.env.MAILPIT_URL ?? "http://localhost:8025";
@@ -12,7 +12,15 @@ const presidentEmail = requiredEnvironment("DEV_PRESIDENT_EMAIL");
 const presidentPassword = requiredEnvironment("DEV_PRESIDENT_PASSWORD");
 const partTimeEmail = requiredEnvironment("DEV_PART_TIME_EMAIL");
 const partTimePassword = requiredEnvironment("DEV_PART_TIME_PASSWORD");
+const expenseUserEmail = requiredEnvironment("DEV_EXPENSE_USER_EMAIL");
+const expenseManagerEmail = requiredEnvironment("DEV_EXPENSE_MANAGER_EMAIL");
+const expenseDivisionHeadEmail = requiredEnvironment("DEV_EXPENSE_DIVISION_HEAD_EMAIL");
+const expenseAccountingEmail = requiredEnvironment("DEV_EXPENSE_ACCOUNTING_EMAIL");
+const expenseOutsiderEmail = requiredEnvironment("DEV_EXPENSE_OUTSIDER_EMAIL");
+const expensePassword = requiredEnvironment("DEV_EXPENSE_PASSWORD");
 const notificationSubject = "[Workflow] 未登録ユーザーからアクセスがありました";
+const expenseApprovalSubject = "[Workflow] 経費申請の承認依頼";
+const expenseUpdateSubject = "[Workflow] 経費申請の更新";
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -51,11 +59,58 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.locator("#kc-login").click();
 }
 
-async function searchNotificationCount(): Promise<number> {
+type ExpenseDetail = {
+  id: string;
+  version: number;
+  status: string;
+  pendingStepId: string | null;
+  approvalRun: { runNumber: number; steps: Array<{ targetOrganizationUnitName: string }> };
+};
+
+function expensePayload(title: string, version?: number) {
+  return {
+    category: "TRANSPORTATION",
+    title,
+    purpose: "Playwright経費申請シナリオ",
+    expenseDate: "2026-08-02",
+    remarks: "E2E",
+    items: [{
+      expenseDate: "2026-08-02", description: "電車往復", amount: 1234,
+      origin: "東京", destination: "横浜", transportationType: "TRAIN",
+    }],
+    ...(version === undefined ? {} : { version }),
+  };
+}
+
+async function expensePage(browser: Browser, email: string): Promise<Page> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await login(page, email, expensePassword);
+  await expect(page).toHaveURL(/\/top$/);
+  return page;
+}
+
+async function createAndSubmitExpense(page: Page, title: string): Promise<ExpenseDetail> {
+  const created = await page.request.post("/api/backend/expense-applications", {
+    data: expensePayload(title),
+  });
+  expect(created.status()).toBe(201);
+  const draft = (await created.json()) as ExpenseDetail;
+  const submitted = await page.request.post(
+    `/api/backend/expense-applications/${draft.id}/submit`,
+  );
+  expect(submitted.status()).toBe(200);
+  return (await submitted.json()) as ExpenseDetail;
+}
+
+async function searchNotificationCount(
+  subject = notificationSubject,
+  recipient: string | undefined = adminEmail,
+): Promise<number> {
   const context = await playwrightRequest.newContext();
   try {
     const query = new URLSearchParams({
-      query: `subject:"${notificationSubject}"`,
+      query: `subject:"${subject}"${recipient ? ` to:"${recipient}"` : ""}`,
     });
     const response = await context.get(`${mailpitUrl}/api/v1/search?${query}`);
     expect(response.ok()).toBeTruthy();
@@ -67,8 +122,10 @@ async function searchNotificationCount(): Promise<number> {
       }>;
     };
     if (body.messages_count > 0) {
-      expect(body.messages[0]?.Subject).toBe(notificationSubject);
-      expect(body.messages[0]?.To.some(({ Address }) => Address === adminEmail)).toBeTruthy();
+      expect(body.messages[0]?.Subject).toBe(subject);
+      if (recipient) {
+        expect(body.messages[0]?.To.some(({ Address }) => Address === recipient)).toBeTruthy();
+      }
     }
     return body.messages_count;
   } finally {
@@ -124,6 +181,122 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(await topResponse.text()).not.toMatch(
     /accessToken|refreshToken|idToken|eyJ[A-Za-z0-9_-]+\./,
   );
+});
+
+test("経費申請の一般・部門長・事業部長経路と差戻し再申請をBFF越しに処理する", async ({ browser }) => {
+  const suffix = Date.now();
+  const applicant = await expensePage(browser, expenseUserEmail);
+  const manager = await expensePage(browser, expenseManagerEmail);
+  const divisionHead = await expensePage(browser, expenseDivisionHeadEmail);
+  const accounting = await expensePage(browser, expenseAccountingEmail);
+  const outsider = await expensePage(browser, expenseOutsiderEmail);
+  try {
+    const general = await createAndSubmitExpense(applicant, `E2E一般申請-${suffix}`);
+    expect(general.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
+      .toEqual(["第1SI営業課", "経理課"]);
+    expect(general.pendingStepId).not.toBeNull();
+    await manager.goto("/approvals");
+    await expect(manager.getByText(`E2E一般申請-${suffix}`, { exact: true })).toBeVisible();
+
+    const outsiderResponse = await outsider.request.post(
+      `/api/backend/expense-approvals/${general.pendingStepId}/approve`, { data: {} },
+    );
+    expect(outsiderResponse.status()).toBe(403);
+    const managerApproved = await manager.request.post(
+      `/api/backend/expense-approvals/${general.pendingStepId}/approve`,
+      { data: { comment: "E2E部門承認" } },
+    );
+    expect(managerApproved.status()).toBe(200);
+    const accountingDetail = (await managerApproved.json()) as ExpenseDetail;
+    const finalApproved = await accounting.request.post(
+      `/api/backend/expense-approvals/${accountingDetail.pendingStepId}/approve`, { data: {} },
+    );
+    expect(finalApproved.status()).toBe(200);
+    expect(((await finalApproved.json()) as ExpenseDetail).status).toBe("APPROVED");
+    await applicant.goto(`/expenses/${general.id}`);
+    await expect(applicant.getByText("承認済み", { exact: true }).first()).toBeVisible();
+
+    const managerApplication = await createAndSubmitExpense(
+      manager, `E2E課長申請-${suffix}`,
+    );
+    expect(managerApplication.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
+      .toEqual(["第1SI事業部", "経理課"]);
+    const divisionApproved = await divisionHead.request.post(
+      `/api/backend/expense-approvals/${managerApplication.pendingStepId}/approve`, { data: {} },
+    );
+    expect(divisionApproved.status()).toBe(200);
+    const managerAccounting = (await divisionApproved.json()) as ExpenseDetail;
+    const managerFinal = await accounting.request.post(
+      `/api/backend/expense-approvals/${managerAccounting.pendingStepId}/approve`, { data: {} },
+    );
+    expect(managerFinal.status()).toBe(200);
+    expect(((await managerFinal.json()) as ExpenseDetail).status).toBe("APPROVED");
+
+    const divisionApplication = await createAndSubmitExpense(
+      divisionHead, `E2E事業部長申請-${suffix}`,
+    );
+    expect(divisionApplication.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
+      .toEqual(["経理課"]);
+    const divisionFinal = await accounting.request.post(
+      `/api/backend/expense-approvals/${divisionApplication.pendingStepId}/approve`, { data: {} },
+    );
+    expect(divisionFinal.status()).toBe(200);
+    expect(((await divisionFinal.json()) as ExpenseDetail).status).toBe("APPROVED");
+
+    const returnedApplication = await createAndSubmitExpense(
+      applicant, `E2E差戻し申請-${suffix}`,
+    );
+    const returnedResponse = await manager.request.post(
+      `/api/backend/expense-approvals/${returnedApplication.pendingStepId}/return`,
+      { data: { comment: "E2E差戻し理由" } },
+    );
+    expect(returnedResponse.status()).toBe(200);
+    const returned = (await returnedResponse.json()) as ExpenseDetail;
+    expect(returned.status).toBe("RETURNED");
+    const updated = await applicant.request.put(
+      `/api/backend/expense-applications/${returned.id}`,
+      { data: expensePayload(`E2E差戻し再申請-${suffix}`, returned.version) },
+    );
+    expect(updated.status()).toBe(200);
+    const resubmitted = await applicant.request.post(
+      `/api/backend/expense-applications/${returned.id}/resubmit`,
+    );
+    expect(resubmitted.status()).toBe(200);
+    const runTwo = (await resubmitted.json()) as ExpenseDetail;
+    expect(runTwo.approvalRun.runNumber).toBe(2);
+    const runTwoManagerResponse = await manager.request.post(
+      `/api/backend/expense-approvals/${runTwo.pendingStepId}/approve`, { data: {} },
+    );
+    expect(runTwoManagerResponse.status()).toBe(200);
+    const runTwoManager = (await runTwoManagerResponse.json()) as ExpenseDetail;
+    const runTwoFinalResponse = await accounting.request.post(
+      `/api/backend/expense-approvals/${runTwoManager.pendingStepId}/approve`, { data: {} },
+    );
+    expect(runTwoFinalResponse.status()).toBe(200);
+    expect(((await runTwoFinalResponse.json()) as ExpenseDetail).status).toBe("APPROVED");
+
+    const applicantDetailResponse = await applicant.request.get(
+      `/api/backend/expense-applications/${returned.id}`,
+    );
+    expect(applicantDetailResponse.status()).toBe(200);
+    const applicantDetail = (await applicantDetailResponse.json()) as ExpenseDetail;
+    expect(applicantDetail.status).toBe("APPROVED");
+    expect(applicantDetail.approvalRun.runNumber).toBe(2);
+
+    await expect.poll(
+      () => searchNotificationCount(expenseApprovalSubject, expenseManagerEmail),
+      { message: "経費承認依頼メールを待機する", timeout: 10_000 },
+    ).toBeGreaterThan(0);
+    await expect.poll(
+      () => searchNotificationCount(expenseUpdateSubject, expenseUserEmail),
+      { message: "経費申請者向け更新メールを待機する", timeout: 10_000 },
+    ).toBeGreaterThan(0);
+  } finally {
+    await Promise.all([
+      applicant.context().close(), manager.context().close(), divisionHead.context().close(),
+      accounting.context().close(), outsider.context().close(),
+    ]);
+  }
 });
 
 test("管理者ユーザーの名前を表示して業務ロールをBFFから取得する", async ({ page }) => {

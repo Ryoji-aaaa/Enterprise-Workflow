@@ -261,6 +261,16 @@ export function MockDashboard({
         </div>
 
         <nav aria-label="モバイルナビゲーション" className="ml-2 flex items-center gap-1 md:hidden">
+          {permissions.includes("EXPENSE_APPLICATION_READ_OWN") && (
+            <Button aria-label="経費申請" render={<Link href="/expenses" />} size="icon-lg" variant="ghost">
+              <FileText />
+            </Button>
+          )}
+          {permissions.includes("EXPENSE_APPLICATION_APPROVE") && (
+            <Button aria-label="承認待ち" render={<Link href="/approvals" />} size="icon-lg" variant="ghost">
+              <ClipboardList />
+            </Button>
+          )}
           {canViewOrganizationChart(user) && (
             <Button
               aria-label="組織図"
@@ -338,6 +348,16 @@ export function MockDashboard({
       <div className="grid min-h-[calc(100svh-4rem)] md:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="hidden border-r bg-sidebar md:flex md:flex-col">
           <nav className="flex-1 space-y-1 p-3">
+            {permissions.includes("EXPENSE_APPLICATION_READ_OWN") && (
+              <Button className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70" render={<Link href="/expenses" />} variant="ghost">
+                <FileText className="size-4.5" /><span>経費申請</span>
+              </Button>
+            )}
+            {permissions.includes("EXPENSE_APPLICATION_APPROVE") && (
+              <Button className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70" render={<Link href="/approvals" />} variant="ghost">
+                <ClipboardList className="size-4.5" /><span>承認待ち</span>
+              </Button>
+            )}
             {canViewOrganizationChart(user) && (
               <Button
                 className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70"
