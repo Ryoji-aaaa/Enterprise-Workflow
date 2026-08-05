@@ -3,12 +3,12 @@
 ## 実行方法
 
 ```bash
-make test-e2e
+make test SUITES=e2e
 ```
 
 ホストへNode.jsやブラウザを導入せず、Node.js 24.18.0、
 Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
-Composeの`test` profileだけに`e2e`サービスを定義し、通常の`make up`では起動しない。
+`docker-compose.test.yml`だけに`e2e`サービスを定義し、通常の`make up`では起動しない。
 
 実行処理は次の順序で行う。
 
@@ -84,8 +84,8 @@ Playwright後のコンテナ内検証では、Spring Bootの`/api/me`へJWTな�
 失敗時だけtrace、スクリーンショット、videoを保持し、HTML reportも生成する。
 
 ```text
-tests/e2e/test-results/results/
-tests/e2e/playwright-report/report/
+test-results/<run-id>/diagnostics/e2e/results/
+test-results/<run-id>/diagnostics/e2e/html/
 ```
 
 成果物はGit管理対象外である。traceはPlaywright Trace Viewerで開ける。

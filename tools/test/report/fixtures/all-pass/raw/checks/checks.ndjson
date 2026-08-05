@@ -1,0 +1,2 @@
+{"suite":"harness","kind":"check","name":"preflight","status":"passed","duration_ms":1}
+{"suite":"frontend","kind":"check","name":"lint","status":"passed","duration_ms":2}

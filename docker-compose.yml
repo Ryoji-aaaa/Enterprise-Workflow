@@ -34,7 +34,7 @@ services:
       keycloak:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${FRONTEND_HOST_PORT:-3000}:3000"
     networks:
       - public-network
       - application-network
@@ -113,7 +113,7 @@ services:
         /target/workflow-realm.json
     network_mode: none
     volumes:
-      - ./keycloak/generated/import/workflow-realm.json:/source/workflow-realm.json:ro
+      - ${KEYCLOAK_GENERATED_DIRECTORY:-./keycloak/generated}/import/workflow-realm.json:/source/workflow-realm.json:ro
       - keycloak-import:/target
 
   keycloak:
@@ -133,7 +133,7 @@ services:
       - keycloak-import:/opt/keycloak/data/import:ro
       - ./keycloak/scripts/healthcheck.sh:/opt/keycloak/healthcheck.sh:ro
     ports:
-      - "8180:8080"
+      - "${KEYCLOAK_HOST_PORT:-8180}:8080"
     healthcheck:
       test: ["CMD", "bash", "/opt/keycloak/healthcheck.sh"]
       interval: 10s
@@ -162,6 +162,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-replace-with-admin-password}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-workflow}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8180/realms/workflow}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
@@ -169,7 +170,7 @@ services:
       DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-password}
     volumes:
       - ./keycloak/scripts/configure-keycloak.sh:/opt/workflow/configure-keycloak.sh:ro
-      - ./keycloak/scripts/verify-keycloak.sh:/opt/workflow/verify-keycloak.sh:ro
+      - ./keycloak/scripts/check-keycloak.sh:/opt/workflow/check-keycloak.sh:ro
       - ./keycloak/development-users.tsv:/opt/workflow/development-users.tsv:ro
     entrypoint: []
     command:
@@ -193,50 +194,6 @@ services:
     networks:
       - public-network
       - application-network
-
-  e2e:
-    profiles:
-      - test
-    build:
-      context: ./tests/e2e
-      args:
-        NODE_VERSION: ${NODE_VERSION:-24.18.0}
-        PLAYWRIGHT_VERSION: ${PLAYWRIGHT_VERSION:-1.62.0}
-    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
-    init: true
-    shm_size: 1gb
-    environment:
-      HOME: /tmp
-      BASE_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      KEYCLOAK_URL: ${KEYCLOAK_EXTERNAL_URL:-http://localhost:8180}
-      MAILPIT_URL: http://localhost:${MAILPIT_UI_PORT:-8025}
-      DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
-      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-password}
-      DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
-      DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:-password}
-      DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
-      DEV_PENDING_PASSWORD: ${DEV_PENDING_PASSWORD:-password}
-      DEV_PRESIDENT_EMAIL: president@sdcj.co.jp
-      DEV_PRESIDENT_PASSWORD: ${DEV_SEED_PASSWORD:-password}
-      DEV_PART_TIME_EMAIL: example.parttime1@sdcj.co.jp
-      DEV_PART_TIME_PASSWORD: ${DEV_SEED_PASSWORD:-password}
-      DEV_EXPENSE_USER_EMAIL: first-si-sales-section.user@sdcj.co.jp
-      DEV_EXPENSE_MANAGER_EMAIL: first-si-sales-section.head@sdcj.co.jp
-      DEV_EXPENSE_DIVISION_HEAD_EMAIL: first-si-division.head@sdcj.co.jp
-      DEV_EXPENSE_ACCOUNTING_EMAIL: accounting-section.user@sdcj.co.jp
-      DEV_EXPENSE_OUTSIDER_EMAIL: second-si-sales-section.head@sdcj.co.jp
-      DEV_EXPENSE_PASSWORD: ${DEV_SEED_PASSWORD:-password}
-    volumes:
-      - ./tests/e2e/playwright-report:/workspace/playwright-report
-      - ./tests/e2e/test-results:/workspace/test-results
-    network_mode: host
-    depends_on:
-      frontend:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-      mailpit:
-        condition: service_healthy
 
 volumes:
   postgres-data:

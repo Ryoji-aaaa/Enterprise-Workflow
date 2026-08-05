@@ -1,0 +1,1 @@
+{"suite":"e2e","kind":"check","name":"integration setup","status":"error","exit_code":2,"duration_ms":10,"log":"logs/setup/integration.log","reason":"services did not become healthy"}

@@ -32,7 +32,7 @@ Spring BootとPostgreSQLはホストへポートを公開しません。Next.js�
 - Docker EngineとDocker Compose plugin
 - GNU Make
 - Git
-- `curl`、`jq`、`openssl`、`envsubst`、`grep`
+- `curl`、`jq`、`openssl`、`envsubst`、`grep`、`timeout`
 - Terraform CLI（`make verify-infra`とインフラ作業時のみ）
 - 利用ポート: `3000`、`8180`、`8025`
 
@@ -93,14 +93,17 @@ make reset
 
 ```bash
 make test
-make test-backend
-make test-frontend
-make test-e2e
+make test SUITES=backend
+make test SUITES=frontend
+make test SUITES=keycloak
+make test SUITES=e2e
 ```
 
-`make test`は`test-backend`、`test-frontend`、`test-e2e`を順に実行する全自動テストです。
-BackendのSpring Boot結合テストとPostgreSQL migration、Frontendのlint・型検査・単体テスト・
-production build、自己完結した環境準備を含むPlaywright E2Eと事後検証が対象です。
+`make test`はBackend、Frontend、Keycloak、E2Eを固定順で実行し、テスト件数と必須checkを
+分けた統一レポートを生成します。正常時は各処理の進捗と集計だけを表示し、生ログは
+`test-results/<run-id>/`へ保存します。複数suiteは`SUITES=backend,frontend`のように指定し、
+生ログを同時表示する場合は`VERBOSE=1`、失敗後も隔離環境を残す場合は`KEEP_TEST_ENV=1`を使います。
+詳細は[統括テスト実行仕様](docs/testing/test-execution.md)を参照してください。
 
 起動済みのローカル統合環境とアーキテクチャ境界を確認する場合は、テストコードを実行する
 `make test`ではなく次を使用します。

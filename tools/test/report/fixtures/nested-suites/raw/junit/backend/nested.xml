@@ -1,0 +1,1 @@
+<?xml version="1.0"?><testsuites tests="2"><testsuite name="parent" tests="2"><testsuite name="child"><testcase name="one"/><testcase name="two"/></testsuite></testsuite></testsuites>

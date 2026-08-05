@@ -1,0 +1,1 @@
+<?xml version="1.0"?><testsuites><testsuite name="e2e"><testcase classname="workflow" name="e2e passes" time="0.030" file="specs/workflow.spec.ts" line="10"/></testsuite></testsuites>

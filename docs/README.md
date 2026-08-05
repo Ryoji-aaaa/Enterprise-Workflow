@@ -34,7 +34,7 @@
   [Terraform](infrastructure/terraform.md) /
   [GitHub Actions](infrastructure/github-actions.md) /
   [Keycloak on Azure](infrastructure/keycloak-azure.md)
-- Testing: [Playwright E2E](testing/playwright.md)
+- Testing: [統括テスト実行](testing/test-execution.md) / [Playwright E2E](testing/playwright.md)
 - Operations:
   [本番移行・production readiness](operations/production-readiness.md) /
   [Azure deployment](operations/deployment.md) /

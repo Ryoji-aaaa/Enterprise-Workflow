@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-07-26
 - Related commits: `2512609`, `9284c3e`
-- Related files: `keycloak/scripts/configure-keycloak.sh`, `keycloak/scripts/verify-keycloak.sh`, `keycloak/scripts/initialize-keycloak.sh`
+- Related files: `keycloak/scripts/configure-keycloak.sh`, `keycloak/scripts/check-keycloak.sh`, `keycloak/scripts/initialize-keycloak.sh`
 
 ## Context
 

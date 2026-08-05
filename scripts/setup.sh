@@ -9,7 +9,7 @@ readonly PROJECT_DIRECTORY
 
 cd "${PROJECT_DIRECTORY}"
 
-required_commands=(bash curl docker envsubst git grep jq make)
+required_commands=(bash curl docker envsubst git grep jq make timeout)
 missing_commands=()
 
 for command_name in "${required_commands[@]}"; do
@@ -34,11 +34,9 @@ fi
 
 mkdir -p \
   keycloak/generated/config \
-  keycloak/generated/import \
-  tests/e2e/playwright-report \
-  tests/e2e/test-results
+  keycloak/generated/import
 
-chmod +x keycloak/scripts/*.sh scripts/*.sh
+chmod +x keycloak/scripts/*.sh scripts/*.sh tools/test/run.sh
 
 if grep -Eq '=(replace-with-|password$)' .env; then
   echo "WARNING: .env contains sample development secrets." >&2

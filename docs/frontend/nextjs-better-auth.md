@@ -102,7 +102,7 @@ sessionStorageへ渡さない。
 
 ## 検証
 
-`make test-frontend`、`make test-e2e`、`make verify`、`make audit-frontend`は
+`make test SUITES=frontend`、`make test SUITES=e2e`、`make verify`、`make audit-frontend`は
 Dockerボリュームを削除せず、
 次を確認する。
 

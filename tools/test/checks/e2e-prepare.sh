@@ -1,31 +1,27 @@
-#!/usr/bin/env bash
-
 set -Eeuo pipefail
 
 readonly SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
+readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/../../.." && pwd)"
+readonly WORKFLOW_ENV_FILE="${WORKFLOW_ENV_FILE:-${PROJECT_DIRECTORY}/.env}"
 readonly NOTIFICATION_SUBJECT="[Workflow] 未登録ユーザーからアクセスがありました"
 readonly EXPENSE_APPROVAL_SUBJECT="[Workflow] 経費申請の承認依頼"
 readonly EXPENSE_UPDATE_SUBJECT="[Workflow] 経費申請の更新"
 
 cd "${PROJECT_DIRECTORY}"
 
-[[ -r .env ]] || {
-  echo ".env does not exist. Run make setup first." >&2
+[[ -r "${WORKFLOW_ENV_FILE}" ]] || {
+  echo "Environment file does not exist: ${WORKFLOW_ENV_FILE}" >&2
   exit 1
 }
 
 compose_project_name_override="${COMPOSE_PROJECT_NAME:-}"
 set -a
 # shellcheck disable=SC1091
-source .env
+source "${WORKFLOW_ENV_FILE}"
 set +a
 if [[ -n "${compose_project_name_override}" ]]; then
   export COMPOSE_PROJECT_NAME="${compose_project_name_override}"
 fi
-
-find tests/e2e/playwright-report -mindepth 1 -delete
-find tests/e2e/test-results -mindepth 1 -delete
 
 docker compose exec -T postgres \
   psql \
