@@ -23,6 +23,10 @@ validate_inputs() {
   validate_selected_suites
   validate_boolean_option VERBOSE "${VERBOSE:-0}"
   validate_boolean_option KEEP_TEST_ENV "${KEEP_TEST_ENV:-0}"
+  if [[ -n "${CI:-}" && "${KEEP_TEST_ENV:-0}" == "1" ]]; then
+    printf 'KEEP_TEST_ENV=1 is not allowed in CI.\n' >&2
+    return 2
+  fi
   local name value
   for name in TEST_FRONTEND_PORT TEST_KEYCLOAK_PORT TEST_MAILPIT_PORT; do
     value="${!name:-}"
@@ -40,6 +44,7 @@ validate_inputs() {
 prepare_test_environment() {
   local source_env="${PROJECT_DIRECTORY}/.env"
   local project_suffix
+  umask 077
   [[ -r "${source_env}" ]] || source_env="${PROJECT_DIRECTORY}/.env.example"
   [[ -r "${source_env}" ]] || {
     printf 'Neither .env nor .env.example is readable.\n' >&2
@@ -59,7 +64,9 @@ prepare_test_environment() {
   BACKEND_TEST_IMAGE="workflow-backend-test:${RUN_ID,,}"
   FRONTEND_TEST_IMAGE="workflow-frontend-test:${RUN_ID,,}"
   E2E_TEST_IMAGE="workflow-e2e-test:${RUN_ID,,}"
-  TEST_REPORT_IMAGE="workflow-test-report:${RUN_ID,,}"
+  TEST_KEYCLOAK_INIT_IMAGE="workflow-keycloak-init-test:${RUN_ID,,}"
+  TEST_REPORT_IMAGE="workflow-test-report:local"
+  TEST_REPORT_PRESERVE_IMAGE="workflow-test-report:local-preserve"
 
   mkdir -p "${KEYCLOAK_GENERATED_DIRECTORY}/config" "${KEYCLOAK_GENERATED_DIRECTORY}/import"
   cp "${source_env}" "${WORKFLOW_ENV_FILE}"
@@ -79,6 +86,7 @@ prepare_test_environment() {
     printf 'BACKEND_TEST_IMAGE=%s\n' "${BACKEND_TEST_IMAGE}"
     printf 'FRONTEND_TEST_IMAGE=%s\n' "${FRONTEND_TEST_IMAGE}"
     printf 'E2E_TEST_IMAGE=%s\n' "${E2E_TEST_IMAGE}"
+    printf 'TEST_KEYCLOAK_INIT_IMAGE=%s\n' "${TEST_KEYCLOAK_INIT_IMAGE}"
     printf 'TEST_REPORT_IMAGE=%s\n' "${TEST_REPORT_IMAGE}"
   } >>"${WORKFLOW_ENV_FILE}"
 
@@ -89,6 +97,12 @@ prepare_test_environment() {
   export TEST_UID TEST_GID TEST_FRONTEND_PORT TEST_KEYCLOAK_PORT TEST_MAILPIT_PORT
   export TEST_COMPOSE_PROJECT TEST_TEMP_DIRECTORY WORKFLOW_ENV_FILE
   export KEYCLOAK_GENERATED_DIRECTORY BACKEND_TEST_IMAGE FRONTEND_TEST_IMAGE E2E_TEST_IMAGE TEST_REPORT_IMAGE
+  export TEST_KEYCLOAK_INIT_IMAGE TEST_REPORT_PRESERVE_IMAGE
+}
+
+build_reporter_image() {
+  compose build test-report || return 2
+  docker image tag "${TEST_REPORT_IMAGE}" "${TEST_REPORT_PRESERVE_IMAGE}" || return 2
 }
 
 port_in_use() {
@@ -178,14 +192,30 @@ finish_run() {
   elif ((original_exit != 0)); then
     HARNESS_HAS_ERROR=1
   fi
+  stop_phase_progress
+  clear_interactive_progress
   finalize_interrupted_phase
-  if ((FINAL_SUMMARY_PRINTED == 0)); then
-    run_reporter
-  fi
   if ((HARNESS_HAS_ERROR == 1 && COMPOSE_STARTED == 1)); then
     compose logs --no-color >"${TEST_RUN_DIRECTORY}/logs/setup/compose.log" 2>&1 || true
   fi
-  cleanup_test_environment
+  if [[ "${KEEP_TEST_ENV:-0}" == "1" ]]; then
+    docker image rm "${TEST_REPORT_PRESERVE_IMAGE}" >/dev/null 2>&1 || true
+    record_skipped_check harness cleanup "KEEP_TEST_ENV=1 retained the isolated environment"
+    print_retained_environment
+  else
+    run_phase harness check cleanup CLEAN \
+      "Test environment cleanup" error \
+      "logs/setup/cleanup.log" \
+      cleanup_test_environment
+    if [[ "${LAST_PHASE_STATUS}" != "passed" ]]; then
+      printf '\nCleanup failed; the temporary environment was retained for manual cleanup.\n' >&2
+      print_retained_environment
+    fi
+  fi
+  refresh_summary
+  if ((FINAL_SUMMARY_PRINTED == 0)); then
+    run_reporter
+  fi
   if ((original_exit == 130)); then
     final_exit=130
   elif ((HARNESS_HAS_ERROR == 1)); then
@@ -214,7 +244,7 @@ fi
 run_phase harness check reporter-build BUILD \
   "Structured test reporter image" error \
   "logs/setup/reporter-build.log" \
-  compose build test-report
+  build_reporter_image
 if [[ "${LAST_PHASE_STATUS}" != "passed" ]]; then
   exit 2
 fi
@@ -228,6 +258,14 @@ if [[ "${LAST_PHASE_STATUS}" != "passed" ]]; then
 fi
 REPORTER_READY=1
 COMPOSE_STARTED=1
+
+run_phase harness check harness-self-test CHECK \
+  "Structured test harness self-test" error \
+  "logs/setup/harness-self-test.log" \
+  bash "${TEST_TOOL_DIRECTORY}/tests/test-harness.sh"
+if [[ "${LAST_PHASE_STATUS}" != "passed" ]]; then
+  exit 2
+fi
 
 contains_selected_suite backend && run_backend_suite
 contains_selected_suite frontend && run_frontend_suite

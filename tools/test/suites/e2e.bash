@@ -21,8 +21,12 @@ run_e2e_suite() {
         "E2E / Playwright" failed \
         "logs/e2e/playwright.log" \
         compose run --rm --no-deps e2e
+      if [[ "${LAST_PHASE_STATUS}" != "passed" ]]; then
+        printf 'HTML report: test-results/%s/diagnostics/e2e/html/\n' "${RUN_ID}"
+        printf 'Failure artifacts: test-results/%s/diagnostics/e2e/results/\n' "${RUN_ID}"
+      fi
 
-      run_phase e2e check postconditions CHECK \
+      run_phase e2e group postconditions CHECK \
         "E2E / postconditions" failed \
         "logs/e2e/postconditions.log" \
         env \

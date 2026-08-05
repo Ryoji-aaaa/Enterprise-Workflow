@@ -13,7 +13,8 @@ HARNESS_HAS_FAILURE=0
 HARNESS_HAS_ERROR=0
 REPORTER_READY=0
 COMPOSE_STARTED=0
-HEARTBEAT_PID=""
+PROGRESS_PID=""
+PROGRESS_INTERACTIVE=0
 CURRENT_PHASE_FILE=""
 CURRENT_PHASE_SUITE=""
 CURRENT_PHASE_KIND=""
@@ -24,15 +25,6 @@ FINAL_SUMMARY_PRINTED=0
 
 epoch_ms() {
   date +%s%3N
-}
-
-format_elapsed() {
-  local total_seconds="$1"
-  if ((total_seconds >= 60)); then
-    printf '%dm %02ds' "$((total_seconds / 60))" "$((total_seconds % 60))"
-  else
-    printf '%ds' "${total_seconds}"
-  fi
 }
 
 contains_selected_suite() {
@@ -169,24 +161,56 @@ write_phase_result() {
     >"${output_file}"
 }
 
-start_heartbeat() {
+render_progress_line() {
+  local action="$1"
+  local label="$2"
+  local elapsed_seconds="$3"
+  printf '[%-6s] %-55s %ss elapsed' "${action}" "${label}" "${elapsed_seconds}"
+}
+
+clear_interactive_progress() {
+  if ((PROGRESS_INTERACTIVE == 1)); then
+    printf '\r\033[2K'
+    PROGRESS_INTERACTIVE=0
+  fi
+}
+
+start_phase_progress() {
   local action="$1"
   local label="$2"
   local started_seconds="$3"
+  local interval=5
+
+  PROGRESS_INTERACTIVE=0
+  if [[ -t 1 && "${VERBOSE:-0}" == "0" && "${TERM:-}" != "dumb" ]]; then
+    PROGRESS_INTERACTIVE=1
+    interval=1
+    printf '\r\033[2K'
+    render_progress_line "${action}" "${label}" 0
+  else
+    render_progress_line "${action}" "${label}" 0
+    printf '\n'
+  fi
   (
     while true; do
-      sleep 30
-      printf '[%-6s] %s ... %ss elapsed\n' "${action}" "${label}" "$((SECONDS - started_seconds))"
+      sleep "${PHASE_PROGRESS_INTERVAL:-${interval}}"
+      if ((PROGRESS_INTERACTIVE == 1)); then
+        printf '\r\033[2K'
+        render_progress_line "${action}" "${label}" "$((SECONDS - started_seconds))"
+      else
+        render_progress_line "${action}" "${label}" "$((SECONDS - started_seconds))"
+        printf '\n'
+      fi
     done
   ) &
-  HEARTBEAT_PID=$!
+  PROGRESS_PID=$!
 }
 
-stop_heartbeat() {
-  if [[ -n "${HEARTBEAT_PID}" ]]; then
-    kill "${HEARTBEAT_PID}" >/dev/null 2>&1 || true
-    wait "${HEARTBEAT_PID}" >/dev/null 2>&1 || true
-    HEARTBEAT_PID=""
+stop_phase_progress() {
+  if [[ -n "${PROGRESS_PID}" ]]; then
+    kill "${PROGRESS_PID}" >/dev/null 2>&1 || true
+    wait "${PROGRESS_PID}" >/dev/null 2>&1 || true
+    PROGRESS_PID=""
   fi
 }
 
@@ -216,7 +240,9 @@ run_phase() {
   local ended_ms
   local exit_code
   local status
+  local display_status
   local duration_ms
+  local failed_checks_before=0
 
   PHASE_SEQUENCE=$((PHASE_SEQUENCE + 1))
   printf -v phase_id '%03d' "${PHASE_SEQUENCE}"
@@ -230,8 +256,11 @@ run_phase() {
   CURRENT_PHASE_STARTED_MS="$(epoch_ms)"
   started_ms="${CURRENT_PHASE_STARTED_MS}"
 
-  printf '[%-6s] %s\n' "${action}" "${label}"
-  start_heartbeat "${action}" "${label}" "${started_seconds}"
+  if [[ "${kind}" == "group" ]]; then
+    failed_checks_before="$(jq --slurp '[.[] | select(.status == "failed" or .status == "error" or .status == "cancelled")] | length' \
+      "${TEST_RUN_DIRECTORY}/raw/checks/checks.ndjson")"
+  fi
+  start_phase_progress "${action}" "${label}" "${started_seconds}"
   set +e
   if [[ "${VERBOSE:-0}" == "1" ]]; then
     "${command[@]}" 2>&1 | tee "${absolute_log}"
@@ -241,19 +270,22 @@ run_phase() {
     exit_code=$?
   fi
   set -e
-  stop_heartbeat
+  stop_phase_progress
+  clear_interactive_progress
   ended_ms="$(epoch_ms)"
   duration_ms=$((ended_ms - started_ms))
   if ((exit_code == 0)); then
     status="passed"
-    printf '[PASS  ] %-55s %s\n' "${label}" "$(format_elapsed "$((SECONDS - started_seconds))")"
+    printf '[PASS  ] %s\n' "${label}"
   else
     if ((exit_code == 2)); then
       status="error"
     else
       status="${failure_status}"
     fi
-    printf '[%-6s] %s (exit %s, %s)\n' "${status^^}" "${label}" "${exit_code}" "$(format_elapsed "$((SECONDS - started_seconds))")" >&2
+    display_status="${status^^}"
+    [[ "${status}" == "failed" ]] && display_status="FAIL"
+    printf '[%-6s] %s (exit %s)\n' "${display_status}" "${label}" "${exit_code}" >&2
     show_failure_tail "${absolute_log}" "${relative_log}"
     if [[ "${status}" == "error" ]]; then
       HARNESS_HAS_ERROR=1
@@ -266,6 +298,16 @@ run_phase() {
   if [[ "${kind}" == "check" ]]; then
     append_case_result "${suite}" check "${name}" "${status}" "${duration_ms}" \
       "$([[ "${status}" == "passed" ]] && printf '' || printf '%s failed with exit code %s' "${label}" "${exit_code}")" "${relative_log}"
+  fi
+  if [[ "${kind}" == "group" && "${status}" != "passed" ]]; then
+    local failed_checks_after
+    failed_checks_after="$(jq --slurp '[.[] | select(.status == "failed" or .status == "error" or .status == "cancelled")] | length' \
+      "${TEST_RUN_DIRECTORY}/raw/checks/checks.ndjson")"
+    if ((failed_checks_after == failed_checks_before)); then
+      append_case_result "${suite}" check "${name} runner" error "${duration_ms}" \
+        "${label} failed without a failing child check" "${relative_log}"
+      HARNESS_HAS_ERROR=1
+    fi
   fi
   LAST_PHASE_STATUS="${status}"
   LAST_PHASE_EXIT_CODE="${exit_code}"
@@ -308,10 +350,17 @@ compose() {
 
 refresh_summary() {
   ((REPORTER_READY == 1)) || return 0
+  local exit_code
+  set +e
   docker run --rm --user "${TEST_UID}:${TEST_GID}" \
     --volume "${TEST_RUN_DIRECTORY}:/test-results" \
     "${TEST_REPORT_IMAGE}" --run-dir /test-results \
-    >"${TEST_RUN_DIRECTORY}/logs/setup/reporter-refresh.log" 2>&1 || true
+    >"${TEST_RUN_DIRECTORY}/logs/setup/reporter-refresh.log" 2>&1
+  exit_code=$?
+  set -e
+  if ((exit_code <= 1)) && [[ -s "${TEST_RUN_DIRECTORY}/summary.json" ]]; then
+    cp "${TEST_RUN_DIRECTORY}/summary.json" "${TEST_RUN_DIRECTORY}/summary.last-good.json"
+  fi
 }
 
 print_suite_result() {
@@ -334,39 +383,94 @@ print_suite_result() {
 fallback_summary() {
   local qualifier="ALL SELECTED TESTS OK"
   local selected_json
+  local current_checks
+  local suite title item status discovered executed passed failed errors skipped
   [[ "$(IFS=,; printf '%s' "${SELECTED_SUITES[*]}")" == "${ALL_SUITE_CSV}" ]] && qualifier="ALL TESTS OK"
   selected_json="$(printf '%s\n' "${SELECTED_SUITES[@]}" | jq --raw-input --slurp 'split("\n") | map(select(length > 0))')"
-  jq --null-input --arg run_id "${RUN_ID}" --argjson selected "${selected_json}" '
+  current_checks='{"counts":{"passed":0,"failed":0,"errors":0,"skipped":0},"failures":[]}'
+  if [[ -r "${TEST_RUN_DIRECTORY}/raw/checks/checks.ndjson" ]]; then
+    current_checks="$(jq --slurp '
+      def count_status($status): [.[] | select(.kind == "check" and .status == $status)] | length;
+      {
+        counts: {
+          passed: count_status("passed"),
+          failed: count_status("failed"),
+          errors: ([.[] | select(.kind == "check" and (.status == "error" or .status == "cancelled"))] | length),
+          skipped: count_status("skipped")
+        },
+        failures: [.[] | select(.kind == "check" and (.status == "failed" or .status == "error" or .status == "cancelled")) | {
+          suite:(.suite // "harness"),kind:"check",name:(.name // "unnamed check"),status:(.status // "error"),
+          file:(.file // null),line:(.line // null),message:(.message // .reason // null),log:(.log // null),
+          diagnostics:(.diagnostics // null),attachments:[],retry_results:[]
+        }]
+      }
+    ' "${TEST_RUN_DIRECTORY}/raw/checks/checks.ndjson" 2>/dev/null)" || \
+      current_checks='{"counts":{"passed":0,"failed":0,"errors":0,"skipped":0},"failures":[]}'
+  fi
+  if jq empty "${TEST_RUN_DIRECTORY}/summary.last-good.json" >/dev/null 2>&1; then
+    jq --arg run_id "${RUN_ID}" --argjson current_checks "${current_checks}" '
+      .run_id = $run_id
+      | .overall = "ERROR"
+      | .checks = $current_checks.counts
+      | .checks.errors += 1
+      | .failures = ([.failures[], $current_checks.failures[]] | unique_by([.suite,.kind,.name,.status]))
+      | .failures += [{suite:"harness",kind:"runner",name:"structured reporter",status:"error",file:null,line:null,message:"The structured reporter could not produce the final summary",log:"logs/setup/reporter-final.log",diagnostics:null,attachments:[]}]
+    ' "${TEST_RUN_DIRECTORY}/summary.last-good.json" >"${TEST_RUN_DIRECTORY}/summary.json"
+  else
+    jq --null-input --arg run_id "${RUN_ID}" --argjson selected "${selected_json}" --argjson current_checks "${current_checks}" '
     {
       run_id: $run_id,
       overall: "ERROR",
       selected_suites: $selected,
       suites: ($selected | map({key: ., value: {status:"ERROR",discovered:0,executed:0,passed:0,failed:0,errors:0,skipped:0,duration_ms:0}}) | from_entries),
-      checks: {passed:0,failed:0,errors:1,skipped:0},
-      failures: [{suite:"harness",kind:"runner",name:"structured reporter",status:"error",file:null,line:null,message:"The structured reporter could not produce the final summary",log:"logs/setup/reporter-self-test.log",diagnostics:null}]
+      checks: ($current_checks.counts | .errors += 1),
+      failures: ($current_checks.failures + [{suite:"harness",kind:"runner",name:"structured reporter",status:"error",file:null,line:null,message:"The structured reporter could not produce the final summary",log:"logs/setup/reporter-final.log",diagnostics:null,attachments:[]}])
     }
-  ' >"${TEST_RUN_DIRECTORY}/summary.json"
+    ' >"${TEST_RUN_DIRECTORY}/summary.json"
+  fi
   printf '%s\n' \
     '# Test Summary' '' \
     'Overall result: **ERROR**' '' \
     'The structured reporter could not produce the final summary.' \
     >"${TEST_RUN_DIRECTORY}/summary.md"
-  printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<testsuites/>' \
-    >"${TEST_RUN_DIRECTORY}/merged-junit.xml"
+  if [[ ! -s "${TEST_RUN_DIRECTORY}/merged-junit.xml" ]]; then
+    printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<testsuites/>' \
+      >"${TEST_RUN_DIRECTORY}/merged-junit.xml"
+  fi
   printf '%s\n' \
     '======================= FINAL TEST SUMMARY =======================' \
     '' \
     'Overall result: ERROR' \
     '' \
+    'Suite       Status  Discovered  Executed  Pass  Fail  Error  Skip' \
+    '----------  ------  ----------  --------  ----  ----  -----  ----'
+  for suite in "${SELECTED_SUITES[@]}"; do
+    title="${suite^}"
+    [[ "${suite}" == "e2e" ]] && title="E2E"
+    item="$(jq --raw-output --arg suite "${suite}" \
+      '.suites[$suite] | [.status,.discovered,.executed,.passed,.failed,.errors,.skipped] | @tsv' \
+      "${TEST_RUN_DIRECTORY}/summary.json")"
+    IFS=$'\t' read -r status discovered executed passed failed errors skipped <<<"${item}"
+    printf '%-10s  %-6s  %10s  %8s  %4s  %4s  %5s  %4s\n' \
+      "${title}" "${status}" "${discovered}" "${executed}" "${passed}" "${failed}" "${errors}" "${skipped}"
+  done
+  item="$(jq --raw-output '.checks | [.passed,.failed,.errors,.skipped] | @tsv' \
+    "${TEST_RUN_DIRECTORY}/summary.json")"
+  IFS=$'\t' read -r passed failed errors skipped <<<"${item}"
+  printf '%s\n' '----------  ------  ----------  --------  ----  ----  -----  ----' ''
+  printf 'Required checks: %s passed, %s failed, %s errors, %s skipped\n\n' \
+    "${passed}" "${failed}" "${errors}" "${skipped}"
+  printf '%s\n' \
     'The structured reporter could not produce the final summary.' \
-    "Artifacts: test-results/${RUN_ID}" \
     '' \
     "${qualifier}: NO" \
+    "Artifacts: test-results/${RUN_ID}" \
     '=================================================================='
 }
 
 run_reporter() {
   local exit_code
+  local reporter_output="${TEST_RUN_DIRECTORY}/logs/setup/reporter-final.log"
   if ((REPORTER_READY == 0)); then
     fallback_summary
     FINAL_SUMMARY_PRINTED=1
@@ -377,20 +481,30 @@ run_reporter() {
   docker run --rm --user "${TEST_UID}:${TEST_GID}" \
     --volume "${TEST_RUN_DIRECTORY}:/test-results" \
     "${TEST_REPORT_IMAGE}" --run-dir /test-results --print-summary \
-      --display-path "test-results/${RUN_ID}"
+      --display-path "test-results/${RUN_ID}" >"${reporter_output}" 2>&1
   exit_code=$?
   set -e
   FINAL_SUMMARY_PRINTED=1
-  if ((exit_code == 2)); then
+  if ((exit_code > 1)) \
+      || [[ ! -s "${TEST_RUN_DIRECTORY}/summary.json" ]] \
+      || [[ ! -s "${TEST_RUN_DIRECTORY}/summary.md" ]] \
+      || [[ ! -s "${TEST_RUN_DIRECTORY}/merged-junit.xml" ]] \
+      || ! grep -q 'FINAL TEST SUMMARY' "${reporter_output}"; then
+    cat "${reporter_output}" >&2 2>/dev/null || true
+    fallback_summary
     HARNESS_HAS_ERROR=1
+    return 0
   elif ((exit_code != 0)); then
     HARNESS_HAS_FAILURE=1
   fi
+  cat "${reporter_output}"
+  rm -f "${TEST_RUN_DIRECTORY}/summary.last-good.json"
 }
 
 finalize_interrupted_phase() {
   local duration_ms
-  stop_heartbeat
+  stop_phase_progress
+  clear_interactive_progress
   if [[ -n "${CURRENT_PHASE_FILE}" && ! -e "${CURRENT_PHASE_FILE}" ]]; then
     duration_ms="$(( $(epoch_ms) - CURRENT_PHASE_STARTED_MS ))"
     write_phase_result "${CURRENT_PHASE_FILE}" "${CURRENT_PHASE_SUITE}" "${CURRENT_PHASE_KIND}" \
@@ -404,14 +518,43 @@ finalize_interrupted_phase() {
 }
 
 cleanup_test_environment() {
-  finalize_interrupted_phase
-  if ((COMPOSE_STARTED == 1)) && [[ "${KEEP_TEST_ENV:-0}" != "1" ]]; then
-    compose down --volumes --remove-orphans >"${TEST_RUN_DIRECTORY}/logs/setup/cleanup.log" 2>&1 || true
-  elif ((COMPOSE_STARTED == 1)); then
-    printf 'Test environment retained: project=%s frontend=%s keycloak=%s mailpit=%s\n' \
-      "${TEST_COMPOSE_PROJECT}" "${TEST_FRONTEND_PORT}" "${TEST_KEYCLOAK_PORT}" "${TEST_MAILPIT_PORT}"
+  local image
+  local compose_status=0
+  local -a images=("${BACKEND_TEST_IMAGE:-}" "${FRONTEND_TEST_IMAGE:-}" "${E2E_TEST_IMAGE:-}")
+  if ((COMPOSE_STARTED == 1)); then
+    compose down --volumes --remove-orphans --rmi local || compose_status=2
   fi
+  if docker image inspect "${TEST_REPORT_PRESERVE_IMAGE:-}" >/dev/null 2>&1; then
+    docker image tag "${TEST_REPORT_PRESERVE_IMAGE}" "${TEST_REPORT_IMAGE}" || return 2
+    docker image rm "${TEST_REPORT_PRESERVE_IMAGE}" >/dev/null || return 2
+  fi
+  ((compose_status == 0)) || return 2
+  for image in "${images[@]}"; do
+    [[ -n "${image}" ]] || continue
+    if docker image inspect "${image}" >/dev/null 2>&1; then
+      docker image rm "${image}" || return 2
+    fi
+  done
   if [[ -n "${TEST_TEMP_DIRECTORY:-}" && "${TEST_TEMP_DIRECTORY}" == /tmp/workflow-test-* ]]; then
     rm -rf -- "${TEST_TEMP_DIRECTORY}"
   fi
+}
+
+print_retained_environment() {
+  local -a cleanup_command=(docker compose --project-name "${TEST_COMPOSE_PROJECT}" --env-file "${WORKFLOW_ENV_FILE}" \
+    -f "${PROJECT_DIRECTORY}/docker-compose.yml" -f "${PROJECT_DIRECTORY}/docker-compose.test.yml" \
+    down --volumes --remove-orphans --rmi local)
+  printf '\nTest environment retained.\n\n'
+  printf 'Project: %s\n' "${TEST_COMPOSE_PROJECT}"
+  printf 'Frontend: http://localhost:%s\n' "${TEST_FRONTEND_PORT}"
+  printf 'Keycloak: http://localhost:%s\n' "${TEST_KEYCLOAK_PORT}"
+  printf 'Mailpit: http://localhost:%s\n' "${TEST_MAILPIT_PORT}"
+  printf 'Environment file: %s\n' "${WORKFLOW_ENV_FILE}"
+  printf 'Temporary directory: %s\n\n' "${TEST_TEMP_DIRECTORY}"
+  printf 'Cleanup command:\n'
+  printf '%q ' "${cleanup_command[@]}"
+  printf '\n'
+  printf 'docker image rm %q %q %q 2>/dev/null || true\n' \
+    "${BACKEND_TEST_IMAGE}" "${FRONTEND_TEST_IMAGE}" "${E2E_TEST_IMAGE}"
+  printf 'rm -rf -- %q\n' "${TEST_TEMP_DIRECTORY}"
 }

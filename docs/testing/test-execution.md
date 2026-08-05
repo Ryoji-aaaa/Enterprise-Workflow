@@ -17,8 +17,9 @@ make test SUITES=backend,frontend
 `SUITES=all`は未指定と同じである。使用可能な名前以外、空要素、重複、略称は実行前に
 usage errorとなる。指定順にかかわらず実行順は変わらない。
 
-生ログを端末にも表示する場合は`VERBOSE=1`を指定する。失敗した隔離Compose環境を調査のため
-残す場合は`KEEP_TEST_ENV=1`を指定する。
+生ログを端末にも表示する場合は`VERBOSE=1`を指定する。隔離Compose環境、volume、run固有image、
+一時env、Keycloak生成物を調査のため残す場合は`KEEP_TEST_ENV=1`を指定する。CIでの保持指定は
+環境構築前にusage errorとなる。
 
 ```bash
 make test SUITES=frontend VERBOSE=1
@@ -27,10 +28,11 @@ make test SUITES=e2e KEEP_TEST_ENV=1
 
 ## テストとRequired checks
 
-テスト件数にはMaven Surefire、Node.js JUnit reporter、Keycloakの名前付きcontract case、
-Playwrightの論理テストケースだけを含める。lint、型検査、production build、image build、
+テスト件数にはMaven Surefire、独立したPostgreSQL repository integration test、Node.js JUnit
+reporter、Keycloakの名前付きcontract case、Playwrightの論理テストケースだけを含める。lint、型検査、production build、image build、
 環境準備、PostgreSQL migration契約、E2E事後条件、architecture検証はRequired checksとして
-別に集計する。
+別に集計する。migration契約とE2E事後検証の親groupは実行時間とlogだけを持ち、子checkとの
+二重計上を行わない。
 
 各suiteはDiscovered、Executed、Pass、Fail、Error、Skipを表示する。テストfailureと
 JUnitの`error`はSuite Fail、結果欠落、不正XML、0件、setup・runner異常はSuite Errorとなる。
@@ -58,6 +60,10 @@ line、理由を確認し、表示されたlog、E2Eの場合は`diagnostics/e2e
 スクリーンショット、videoの順に調査する。端末へ表示するmessageは1000文字までだが、
 構造化結果とlogには完全な内容を保持する。
 
+対話TTYかつ通常表示では、実行中phaseの同じ行を1秒ごとに更新して整数秒の経過時間を表示する。
+CI、リダイレクト、`VERBOSE=1`では制御文字を使わず、0秒から5秒ごとに進捗行を追加する。
+完了行には所要時間を付けず、実測値はphase JSONの`duration_ms`へ保存する。
+
 終了コードは全成功が0、テストまたはRequired check failureが1、usage・preflight・setup・
 runner・reporter errorが2、利用者による割り込みが130である。
 
@@ -68,6 +74,10 @@ KeycloakとE2Eは`workflow-test-<run-id>`という専用Compose project、専用
 既存環境を停止せずerrorにする。並行runでは`TEST_FRONTEND_PORT`、`TEST_KEYCLOAK_PORT`、
 `TEST_MAILPIT_PORT`へ別のポートを指定する。`.env`がなければ`.env.example`を基底に一時envだけを作り、
 秘密を含むenvとKeycloak生成JSONは`/tmp`から成果物へコピーしない。
+
+通常終了時は専用Compose projectとvolumeに加え、run固有のBackend、Frontend、E2E test imageと
+一時領域を削除する。cleanupに失敗した場合は秘密を含む一時領域を保持し、表示された手動cleanup
+commandを使用する。`KEEP_TEST_ENV=1`でも同じcommandを表示し、調査後に利用者が完全削除する。
 
 CIもローカルと同じ`make test`を使用し、`summary.md`をGitHub Step Summaryへ掲載して、
 `test-results/`全体を14日間のartifactとして保存する。

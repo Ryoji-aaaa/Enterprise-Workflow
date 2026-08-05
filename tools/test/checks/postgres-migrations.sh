@@ -19,7 +19,16 @@ readonly BACKEND_CONTAINER="workflow-migration-test-backend-${TEST_SUFFIX}"
 readonly BACKEND_TEST_IMAGE="${BACKEND_TEST_IMAGE:-workflow-backend-test}"
 readonly DATABASE_PASSWORD="migration-test-password"
 readonly TEST_START=${SECONDS}
+readonly MIGRATION_SECTIONS=(
+  "PostgreSQL migration test environment"
+  "Migration preflight failure handling"
+  "V001 upgrade and expand-contract migration"
+  "Contract migration reconciliation safeguards"
+  "PostgreSQL database constraints"
+  "Fresh migration and startup idempotency"
+)
 CURRENT_MIGRATION_SECTION=""
+CURRENT_MIGRATION_SECTION_INDEX=-1
 CURRENT_MIGRATION_SECTION_START=0
 MIGRATION_SECTION_RECORDED=0
 
@@ -37,6 +46,7 @@ migration_section() {
   if [[ -n "${CURRENT_MIGRATION_SECTION}" && "${MIGRATION_SECTION_RECORDED}" == "0" ]]; then
     record_migration_section passed
   fi
+  CURRENT_MIGRATION_SECTION_INDEX=$((CURRENT_MIGRATION_SECTION_INDEX + 1))
   CURRENT_MIGRATION_SECTION="$1"
   CURRENT_MIGRATION_SECTION_START="$(date +%s%3N)"
   MIGRATION_SECTION_RECORDED=0
@@ -45,8 +55,16 @@ migration_section() {
 
 cleanup() {
   local exit_code=$?
+  local section_index
   if ((exit_code != 0)) && [[ "${MIGRATION_SECTION_RECORDED}" == "0" ]]; then
     record_migration_section error "Migration section exited unexpectedly with ${exit_code}"
+  fi
+  if ((exit_code != 0)) && [[ -n "${TEST_RUN_DIRECTORY:-}" ]]; then
+    for ((section_index = CURRENT_MIGRATION_SECTION_INDEX + 1; section_index < ${#MIGRATION_SECTIONS[@]}; section_index++)); do
+      append_case_result backend check "${MIGRATION_SECTIONS[section_index]}" skipped 0 \
+        "A previous migration section did not complete" \
+        "${MIGRATION_LOG_RELATIVE:-logs/backend/postgres-migrations.log}"
+    done
   fi
   docker rm --force "${BACKEND_CONTAINER}" >/dev/null 2>&1 || true
   docker rm --force "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
@@ -602,22 +620,20 @@ SQL
 
 start_backend workflow_upgrade
 
-# Run repository queries against the migrated PostgreSQL schema. These checks
-# are deliberately outside the default H2-backed Surefire suite because null
-# temporal and UUID parameter binding differs between the two databases.
-migration_section "PostgreSQL repository queries and database constraints"
-docker run --rm \
-  --network "${NETWORK_NAME}" \
-  --user "${TEST_UID:-1000}:${TEST_GID:-1000}" \
-  --volume "${TEST_RUN_DIRECTORY}:/test-results" \
-  --env "POSTGRES_TEST_URL=jdbc:postgresql://${POSTGRES_CONTAINER}:5432/workflow_upgrade" \
-  --env "POSTGRES_TEST_USERNAME=workflow" \
-  --env "POSTGRES_TEST_PASSWORD=${DATABASE_PASSWORD}" \
-  "${BACKEND_TEST_IMAGE}" \
-  mvn --batch-mode --no-transfer-progress \
-    -Dtest=PostgreSqlRepositoryIT \
-    -Dsurefire.reportsDirectory=/test-results/raw/junit/backend/postgresql \
-    test
+# Preserve the fully migrated upgrade fixture for the independent PostgreSQL
+# repository integration-test phase. The SQL and migration sequence above stay
+# the single source of truth for this database state.
+migration_section "PostgreSQL database constraints"
+mkdir -p "${TEST_RUN_DIRECTORY}/raw/fixtures"
+docker exec "${POSTGRES_CONTAINER}" pg_dump \
+  --username workflow \
+  --dbname workflow_upgrade \
+  --format=custom \
+  --no-owner \
+  --no-privileges \
+  >"${TEST_RUN_DIRECTORY}/raw/fixtures/postgresql-repository-it.dump"
+[[ -s "${TEST_RUN_DIRECTORY}/raw/fixtures/postgresql-repository-it.dump" ]] \
+  || fail "PostgreSQL repository fixture was not produced"
 
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$

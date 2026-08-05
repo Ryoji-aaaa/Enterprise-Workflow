@@ -102,7 +102,8 @@ make test SUITES=e2e
 `make test`はBackend、Frontend、Keycloak、E2Eを固定順で実行し、テスト件数と必須checkを
 分けた統一レポートを生成します。正常時は各処理の進捗と集計だけを表示し、生ログは
 `test-results/<run-id>/`へ保存します。複数suiteは`SUITES=backend,frontend`のように指定し、
-生ログを同時表示する場合は`VERBOSE=1`、失敗後も隔離環境を残す場合は`KEEP_TEST_ENV=1`を使います。
+生ログを同時表示する場合は`VERBOSE=1`、失敗後も隔離環境、volume、run固有image、一時envを
+残す場合は`KEEP_TEST_ENV=1`を使います。保持はローカル調査専用で、CIでは使用できません。
 詳細は[統括テスト実行仕様](docs/testing/test-execution.md)を参照してください。
 
 起動済みのローカル統合環境とアーキテクチャ境界を確認する場合は、テストコードを実行する

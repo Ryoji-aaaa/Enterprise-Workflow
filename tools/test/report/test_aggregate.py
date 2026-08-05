@@ -1,9 +1,12 @@
+import json
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from aggregate import aggregate_run, write_outputs
+import aggregate
+from aggregate import ResultError, aggregate_run, write_outputs
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -16,6 +19,11 @@ class AggregateTest(unittest.TestCase):
         target = Path(holder.name) / "run"
         shutil.copytree(FIXTURES / name, target)
         return target
+
+    def add_phase(self, run_dir: Path, name: str, content: dict) -> None:
+        phases = run_dir / "phases"
+        phases.mkdir(exist_ok=True)
+        (phases / name).write_text(json.dumps(content), encoding="utf-8")
 
     def test_all_pass_and_checks_are_not_tests(self):
         summary, _ = aggregate_run(self.fixture("all-pass"))
@@ -98,6 +106,153 @@ class AggregateTest(unittest.TestCase):
         summary, _ = aggregate_run(run_dir)
         self.assertEqual("ERROR", summary["overall"])
         self.assertIn("expected result file", summary["failures"][0]["message"])
+
+    def test_backend_junit_and_postgresql_it_are_combined(self):
+        run_dir = self.fixture("multiple-surefire")
+        postgresql = run_dir / "raw/junit/backend/postgresql"
+        postgresql.mkdir(parents=True)
+        (postgresql / "TEST-postgresql.xml").write_text(
+            '<?xml version="1.0"?><testsuite><testcase name="postgres one"/><testcase name="postgres two"/></testsuite>',
+            encoding="utf-8",
+        )
+        self.add_phase(run_dir, "001-backend-postgresql-it.json", {
+            "suite": "backend", "kind": "test", "name": "postgresql-it", "status": "passed"
+        })
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual(4, summary["suites"]["backend"]["passed"])
+
+    def test_postgresql_it_xml_missing_is_error(self):
+        run_dir = self.fixture("multiple-surefire")
+        self.add_phase(run_dir, "001-backend-postgresql-it.json", {
+            "suite": "backend", "kind": "test", "name": "postgresql-it", "status": "passed"
+        })
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual("ERROR", summary["suites"]["backend"]["status"])
+
+    def test_postgresql_it_malformed_xml_is_error(self):
+        run_dir = self.fixture("multiple-surefire")
+        postgresql = run_dir / "raw/junit/backend/postgresql"
+        postgresql.mkdir(parents=True)
+        (postgresql / "TEST-postgresql.xml").write_text("<testsuite>", encoding="utf-8")
+        self.add_phase(run_dir, "001-backend-postgresql-it.json", {
+            "suite": "backend", "kind": "test", "name": "postgresql-it", "status": "failed"
+        })
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual("ERROR", summary["suites"]["backend"]["status"])
+
+    def test_postgresql_it_assertion_failure_is_fail(self):
+        run_dir = self.fixture("multiple-surefire")
+        postgresql = run_dir / "raw/junit/backend/postgresql"
+        postgresql.mkdir(parents=True)
+        (postgresql / "TEST-postgresql.xml").write_text(
+            '<testsuite><testcase name="query"><failure message="bad query"/></testcase></testsuite>', encoding="utf-8"
+        )
+        self.add_phase(run_dir, "001-backend-postgresql-it.json", {
+            "suite": "backend", "kind": "test", "name": "postgresql-it", "status": "failed"
+        })
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual("FAIL", summary["suites"]["backend"]["status"])
+
+    def test_postgresql_it_runner_failure_without_failed_case_is_error(self):
+        run_dir = self.fixture("multiple-surefire")
+        postgresql = run_dir / "raw/junit/backend/postgresql"
+        postgresql.mkdir(parents=True)
+        (postgresql / "TEST-postgresql.xml").write_text(
+            '<testsuite><testcase name="query"/></testsuite>', encoding="utf-8"
+        )
+        self.add_phase(run_dir, "001-backend-postgresql-it.json", {
+            "suite": "backend", "kind": "test", "name": "postgresql-it", "status": "failed", "reason": "runner failed"
+        })
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual("ERROR", summary["suites"]["backend"]["status"])
+
+    def e2e_failure_run(self) -> Path:
+        run_dir = self.fixture("all-pass")
+        (run_dir / "metadata.json").write_text(
+            '{"run_id":"e2e-failure","selected_suites":["e2e"]}', encoding="utf-8"
+        )
+        (run_dir / "raw/junit/e2e/junit.xml").write_text(
+            '<testsuite><testcase name="reject outsider" classname="tests/e2e/specs/workflow.spec.ts">'
+            '<failure message="forbidden"/></testcase></testsuite>', encoding="utf-8"
+        )
+        self.add_phase(run_dir, "001-e2e-playwright.json", {
+            "suite": "e2e", "kind": "test", "name": "playwright", "status": "failed"
+        })
+        return run_dir
+
+    def test_playwright_json_enriches_location_attachments_and_retries(self):
+        run_dir = self.e2e_failure_run()
+        report_path = run_dir / "raw/e2e/report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps({"suites": [{
+            "file": "tests/e2e/specs/workflow.spec.ts",
+            "specs": [{"title": "reject outsider", "line": 842, "tests": [{"results": [
+                {"status": "failed", "duration": 12, "attachments": [
+                    {"path": "/test-results/diagnostics/e2e/results/case/trace.zip"},
+                    {"path": "/test-results/diagnostics/e2e/results/case/test-failed-1.png"},
+                    {"path": "/test-results/diagnostics/e2e/results/case/video.webm"},
+                    {"path": "/outside/secret.txt"},
+                ]},
+                {"status": "passed", "duration": 8, "attachments": []},
+            ]}]}],
+        }]}), encoding="utf-8")
+        summary, _ = aggregate_run(run_dir)
+        failure = next(item for item in summary["failures"] if item["kind"] == "test")
+        self.assertEqual("tests/e2e/specs/workflow.spec.ts", failure["file"])
+        self.assertEqual(842, failure["line"])
+        self.assertEqual(3, len(failure["attachments"]))
+        self.assertEqual(2, len(failure["retry_results"]))
+        self.assertEqual("logs/e2e/playwright.log", failure["log"])
+        self.assertEqual("diagnostics/e2e/", failure["diagnostics"])
+
+    def test_playwright_json_missing_is_error(self):
+        summary, _ = aggregate_run(self.e2e_failure_run())
+        self.assertEqual("ERROR", summary["suites"]["e2e"]["status"])
+
+    def test_playwright_json_malformed_is_error(self):
+        run_dir = self.e2e_failure_run()
+        report_path = run_dir / "raw/e2e/report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text("{", encoding="utf-8")
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual("ERROR", summary["suites"]["e2e"]["status"])
+
+    def test_duplicate_check_is_reporter_error(self):
+        run_dir = self.fixture("multiple-surefire")
+        checks = run_dir / "raw/checks/checks.ndjson"
+        checks.write_text(checks.read_text(encoding="utf-8") * 2, encoding="utf-8")
+        with self.assertRaises(ResultError):
+            aggregate_run(run_dir)
+
+    def test_group_phase_is_not_counted_as_check(self):
+        run_dir = self.fixture("multiple-surefire")
+        self.add_phase(run_dir, "001-backend-group.json", {
+            "suite": "backend", "kind": "group", "name": "migration", "status": "passed"
+        })
+        summary, _ = aggregate_run(run_dir)
+        self.assertEqual(1, summary["checks"]["passed"])
+
+    def test_failed_group_is_not_duplicated_with_failed_child_check(self):
+        run_dir = self.fixture("multiple-surefire")
+        self.add_phase(run_dir, "001-backend-group.json", {
+            "suite": "backend", "kind": "group", "name": "migration", "status": "failed"
+        })
+        (run_dir / "raw/checks/checks.ndjson").write_text(
+            '{"suite":"backend","kind":"check","name":"migration child","status":"failed"}\n', encoding="utf-8"
+        )
+        summary, _ = aggregate_run(run_dir)
+        names = [failure["name"] for failure in summary["failures"]]
+        self.assertEqual(["migration child"], names)
+
+    def test_atomic_outputs_preserve_previous_summary_on_failure(self):
+        run_dir = self.fixture("all-pass")
+        for name in ("summary.json", "summary.md", "merged-junit.xml"):
+            (run_dir / name).write_text(f"old {name}", encoding="utf-8")
+        with mock.patch.object(aggregate, "write_merged_junit", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                write_outputs(run_dir)
+        for name in ("summary.json", "summary.md", "merged-junit.xml"):
+            self.assertEqual(f"old {name}", (run_dir / name).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

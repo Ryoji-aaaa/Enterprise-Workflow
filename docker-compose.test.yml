@@ -40,7 +40,7 @@ services:
       - public-network
 
   test-report:
-    image: ${TEST_REPORT_IMAGE:-workflow-test-report:manual}
+    image: ${TEST_REPORT_IMAGE:-workflow-test-report:local}
     build:
       context: ./tools/test/report
       args:
@@ -51,6 +51,7 @@ services:
     network_mode: none
 
   keycloak-init:
+    image: ${TEST_KEYCLOAK_INIT_IMAGE:-workflow-keycloak-init-test:manual}
     user: "${TEST_UID:-1000}:${TEST_GID:-1000}"
     volumes:
       - ${TEST_RUN_DIRECTORY:-./test-results/manual}:/test-results

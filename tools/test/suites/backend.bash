@@ -21,7 +21,7 @@ run_backend_suite() {
           -Dsurefire.reportsDirectory=/test-results/raw/junit/backend/surefire \
           test
 
-    run_phase backend check postgres-migrations CHECK \
+    run_phase backend group postgres-migrations CHECK \
       "Backend / PostgreSQL migration contract" failed \
       "logs/backend/postgres-migrations.log" \
       env \
@@ -32,9 +32,35 @@ run_backend_suite() {
         MIGRATION_LOG_RELATIVE="logs/backend/postgres-migrations.log" \
         POSTGRES_VERSION="${POSTGRES_VERSION:-18.4}" \
         bash "${TEST_TOOL_DIRECTORY}/checks/postgres-migrations.sh"
+
+    if [[ -s "${TEST_RUN_DIRECTORY}/raw/fixtures/postgresql-repository-it.dump" ]]; then
+      run_phase backend test postgresql-it TEST \
+        "Backend / PostgreSQL repository IT" failed \
+        "logs/backend/postgresql-it.log" \
+        env \
+          BACKEND_TEST_IMAGE="${BACKEND_TEST_IMAGE}" \
+          TEST_UID="${TEST_UID}" \
+          TEST_GID="${TEST_GID}" \
+          TEST_RUN_DIRECTORY="${TEST_RUN_DIRECTORY}" \
+          RUN_ID="${RUN_ID}" \
+          POSTGRES_VERSION="${POSTGRES_VERSION:-18.4}" \
+          bash "${TEST_TOOL_DIRECTORY}/runners/postgres-repository-it.sh"
+    else
+      mark_suite_error backend postgresql-it "PostgreSQL repository fixture was not produced"
+    fi
   else
     mark_suite_error backend junit "Backend test image could not be built"
-    record_skipped_check backend postgres-migrations "Backend test image could not be built"
+    local migration_check
+    for migration_check in \
+      "PostgreSQL migration test environment" \
+      "Migration preflight failure handling" \
+      "V001 upgrade and expand-contract migration" \
+      "Contract migration reconciliation safeguards" \
+      "PostgreSQL database constraints" \
+      "Fresh migration and startup idempotency"; do
+      record_skipped_check backend "${migration_check}" "Backend test image could not be built"
+    done
+    mark_suite_error backend postgresql-it "Backend test image could not be built"
   fi
 
   print_suite_result backend
