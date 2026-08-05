@@ -285,12 +285,14 @@ class ExpenseApplicationApiIntegrationTest {
         AppUser projectHead = user("project.head@sdcj.co.jp", "プロジェクト長", "project-head", now);
         assign(projectMember, project, memberPosition);
         assign(projectHead, project, sectionPosition);
+        assignRole(projectHead, approverRole, now);
 
         assertRoute(projectMember, "顧客プロジェクト", "経理課");
         assertRoute(projectHead, "開発部", "経理課");
 
         AppUser secondHead = user("second.head@sdcj.co.jp", "副課長", "second-head", now);
         assign(secondHead, section, sectionPosition);
+        assignRole(secondHead, approverRole, now);
         assertThat(routeResolver.resolve(member, now).steps().getFirst().candidates())
                 .extracting(candidate -> candidate.user().getId())
                 .containsExactlyInAnyOrder(sectionHead.getId(), secondHead.getId());
@@ -298,6 +300,24 @@ class ExpenseApplicationApiIntegrationTest {
         assignmentRepository.deleteAll(assignmentRepository
                 .findAllByUserIdOrderByValidFromDesc(departmentHead.getId()));
         assertRoute(sectionHead, "第一事業部", "経理課");
+    }
+
+    @Test
+    void 承認Permissionのない所属候補を除外し上位候補を探索する() {
+        revokeRole(departmentHead, approverRole);
+
+        assertRoute(sectionHead, "第一事業部", "経理課");
+
+        revokeRole(divisionHead, approverRole);
+        assertRouteError(sectionHead, "DEPARTMENT_MANAGER_NOT_FOUND");
+    }
+
+    @Test
+    void 経理所属者が承認Permissionを持たない場合は業務エラーにする() {
+        revokeRole(accountingHead, approverRole);
+        revokeRole(accountingMember, approverRole);
+
+        assertRouteError(member, "ACCOUNTING_APPROVER_NOT_FOUND");
     }
 
     @Test
@@ -576,6 +596,14 @@ class ExpenseApplicationApiIntegrationTest {
         roleAssignmentRepository.save(new UserRoleAssignment(
                 user.getId(), role.getId(), null, now.minus(1, ChronoUnit.DAYS), null,
                 "test", SYSTEM, SYSTEM));
+    }
+
+    private void revokeRole(AppUser user, Role role) {
+        roleAssignmentRepository.deleteAll(roleAssignmentRepository
+                .findAllByUserIdOrderByValidFromDesc(user.getId()).stream()
+                .filter(assignment -> assignment.getRoleId().equals(role.getId()))
+                .toList());
+        roleAssignmentRepository.flush();
     }
 
     private JwtRequestPostProcessor validJwt(AppUser user, String subject) {

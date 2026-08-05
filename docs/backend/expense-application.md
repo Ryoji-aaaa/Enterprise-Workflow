@@ -44,7 +44,9 @@ DRAFT -> PENDING_APPROVAL -> APPROVED
 
 親探索は申請者の事業部を越えない。経理課は同じ法人の
 `organization_units.unit_code = 'ACCOUNTING_SECTION'`で特定し、有効な所属ユーザー全員を
-候補とする。全Stepで申請者本人を候補から除外し、候補が0人、主所属・事業部・経理課がない
+候補とする。ただし、全Stepで申請時点に有効な
+`EXPENSE_APPLICATION_APPROVE`を持たないユーザーと申請者本人を候補から除外する。
+候補が0人、主所属・事業部・経理課がない
 場合は422で申請全体をロールバックする。
 
 ## スナップショットと認可

@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -25,6 +26,7 @@ import jp.co.sdcj.workflow.domain.Position;
 import jp.co.sdcj.workflow.domain.UserOrganizationAssignment;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
+import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.PositionRepository;
 import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
 import jp.co.sdcj.workflow.service.ResolvedApprovalRoute.ApplicantOrganizationSnapshot;
@@ -39,16 +41,19 @@ public class ExpenseApprovalRouteResolver {
     private final OrganizationUnitRepository unitRepository;
     private final PositionRepository positionRepository;
     private final AppUserRepository userRepository;
+    private final PermissionRepository permissionRepository;
 
     public ExpenseApprovalRouteResolver(
             UserOrganizationAssignmentRepository assignmentRepository,
             OrganizationUnitRepository unitRepository,
             PositionRepository positionRepository,
-            AppUserRepository userRepository) {
+            AppUserRepository userRepository,
+            PermissionRepository permissionRepository) {
         this.assignmentRepository = assignmentRepository;
         this.unitRepository = unitRepository;
         this.positionRepository = positionRepository;
         this.userRepository = userRepository;
+        this.permissionRepository = permissionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -73,18 +78,22 @@ public class ExpenseApprovalRouteResolver {
     public ResolvedApprovalRoute resolve(AppUser applicant, Instant at) {
         ApplicantOrganizationSnapshot organization = resolveOrganization(applicant, at);
         LocalDate date = at.atZone(ZoneOffset.UTC).toLocalDate();
+        Set<UUID> approverUserIds = Set.copyOf(
+                permissionRepository.findEffectiveUserIdsByPermissionCode(
+                        PermissionCodes.EXPENSE_APPLICATION_APPROVE, at));
         List<ResolvedApprovalStep> steps = new ArrayList<>();
         boolean applicantIsManager = organization.position() != null
                 && organization.position().getApprovalLevel() > 0;
 
         if (!applicantIsManager) {
-            steps.add(managerStep(organization.unit(), applicant.getId(), date, at));
+            steps.add(managerStep(
+                    organization.unit(), applicant.getId(), date, at, approverUserIds));
         } else if (organization.unit().getUnitType() != OrganizationUnitType.DIVISION) {
             OrganizationUnit search = parentOf(organization.unit());
             ResolvedApprovalStep managerStep = null;
             while (search != null) {
                 List<ResolvedApprovalCandidate> candidates = managerCandidates(
-                        search, applicant.getId(), date, at);
+                        search, applicant.getId(), date, at, approverUserIds);
                 if (!candidates.isEmpty()) {
                     managerStep = new ResolvedApprovalStep(
                             ExpenseApprovalStepType.DEPARTMENT_MANAGER, search, candidates);
@@ -108,7 +117,7 @@ public class ExpenseApprovalRouteResolver {
                 .orElseThrow(() -> businessError(
                         "ACCOUNTING_UNIT_NOT_FOUND", "経理課が登録されていません。"));
         List<ResolvedApprovalCandidate> accountingCandidates = activeCandidates(
-                accounting, applicant.getId(), date, at, false);
+                accounting, applicant.getId(), date, at, false, approverUserIds);
         if (accountingCandidates.isEmpty()) {
             throw businessError(
                     "ACCOUNTING_APPROVER_NOT_FOUND", "経理承認者が登録されていません。");
@@ -119,8 +128,10 @@ public class ExpenseApprovalRouteResolver {
     }
 
     private ResolvedApprovalStep managerStep(
-            OrganizationUnit unit, UUID applicantId, LocalDate date, Instant at) {
-        List<ResolvedApprovalCandidate> candidates = managerCandidates(unit, applicantId, date, at);
+            OrganizationUnit unit, UUID applicantId, LocalDate date, Instant at,
+            Set<UUID> approverUserIds) {
+        List<ResolvedApprovalCandidate> candidates = managerCandidates(
+                unit, applicantId, date, at, approverUserIds);
         if (candidates.isEmpty()) {
             throw businessError(
                     "DEPARTMENT_MANAGER_NOT_FOUND", "所属部門の承認者が登録されていません。");
@@ -130,13 +141,14 @@ public class ExpenseApprovalRouteResolver {
     }
 
     private List<ResolvedApprovalCandidate> managerCandidates(
-            OrganizationUnit unit, UUID applicantId, LocalDate date, Instant at) {
-        return activeCandidates(unit, applicantId, date, at, true);
+            OrganizationUnit unit, UUID applicantId, LocalDate date, Instant at,
+            Set<UUID> approverUserIds) {
+        return activeCandidates(unit, applicantId, date, at, true, approverUserIds);
     }
 
     private List<ResolvedApprovalCandidate> activeCandidates(
             OrganizationUnit unit, UUID applicantId, LocalDate date, Instant at,
-            boolean managerOnly) {
+            boolean managerOnly, Set<UUID> approverUserIds) {
         Map<UUID, ResolvedApprovalCandidate> candidates = new LinkedHashMap<>();
         List<UserOrganizationAssignment> assignments = assignmentRepository
                 .findCurrentByOrganizationUnitId(unit.getId(), date);
@@ -148,7 +160,8 @@ public class ExpenseApprovalRouteResolver {
                         .filter(Objects::nonNull).distinct().toList()).stream()
                 .collect(Collectors.toMap(Position::getId, Function.identity()));
         for (UserOrganizationAssignment assignment : assignments) {
-            if (assignment.getUserId().equals(applicantId)) {
+            if (assignment.getUserId().equals(applicantId)
+                    || !approverUserIds.contains(assignment.getUserId())) {
                 continue;
             }
             AppUser user = users.get(assignment.getUserId());
