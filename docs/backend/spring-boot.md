@@ -94,11 +94,12 @@ APIが403を返して外側のトランザクションが終了しても記録�
 
 ## Mailpit通知
 
-未登録ユーザーの初回アクセス時、DB上の有効な管理対象ユーザーへSMTP通知する。
-通知には表示名、email、subject、issuer、初回・最終日時、アクセス回数を含める。
+ローカル開発環境だけでTransactional OutboxからMailpitへ配送する。未登録利用申請、経費承認依頼、
+最終承認、差戻しを対象とし、同一業務transactionで通知要求を保存する。利用申請はqueue時刻から
+既定15分を抑制し、SMTP失敗は有限回再試行する。詳細は
+[ローカルメール通知Outbox](notification-outbox.md)を参照する。
 
-同じ利用者への通知は既定で15分抑制する。SMTP失敗時もアクセス要求を保存し、
-警告ログを残してHTTP 403を維持する。
+既定とAzureは`disabled`で、SMTP、Dispatcher、Outbox行、通知履歴APIを登録しない。
 
 ## テスト
 

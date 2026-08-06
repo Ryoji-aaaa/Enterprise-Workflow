@@ -19,6 +19,7 @@ public final class PermissionCodes {
     public static final String EXPENSE_APPLICATION_CREATE = "EXPENSE_APPLICATION_CREATE";
     public static final String EXPENSE_APPLICATION_READ_OWN = "EXPENSE_APPLICATION_READ_OWN";
     public static final String EXPENSE_APPLICATION_APPROVE = "EXPENSE_APPLICATION_APPROVE";
+    public static final String MAIL_NOTIFICATION_READ = "MAIL_NOTIFICATION_READ";
 
     private PermissionCodes() {
     }

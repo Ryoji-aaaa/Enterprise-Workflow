@@ -21,7 +21,10 @@ backend/src/main/resources/db/migration/
 ├── V007__contract_legacy_app_user_columns.sql
 ├── V008__add_employment_type_project_and_organization_chart_roles.sql
 ├── V009__create_expense_application_schema.sql
-└── V010__create_expense_application_attachment_schema.sql
+├── V010__create_expense_application_attachment_schema.sql
+├── V011__create_notification_outbox.sql
+├── V012__backfill_access_request_notification_queue.sql
+└── V013__add_mail_notification_read_permission.sql
 ```
 
 V001は従来の`app_users`と`access_requests`、V002からV005は新しい管理基盤、V006は
@@ -29,13 +32,16 @@ SYSTEM・マスタseedと既存データ移行、V007は切替後の旧列削除
 組織図権限と関連ロールを扱う。V009は経費申請・承認テーブル、申請番号sequence、
 経費Permissionと既存ロールへの割当を追加する。V010は経費証憑メタデータと論理削除情報を持つ
 `expense_application_attachments`を追加する。ファイル本体はBlob Storageにあり、migrationへ含めない。
+V011は通知Outbox、V012は利用申請通知のqueue時刻backfill、V013はローカル通知履歴の
+`MAIL_NOTIFICATION_READ` Permissionと`SYSTEM_ADMIN`への割当を追加する。
 適用履歴、ファイル名、checksum、成功状態はPostgreSQLの
 `flyway_schema_history`に記録される。
 
 stagingではV001からV008までの適用成功を確認済みである。V007によって旧ユーザー列を
 contract済みであり、GitHub Environment `staging`の
 `CONTRACT_LEGACY_USER_COLUMNS`は以後`true`を維持する。通常Backendは最新migrationまでを
-適用し、V009の経費申請schema・PermissionとV010の添付metadata schemaを利用できる状態を前提とする。
+適用し、V009の経費申請schema・Permission、V010の添付metadata schema、V011からV013の
+通知Outbox・queue backfill・履歴Permissionを利用できる状態を前提とする。
 
 V003の期間重複排他制約は`btree_gist`を使用する。Azure Database for PostgreSQL
 Flexible ServerではTerraformが`azure.extensions=BTREE_GIST`を設定し、backendの
@@ -73,8 +79,8 @@ make verify
 
 `make test SUITES=backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
 
-- 空DBへのV001からV010とHibernate schema validation
-- V001既存ユーザーからV010までの実データ移行
+- 空DBへのV001からV013とHibernate schema validation
+- V001既存ユーザーからV013までの実データ移行
 - email正規化の事前検査、排他制約、追記専用trigger
 - 二回目起動時のFlyway・基盤seedの冪等性
 
@@ -122,7 +128,7 @@ make restart
 make verify
 ```
 
-最初の検証ではV001からV010が1回ずつ成功していること、再起動後も履歴行とseedが
+最初の検証ではV001からV013が1回ずつ成功していること、再起動後も履歴行とseedが
 重複しないことを確認する。
 
 ## マイグレーション失敗時の確認方法

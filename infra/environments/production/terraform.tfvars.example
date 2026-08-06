@@ -12,7 +12,6 @@ key_vault_name                     = "kv-ew-production-unique"
 postgres_server_name               = "psql-enterprise-workflow-production-unique"
 attachment_storage_account_name    = "stewfproductionunique"
 allowed_email_domain               = "sdcj.co.jp"
-mail_from                          = "no-reply@example.invalid"
 provision_workloads                = false
 contract_legacy_user_columns       = false
 vnet_address_space                 = ["10.50.0.0/16"]

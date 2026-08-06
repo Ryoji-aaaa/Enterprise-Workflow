@@ -66,7 +66,7 @@ E2EではEntra IDの実tenantへ常時依存させるか、CI専用tenantとテ�
 
 - `.env.example`の全`replace-with-*`と`password`を十分な強度の値へ変更する
 - `.env`配布ではなく、権限管理・rotation・監査が可能なsecret managerを使用する
-- IdP、DB、SMTPの資格情報を用途別に分離し、最小権限にする
+- IdPとDBの資格情報を用途別に分離し、最小権限にする
 - build argument、image layer、Git、ログへsecretやtokenを含めない
 - 漏えい時にBetter Auth Cookieを全失効できるrotation手順を用意する
 
@@ -82,7 +82,7 @@ E2EではEntra IDの実tenantへ常時依存させるか、CI専用tenantとテ�
 ### アプリケーションとデータ
 
 - `workflow.seed.enabled=false`とし、開発ユーザー・サンプルpasswordを作成しない
-- Mailpitを本番構成から除外し、認証済みSMTP/TLSと実管理者宛先を設定する
+- Mailpit、SMTP、メール履歴APIを本番構成から除外し、通知delivery modeを`disabled`に固定する
 - PostgreSQLとbackendを引き続き非公開networkに置く
 - database migrationを専用権限で管理し、runtime userへDDL権限を与えない
 - ユーザー基盤移行は`CONTRACT_LEGACY_USER_COLUMNS=false`でV006までdeployし、新revisionの
@@ -90,7 +90,7 @@ E2EではEntra IDの実tenantへ常時依存させるか、CI専用tenantとテ�
 - V007適用前に旧revisionを停止し、管理更新と初回loginをwrite drainする。Flyway migratorは
   1 instanceに限定し、lock競合でrollbackした場合はdrainを確認してcontract deployを再試行する
 - backup、restore試験、暗号化、保持期間、個人情報削除手順を定める
-- 未登録通知に含める個人情報を最小化し、監査ログの閲覧権限を限定する
+- 将来メール配送を導入する場合は個人情報、認証済み配送、閲覧権限、監査、保持期間を再設計する
 
 ### 運用
 

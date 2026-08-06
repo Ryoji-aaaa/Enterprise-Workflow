@@ -123,8 +123,8 @@ JWT issuer + subject
 一時的に共存した場合も、既存外部IDの解決経路で同じ有効化・履歴・監査処理を実行する。
 
 `SUSPENDED`、`DISABLED`、`RETIRED`または有効期間外のユーザーは、IdPで認証済みでも
-業務APIを利用できない。未登録利用者については、既存の`access_requests`の冪等記録と
-Mailpit通知を維持する。
+業務APIを利用できない。未登録利用者については、既存の`access_requests`の冪等記録と、
+ローカル開発時だけのOutbox・Mailpit通知を維持する。
 
 ## 権限判定との関係
 

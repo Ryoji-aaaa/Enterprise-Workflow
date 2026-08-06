@@ -121,9 +121,6 @@ module "backend" {
     KEYCLOAK_INTERNAL_ISSUER            = local.keycloak_issuer
     KEYCLOAK_CLIENT_ID                  = var.keycloak_client_id
     ALLOWED_EMAIL_DOMAIN                = var.allowed_email_domain
-    MAIL_HOST                           = var.mail_host
-    MAIL_PORT                           = tostring(var.mail_port)
-    MAIL_FROM                           = var.mail_from
     WORKFLOW_DEPLOYMENT_ENVIRONMENT     = var.environment
     WORKFLOW_SEED_ENABLED               = "false"
     AZURE_STORAGE_BLOB_ENDPOINT         = module.attachment_storage.primary_blob_endpoint

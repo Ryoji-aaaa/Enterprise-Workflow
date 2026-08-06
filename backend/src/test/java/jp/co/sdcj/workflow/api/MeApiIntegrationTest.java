@@ -39,6 +39,8 @@ import jp.co.sdcj.workflow.domain.AssignmentType;
 import jp.co.sdcj.workflow.domain.Organization;
 import jp.co.sdcj.workflow.domain.OrganizationUnit;
 import jp.co.sdcj.workflow.domain.OrganizationUnitType;
+import jp.co.sdcj.workflow.domain.NotificationStatus;
+import jp.co.sdcj.workflow.domain.NotificationType;
 import jp.co.sdcj.workflow.domain.Permission;
 import jp.co.sdcj.workflow.domain.Role;
 import jp.co.sdcj.workflow.domain.RolePermission;
@@ -52,6 +54,7 @@ import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.AuditLogRepository;
 import jp.co.sdcj.workflow.repository.OrganizationRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
+import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.RolePermissionRepository;
 import jp.co.sdcj.workflow.repository.RoleRepository;
@@ -60,6 +63,7 @@ import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
 import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
 import jp.co.sdcj.workflow.service.PermissionCodes;
 import jp.co.sdcj.workflow.service.RoleCodes;
+import jp.co.sdcj.workflow.service.notification.MailpitNotificationDispatcher;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -111,6 +115,12 @@ class MeApiIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private NotificationOutboxRepository notificationOutboxRepository;
+
+    @Autowired
+    private MailpitNotificationDispatcher notificationDispatcher;
 
     @MockitoBean
     private JavaMailSender mailSender;
@@ -296,7 +306,8 @@ class MeApiIntegrationTest {
                 .andExpect(jsonPath("$.employmentType").value("REGULAR_EMPLOYEE"))
                 .andExpect(jsonPath("$.department.name").value("開発部"))
                 .andExpect(jsonPath("$.roles", contains(RoleCodes.APPLICATION_USER)))
-                .andExpect(jsonPath("$.permissions", contains(PermissionCodes.WORKFLOW_SUBMIT)));
+                .andExpect(jsonPath("$.permissions", contains(PermissionCodes.WORKFLOW_SUBMIT)))
+                .andExpect(jsonPath("$.features.mailNotificationHistory").value(true));
     }
 
     @Test
@@ -409,7 +420,27 @@ class MeApiIntegrationTest {
 
         AccessRequest request = accessRequestRepository.findAll().getFirst();
         org.assertj.core.api.Assertions.assertThat(request.getRequestCount()).isEqualTo(1);
-        org.assertj.core.api.Assertions.assertThat(request.getNotificationSentAt()).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(request.getNotificationQueuedAt()).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(request.getNotificationSentAt()).isNull();
+        org.assertj.core.api.Assertions.assertThat(notificationOutboxRepository.findAll())
+                .singleElement()
+                .satisfies(notification -> {
+                    org.assertj.core.api.Assertions.assertThat(notification.getNotificationType())
+                            .isEqualTo(NotificationType.ACCESS_REQUEST);
+                    org.assertj.core.api.Assertions.assertThat(notification.getRecipientEmailSnapshot())
+                            .isEqualTo(ADMIN_EMAIL);
+                    org.assertj.core.api.Assertions.assertThat(notification.getStatus())
+                            .isEqualTo(NotificationStatus.PENDING);
+                });
+
+        notificationDispatcher.dispatchOnce();
+
+        org.assertj.core.api.Assertions.assertThat(accessRequestRepository
+                .findById(request.getId()).orElseThrow().getNotificationSentAt()).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(notificationOutboxRepository.findAll())
+                .singleElement()
+                .extracting("status")
+                .isEqualTo(NotificationStatus.SENT);
         verify(mailSender).send(any(SimpleMailMessage.class));
     }
 
@@ -423,7 +454,9 @@ class MeApiIntegrationTest {
         org.assertj.core.api.Assertions.assertThat(accessRequestRepository.count()).isEqualTo(1);
         AccessRequest request = accessRequestRepository.findAll().getFirst();
         org.assertj.core.api.Assertions.assertThat(request.getRequestCount()).isEqualTo(2);
-        verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
+        org.assertj.core.api.Assertions.assertThat(request.getNotificationQueuedAt()).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(notificationOutboxRepository.count()).isEqualTo(1);
+        verify(mailSender, times(0)).send(any(SimpleMailMessage.class));
     }
 
     @Test
@@ -438,7 +471,13 @@ class MeApiIntegrationTest {
 
         AccessRequest request = accessRequestRepository.findAll().getFirst();
         org.assertj.core.api.Assertions.assertThat(request.getRequestCount()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(request.getNotificationQueuedAt()).isNotNull();
         org.assertj.core.api.Assertions.assertThat(request.getNotificationSentAt()).isNull();
+        notificationDispatcher.dispatchOnce();
+        org.assertj.core.api.Assertions.assertThat(notificationOutboxRepository.findAll())
+                .singleElement()
+                .extracting("status")
+                .isEqualTo(NotificationStatus.RETRY_WAIT);
     }
 
     private static JwtRequestPostProcessor validJwt(String subject, String email) {
@@ -477,6 +516,7 @@ class MeApiIntegrationTest {
 
     private void clearDatabase() {
         for (String table : List.of(
+                "notification_outbox",
                 "role_permissions",
                 "user_role_change_histories",
                 "user_role_assignments",

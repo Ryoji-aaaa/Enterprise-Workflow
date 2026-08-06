@@ -43,6 +43,16 @@ test("経費申請と承認に必要なパスだけを許可する", () => {
   assert.equal(isAllowedBackendProxyRequest("DELETE", `/expense-applications/${USER_ID}`), false);
 });
 
+test("メール通知履歴は一覧とUUID詳細のGETだけを許可する", () => {
+  const collection = "/admin/mail-notifications";
+  assert.equal(isAllowedBackendProxyRequest("GET", collection), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${collection}/${USER_ID}`), true);
+  assert.equal(isAllowedBackendProxyRequest("POST", collection), false);
+  assert.equal(isAllowedBackendProxyRequest("PATCH", `${collection}/${USER_ID}`), false);
+  assert.equal(isAllowedBackendProxyRequest("DELETE", `${collection}/${USER_ID}`), false);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${collection}/not-a-uuid`), false);
+});
+
 test("添付APIの正しいメソッドとUUIDだけを許可する", () => {
   const collection = `/expense-applications/${USER_ID}/attachments`;
   const item = `${collection}/${ASSIGNMENT_ID}`;

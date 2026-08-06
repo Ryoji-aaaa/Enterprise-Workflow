@@ -41,6 +41,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -57,6 +58,8 @@ import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.AssignmentType;
 import jp.co.sdcj.workflow.domain.ExpenseApprovalStepType;
 import jp.co.sdcj.workflow.domain.ExpenseApprovalCandidate;
+import jp.co.sdcj.workflow.domain.NotificationType;
+import jp.co.sdcj.workflow.domain.NotificationOutbox;
 import jp.co.sdcj.workflow.domain.Organization;
 import jp.co.sdcj.workflow.domain.OrganizationUnit;
 import jp.co.sdcj.workflow.domain.OrganizationUnitType;
@@ -77,6 +80,7 @@ import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
 import jp.co.sdcj.workflow.repository.OrganizationRepository;
+import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.PositionRepository;
@@ -116,6 +120,7 @@ class ExpenseApplicationApiIntegrationTest {
     @Autowired ExpenseApprovalRunRepository runRepository;
     @Autowired ExpenseApprovalStepRepository stepRepository;
     @Autowired ExpenseApprovalCandidateRepository candidateRepository;
+    @MockitoSpyBean NotificationOutboxRepository notificationOutboxRepository;
     @Autowired AuditLogRepository auditLogRepository;
     @Autowired ExpenseApprovalRouteResolver routeResolver;
     @MockitoBean JavaMailSender mailSender;
@@ -206,6 +211,122 @@ class ExpenseApplicationApiIntegrationTest {
     void tearDown() {
         clearDatabase();
         reset(attachmentRepository);
+        reset(notificationOutboxRepository);
+    }
+
+    @Test
+    void Outbox保存失敗時は申請と承認経路もrollbackする() throws Exception {
+        String applicationId = createDraft(member, "member", "Outbox rollbackテスト");
+        doThrow(new DataIntegrityViolationException("test outbox failure"))
+                .when(notificationOutboxRepository)
+                .save(any(NotificationOutbox.class));
+
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isConflict());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from expense_applications where id = ?",
+                String.class,
+                UUID.fromString(applicationId)))
+                .isEqualTo("DRAFT");
+        assertThat(runRepository.countByExpenseApplicationId(UUID.fromString(applicationId)))
+                .isZero();
+        assertThat(notificationOutboxRepository.count()).isZero();
+    }
+
+    @Test
+    void 申請時は現在Stepだけ承認後は次Stepだけ最終承認時は申請者をOutbox登録する() throws Exception {
+        String applicationId = createAndSubmit(member, "member");
+        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                UUID.fromString(applicationId)).orElseThrow();
+        var steps = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
+
+        assertThat(notificationOutboxRepository.findAll())
+                .singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.getNotificationType())
+                            .isEqualTo(NotificationType.EXPENSE_APPROVAL_REQUIRED);
+                    assertThat(notification.getApprovalStepId()).isEqualTo(steps.getFirst().getId());
+                    assertThat(notification.getRecipientUserId()).isEqualTo(sectionHead.getId());
+                    assertThat(notification.getRecipientEmailSnapshot()).isEqualTo(sectionHead.getEmail());
+                });
+        assertThat(notificationOutboxRepository.findAll())
+                .noneMatch(notification -> notification.getApprovalStepId().equals(steps.get(1).getId()));
+
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.getFirst().getId())
+                        .with(validJwt(sectionHead, "section-head"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk());
+
+        assertThat(notificationOutboxRepository.findAll().stream()
+                .filter(notification -> steps.get(1).getId().equals(notification.getApprovalStepId()))
+                .toList())
+                .hasSize(2)
+                .extracting("recipientUserId")
+                .containsExactlyInAnyOrder(accountingHead.getId(), accountingMember.getId());
+
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.get(1).getId())
+                        .with(validJwt(accountingMember, "accounting-member"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk());
+
+        assertThat(notificationOutboxRepository.findAll())
+                .filteredOn(notification ->
+                        notification.getNotificationType() == NotificationType.EXPENSE_APPROVED)
+                .singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.getRecipientUserId()).isEqualTo(member.getId());
+                    assertThat(notification.getApprovalRunId()).isEqualTo(run.getId());
+                });
+    }
+
+    @Test
+    void 承認候補者ごとに個別Outboxを作り同じStepの重複を抑止する() throws Exception {
+        Instant now = Instant.now();
+        AppUser secondHead = user("notification.head@sdcj.co.jp", "通知副課長", "notification-head", now);
+        assign(secondHead, section, sectionPosition);
+        assignRole(secondHead, approverRole, now);
+
+        String applicationId = createAndSubmit(member, "member");
+        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                UUID.fromString(applicationId)).orElseThrow();
+        UUID firstStepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
+                .getFirst().getId();
+
+        assertThat(notificationOutboxRepository.findAll())
+                .hasSize(2)
+                .allMatch(notification -> firstStepId.equals(notification.getApprovalStepId()))
+                .extracting("recipientUserId")
+                .containsExactlyInAnyOrder(sectionHead.getId(), secondHead.getId());
+        assertThat(notificationOutboxRepository.findAll())
+                .extracting("deduplicationKey")
+                .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void 差戻しは同じRunの申請者通知をOutbox登録する() throws Exception {
+        String applicationId = createAndSubmit(member, "member");
+        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                UUID.fromString(applicationId)).orElseThrow();
+        UUID firstStepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
+                .getFirst().getId();
+
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", firstStepId)
+                        .with(validJwt(sectionHead, "section-head"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"comment\":\"申請内容を修正してください\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(notificationOutboxRepository.findAll())
+                .filteredOn(notification ->
+                        notification.getNotificationType() == NotificationType.EXPENSE_RETURNED)
+                .singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.getRecipientUserId()).isEqualTo(member.getId());
+                    assertThat(notification.getBodyText()).contains("申請内容を修正してください");
+                    assertThat(notification.getApprovalRunId()).isEqualTo(run.getId());
+                });
     }
 
     @Test
@@ -1000,6 +1121,7 @@ class ExpenseApplicationApiIntegrationTest {
 
     private void clearDatabase() {
         for (String table : List.of(
+                "notification_outbox",
                 "expense_application_attachments",
                 "expense_approval_candidates", "expense_approval_steps", "expense_approval_runs",
                 "expense_application_items", "expense_applications", "role_permissions",

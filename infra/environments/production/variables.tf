@@ -33,15 +33,6 @@ variable "contract_legacy_user_columns" {
   default = false
 }
 variable "allowed_email_domain" { type = string }
-variable "mail_host" {
-  type    = string
-  default = "smtp-not-configured.invalid"
-}
-variable "mail_port" {
-  type    = number
-  default = 587
-}
-variable "mail_from" { type = string }
 variable "vnet_address_space" {
   type    = list(string)
   default = ["10.50.0.0/16"]

@@ -68,17 +68,17 @@ fi
 
 if notification_count="$(
   curl --fail --silent --show-error --get \
-    --data-urlencode "query=subject:\"${NOTIFICATION_SUBJECT}\"" \
+    --data-urlencode "query=subject:\"${NOTIFICATION_SUBJECT}\" to:\"${DEV_ADMIN_EMAIL}\"" \
     "http://localhost:${MAILPIT_UI_PORT:-8025}/api/v1/search" \
     | jq --exit-status '.messages_count'
 )"; then
   if [[ "${notification_count}" == "1" ]]; then
-    record_check "Pending user notification is sent once" passed
+    record_check "Pending user notification is sent once per recipient" passed
   else
-    record_check "Pending user notification is sent once" failed "Expected 1 notification, received ${notification_count}"
+    record_check "Pending user notification is sent once per recipient" failed "Expected 1 notification, received ${notification_count}"
   fi
 else
-  record_check "Pending user notification is sent once" error "Mailpit query failed"
+  record_check "Pending user notification is sent once per recipient" error "Mailpit query failed"
 fi
 
 if backend_status="$(

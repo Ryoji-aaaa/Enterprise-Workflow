@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canViewMailNotificationHistory,
   canViewOrganizationChart,
   requestBackendMe,
   type BackendFetch,
@@ -17,6 +18,7 @@ const currentUser: CurrentUser = {
   department: { name: "開発部" },
   roles: ["USER"],
   permissions: ["WORKFLOW_SUBMIT", "ORGANIZATION_CHART_READ"],
+  features: { mailNotificationHistory: true },
 };
 
 test("組織図メニューは権限を持つ正社員と準社員だけに許可する", () => {
@@ -29,6 +31,19 @@ test("組織図メニューは権限を持つ正社員と準社員だけに許�
     assert.equal(canViewOrganizationChart({ ...currentUser, employmentType }), false);
   }
   assert.equal(canViewOrganizationChart({ ...currentUser, permissions: [] }), false);
+});
+
+test("メール通知履歴はローカル機能フラグとDB権限が両方ある場合だけ許可する", () => {
+  const permitted = {
+    ...currentUser,
+    permissions: [...currentUser.permissions, "MAIL_NOTIFICATION_READ"],
+  };
+  assert.equal(canViewMailNotificationHistory(permitted), true);
+  assert.equal(canViewMailNotificationHistory(currentUser), false);
+  assert.equal(canViewMailNotificationHistory({
+    ...permitted,
+    features: { mailNotificationHistory: false },
+  }), false);
 });
 
 function response(status: number, body?: unknown): BackendFetch {

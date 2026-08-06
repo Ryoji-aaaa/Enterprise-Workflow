@@ -48,6 +48,9 @@ public class AccessRequest {
     @Column(name = "notification_sent_at")
     private Instant notificationSentAt;
 
+    @Column(name = "notification_queued_at")
+    private Instant notificationQueuedAt;
+
     @Column(name = "request_count", nullable = false)
     private long requestCount;
 
@@ -89,6 +92,10 @@ public class AccessRequest {
         notificationSentAt = sentAt;
     }
 
+    public void markNotificationQueued(Instant queuedAt) {
+        notificationQueuedAt = queuedAt;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -123,6 +130,10 @@ public class AccessRequest {
 
     public Instant getNotificationSentAt() {
         return notificationSentAt;
+    }
+
+    public Instant getNotificationQueuedAt() {
+        return notificationQueuedAt;
     }
 
     public long getRequestCount() {

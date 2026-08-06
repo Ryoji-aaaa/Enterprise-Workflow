@@ -17,6 +17,7 @@ import jp.co.sdcj.workflow.storage.AttachmentStorage;
         properties = {
             "workflow.manual-seed.enabled=true",
             "workflow.deployment-environment=staging",
+            "workflow.notification.delivery-mode=disabled",
             "workflow.seed.enabled=true",
             "workflow.seed.automatic=false"
         })

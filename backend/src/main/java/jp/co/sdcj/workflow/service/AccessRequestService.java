@@ -7,11 +7,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import jp.co.sdcj.workflow.config.NotificationProperties;
 import jp.co.sdcj.workflow.domain.AccessRequest;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.repository.AccessRequestRepository;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
+import jp.co.sdcj.workflow.service.notification.NotificationMessageFactory;
+import jp.co.sdcj.workflow.service.notification.NotificationPublisher;
 
 @Service
 public class AccessRequestService {
@@ -19,17 +22,23 @@ public class AccessRequestService {
     private final AccessRequestRepository accessRequestRepository;
     private final AppUserRepository appUserRepository;
     private final PermissionRepository permissionRepository;
-    private final AccessRequestNotificationService notificationService;
+    private final NotificationPublisher notificationPublisher;
+    private final NotificationMessageFactory messageFactory;
+    private final NotificationProperties notificationProperties;
 
     public AccessRequestService(
             AccessRequestRepository accessRequestRepository,
             AppUserRepository appUserRepository,
             PermissionRepository permissionRepository,
-            AccessRequestNotificationService notificationService) {
+            NotificationPublisher notificationPublisher,
+            NotificationMessageFactory messageFactory,
+            NotificationProperties notificationProperties) {
         this.accessRequestRepository = accessRequestRepository;
         this.appUserRepository = appUserRepository;
         this.permissionRepository = permissionRepository;
-        this.notificationService = notificationService;
+        this.notificationPublisher = notificationPublisher;
+        this.messageFactory = messageFactory;
+        this.notificationProperties = notificationProperties;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -49,15 +58,26 @@ public class AccessRequestService {
                         now));
 
         request = accessRequestRepository.save(request);
-        if (!notificationService.shouldNotify(request, now)) {
+        if (!notificationPublisher.isEnabled() || !shouldQueue(request, now)) {
             return;
         }
 
         List<AppUser> administrators = appUserRepository.findAllById(
                 permissionRepository.findEffectiveUserIdsByPermissionCode(
                         PermissionCodes.USER_READ, now));
-        if (notificationService.send(request, administrators)) {
-            request.markNotificationSent(now);
+        if (administrators.isEmpty()) {
+            return;
         }
+        messageFactory.accessRequests(
+                        request, administrators, now, notificationProperties.cooldown())
+                .forEach(notificationPublisher::publish);
+        request.markNotificationQueued(now);
+    }
+
+    private boolean shouldQueue(AccessRequest request, Instant now) {
+        return request.getNotificationQueuedAt() == null
+                || request.getNotificationQueuedAt()
+                        .plus(notificationProperties.cooldown())
+                        .isBefore(now);
     }
 }

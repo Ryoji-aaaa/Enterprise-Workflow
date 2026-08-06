@@ -145,3 +145,8 @@ Authorization header
 対象とし、ファイル内容、Blob URL、SAS、connection string、credential、SDKの生例外メッセージは
 記録しない。content取得は認可成功かつBlob streamを開けた時点を成功とし、Browserが最後まで受信した
 ことは監査の保証対象外とする。
+
+ローカルメール通知履歴では一覧検索を`MAIL_NOTIFICATION_HISTORY_READ`、詳細参照を
+`MAIL_NOTIFICATION_DETAIL_READ`として記録する。検索監査には指定された状態、種別、宛先、申請、
+期間、page、sizeだけを含め、メール本文と配送error messageは監査ログへ複製しない。権限拒否は
+既存の`AUTHORIZATION_DENIED`方針に従う。

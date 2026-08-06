@@ -32,7 +32,6 @@ jobs:
       TF_VAR_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
       TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
       TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
-      TF_VAR_mail_from: ${{ vars.MAIL_FROM }}
       TF_VAR_provision_workloads: ${{ vars.PROVISION_WORKLOADS || 'false' }}
       TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
 
@@ -71,8 +70,7 @@ jobs:
             TF_VAR_frontend_container_app_name \
             TF_VAR_backend_container_app_name \
             TF_VAR_keycloak_container_app_name TF_VAR_key_vault_name \
-            TF_VAR_postgres_server_name TF_VAR_allowed_email_domain \
-            TF_VAR_mail_from; do
+            TF_VAR_postgres_server_name TF_VAR_allowed_email_domain; do
             [[ -n "${!name}" ]] || ready=false
           done
           echo "ready=$ready" >> "$GITHUB_OUTPUT"

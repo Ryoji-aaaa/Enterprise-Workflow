@@ -10,6 +10,9 @@ const attachmentItemPath = new RegExp(
 const attachmentContentPath = new RegExp(
   `^/expense-applications/${UUID_PATTERN}/attachments/${UUID_PATTERN}/content$`,
 );
+const mailNotificationItemPath = new RegExp(
+  `^/admin/mail-notifications/${UUID_PATTERN}$`,
+);
 
 type Rule = {
   methods: ReadonlySet<string>;
@@ -22,6 +25,8 @@ const rules: readonly Rule[] = [
     methods: new Set(["GET"]),
     path: /^\/admin\/(?:audit-logs|organization-units|positions|roles)$/,
   },
+  { methods: new Set(["GET"]), path: /^\/admin\/mail-notifications$/ },
+  { methods: new Set(["GET"]), path: mailNotificationItemPath },
   {
     methods: new Set(["GET", "POST"]),
     path: attachmentCollectionPath,

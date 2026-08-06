@@ -85,8 +85,9 @@ DELETE /api/expense-applications/{id}/attachments/{attachmentId}
 ```
 
 一覧は`page`、`size`と任意の`status`を受け取る。他人の詳細は最新RunのCandidateに
-限って参照でき、過去RunだけのCandidateには開示しない。通知は最初・次の候補、最終承認・差戻し時の申請者へ送る。メール失敗は
-警告ログにして業務transactionをロールバックしない。
+限って参照でき、過去RunだけのCandidateには開示しない。通知は最初・次の候補、最終承認・差戻し時の
+申請者について、業務transaction内で宛先ごとのOutbox行を作る。ローカルDispatcherのメール失敗は
+再試行し、業務transactionをロールバックしない。Azureと`disabled` modeではOutbox行を作らない。
 
 添付APIはBlob URL、SAS、接続文字列、object名、SHA-256をBrowserへ返さない。content取得だけが
 BackendでBlob streamを開き、`Content-Type`、UTF-8の`Content-Disposition`、`Content-Length`、

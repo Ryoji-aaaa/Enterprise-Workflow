@@ -14,6 +14,9 @@ UI基盤の構成は[shadcn/ui・Tailwind CSS仕様](docs/frontend/shadcn-tailwi
 承認者画面は`/approvals`です。仕様は
 [Backend経費申請](docs/backend/expense-application.md)と
 [Frontend経費申請](docs/frontend/expense-application.md)を参照してください。
+ローカルメール配送と管理者向け履歴は
+[通知Outbox](docs/backend/notification-outbox.md)と
+[メール通知履歴画面](docs/frontend/mail-notification-history.md)を参照してください。
 
 ## アーキテクチャ概要
 
@@ -189,4 +192,5 @@ commit SHAを手動昇格します。`latest`は使用しません。
 初回構築は[Terraform手順](infra/README.md)、全体構成は
 [Azure architecture](docs/infrastructure/azure-architecture.md)、OIDCとGitHub設定は
 [GitHub Actions手順](docs/infrastructure/github-actions.md)を参照してください。
-AzureにはMailpitを配置せず、メールサービスは別途決定します。
+AzureにはMailpit、SMTP、メール配送、メール履歴API・画面を配置せず、通知delivery modeを
+`disabled`に固定します。外部メール配送は別途設計します。

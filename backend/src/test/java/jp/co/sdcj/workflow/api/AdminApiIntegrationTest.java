@@ -43,6 +43,8 @@ import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.Organization;
 import jp.co.sdcj.workflow.domain.OrganizationUnit;
 import jp.co.sdcj.workflow.domain.OrganizationUnitType;
+import jp.co.sdcj.workflow.domain.NotificationOutbox;
+import jp.co.sdcj.workflow.domain.NotificationType;
 import jp.co.sdcj.workflow.domain.Permission;
 import jp.co.sdcj.workflow.domain.Role;
 import jp.co.sdcj.workflow.domain.RolePermission;
@@ -54,6 +56,7 @@ import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.AuditLogRepository;
 import jp.co.sdcj.workflow.repository.OrganizationRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
+import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.RolePermissionRepository;
 import jp.co.sdcj.workflow.repository.RoleRepository;
@@ -121,6 +124,9 @@ class AdminApiIntegrationTest {
     private AuditLogService auditLogService;
 
     @Autowired
+    private NotificationOutboxRepository notificationOutboxRepository;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     private AppUser administrator;
@@ -160,8 +166,11 @@ class AdminApiIntegrationTest {
                 PermissionCodes.ORGANIZATION_READ,
                         savePermission(PermissionCodes.ORGANIZATION_READ),
                 PermissionCodes.AUDIT_LOG_READ, savePermission(PermissionCodes.AUDIT_LOG_READ));
+        Permission mailNotificationRead = savePermission(PermissionCodes.MAIL_NOTIFICATION_READ);
         permissions.values().forEach(permission -> rolePermissionRepository.save(
                 new RolePermission(administratorRole.getId(), permission.getId(), AUDIT_USER_ID)));
+        rolePermissionRepository.save(new RolePermission(
+                administratorRole.getId(), mailNotificationRead.getId(), AUDIT_USER_ID));
         rolePermissionRepository.save(new RolePermission(
                 organizationReaderRole.getId(),
                 permissions.get(PermissionCodes.ORGANIZATION_READ).getId(),
@@ -181,6 +190,66 @@ class AdminApiIntegrationTest {
                 LocalDate.now().minusYears(1),
                 null,
                 AUDIT_USER_ID));
+    }
+
+    @Test
+    void 管理者はメール通知を検索して本文を確認でき読取監査が残る() throws Exception {
+        Instant createdAt = Instant.parse("2026-08-06T01:00:00Z");
+        NotificationOutbox notification = new NotificationOutbox(
+                NotificationType.ACCESS_REQUEST,
+                "ACCESS_REQUEST",
+                UUID.randomUUID(),
+                null,
+                null,
+                null,
+                user.getId(),
+                user.getDisplayName(),
+                USER_EMAIL,
+                "利用申請を受け付けました",
+                "管理者が利用申請を確認します。",
+                "admin-api-mail-history",
+                createdAt);
+        notification.claim(createdAt.plusSeconds(1));
+        notification.markSent(createdAt.plusSeconds(2));
+        notificationOutboxRepository.save(notification);
+
+        mockMvc.perform(get("/api/admin/mail-notifications")
+                        .param("status", "SENT")
+                        .param("recipientEmail", "API.USER")
+                        .with(validJwt("api-admin-subject", ADMIN_EMAIL)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].notificationId")
+                        .value(notification.getId().toString()))
+                .andExpect(jsonPath("$.content[0].recipientEmail").value(USER_EMAIL))
+                .andExpect(jsonPath("$.content[0].bodyText").doesNotExist());
+
+        mockMvc.perform(get("/api/admin/mail-notifications/{notificationId}", notification.getId())
+                        .with(validJwt("api-admin-subject", ADMIN_EMAIL)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subject").value("利用申請を受け付けました"))
+                .andExpect(jsonPath("$.bodyText").value("管理者が利用申請を確認します。"));
+
+        org.assertj.core.api.Assertions.assertThat(auditLogRepository.findAll(
+                        org.springframework.data.domain.PageRequest.of(0, 50)).getContent())
+                .extracting(jp.co.sdcj.workflow.domain.AuditLog::getActionType)
+                .contains("MAIL_NOTIFICATION_HISTORY_READ", "MAIL_NOTIFICATION_DETAIL_READ");
+    }
+
+    @Test
+    void メール通知履歴は未認証と権限なしを拒否し不明IDは404になる() throws Exception {
+        mockMvc.perform(get("/api/admin/mail-notifications"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/admin/mail-notifications")
+                        .with(validJwt("api-user-subject", USER_EMAIL)))
+                .andExpect(status().isForbidden());
+        assertThatDeniedAuditWasRecorded(PermissionCodes.MAIL_NOTIFICATION_READ);
+
+        mockMvc.perform(get("/api/admin/mail-notifications/{notificationId}", UUID.randomUUID())
+                        .with(validJwt("api-admin-subject", ADMIN_EMAIL)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MAIL_NOTIFICATION_NOT_FOUND"));
     }
 
     @Test
@@ -721,6 +790,7 @@ class AdminApiIntegrationTest {
 
     private void clearDatabase() {
         for (String table : List.of(
+                "notification_outbox",
                 "role_permissions",
                 "user_role_change_histories",
                 "user_role_assignments",

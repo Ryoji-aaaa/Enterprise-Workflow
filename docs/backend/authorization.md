@@ -172,6 +172,11 @@ V006の旧binary向け互換投影は、組織scopeを表現できる新modelか
 `AUDIT_LOG_READ`などを要求する。request/response DTOとエラーコードは実際のControllerと
 結合テストを正本とし、ここにないendpointの存在を前提にしない。
 
+ローカル開発のメール通知履歴は`MAIL_NOTIFICATION_READ`を要求し、V013で
+`SYSTEM_ADMIN`へ割り当てる。Frontendの機能フラグやメニュー非表示だけでは許可せず、一覧と
+UUID詳細のBackend APIで同じPermissionを評価する。Azureではdelivery modeが`disabled`のため
+Controller自体を登録しない。
+
 ## 承認経路との関係
 
 `WORKFLOW_SUBMIT`、`WORKFLOW_APPROVE`、`WORKFLOW_ROUTE_MANAGE`はAPI操作可否を表す。
