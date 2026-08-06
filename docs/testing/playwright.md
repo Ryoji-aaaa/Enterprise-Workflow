@@ -3,12 +3,12 @@
 ## 実行方法
 
 ```bash
-make test-e2e
+make test SUITES=e2e
 ```
 
 ホストへNode.jsやブラウザを導入せず、Node.js 24.18.0、
 Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
-Composeの`test` profileだけに`e2e`サービスを定義し、通常の`make up`では起動しない。
+`docker-compose.test.yml`だけに`e2e`サービスを定義し、通常の`make up`では起動しない。
 
 実行処理は次の順序で行う。
 
@@ -19,9 +19,9 @@ Composeの`test` profileだけに`e2e`サービスを定義し、通常の`make 
 5. Playwrightを1 workerで実行する
 6. DB、Mailpit、JWT拒否、Composeと実コンテナのnetwork境界を事後検証する
 
-ログは環境準備、Keycloak設定、imageとデータ準備、Playwright実行、事後検証のsectionに分け、
-各処理の開始、成否、所要時間を表示する。CI、非対話出力、`NO_COLOR`指定時はANSI colorを
-使用しない。
+ログは環境準備、Keycloak設定、imageとデータ準備、Playwright実行、事後検証のsectionに分ける。
+対話TTYでは実行中の経過秒数を同じ行へ1秒ごとに表示し、非TTYと`VERBOSE=1`では5秒ごとに
+進捗行を追加する。完了行には所要時間を表示せず、phase JSONへミリ秒で保存する。
 
 ## ブラウザシナリオ
 
@@ -56,6 +56,11 @@ fail closedにする。Playwrightは代表としてパートのメニュー非�
 Playwright後のコンテナ内検証では、Spring Bootの`/api/me`へJWTなしで接続した場合も
 401になることを確認する。
 
+JUnit XMLを件数と成否の正本とし、Playwright JSONは失敗したtest caseのspec file、line、retry、
+trace、screenshot、videoを関連付けるために使用する。JSONはPlaywright phaseの必須成果物で、
+欠落または不正な場合はSuite Errorとなる。失敗時は最終summaryと直後の案内から
+`diagnostics/e2e/html/`と`diagnostics/e2e/results/`を参照する。
+
 ## 安定性と有限待機
 
 - selectorはrole、label、表示テキストを優先する
@@ -84,8 +89,8 @@ Playwright後のコンテナ内検証では、Spring Bootの`/api/me`へJWTな�
 失敗時だけtrace、スクリーンショット、videoを保持し、HTML reportも生成する。
 
 ```text
-tests/e2e/test-results/results/
-tests/e2e/playwright-report/report/
+test-results/<run-id>/diagnostics/e2e/results/
+test-results/<run-id>/diagnostics/e2e/html/
 ```
 
 成果物はGit管理対象外である。traceはPlaywright Trace Viewerで開ける。

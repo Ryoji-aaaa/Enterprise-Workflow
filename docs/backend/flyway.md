@@ -64,12 +64,12 @@ underscoreを使用する。
 
 ```bash
 touch backend/src/main/resources/db/migration/V010__add_example_column.sql
-make test-backend
+make test SUITES=backend
 make reset
 make verify
 ```
 
-`make test-backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
+`make test SUITES=backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
 
 - 空DBへのV001からV009とHibernate schema validation
 - V001既存ユーザーからV009までの実データ移行

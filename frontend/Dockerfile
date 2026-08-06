@@ -5,18 +5,15 @@ WORKDIR /workspace
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM dependencies AS test
+FROM dependencies AS test-runtime
+ARG TEST_UID=1000
+ARG TEST_GID=1000
 COPY . .
-RUN BETTER_AUTH_URL=http://localhost:3000 \
-    BETTER_AUTH_SECRET=build-only-placeholder-at-least-32-characters \
-    BACKEND_INTERNAL_URL=http://backend:8080 \
-    KEYCLOAK_ISSUER=http://localhost:8180/realms/workflow \
-    KEYCLOAK_INTERNAL_URL=http://keycloak:8080 \
-    KEYCLOAK_REALM=workflow \
-    KEYCLOAK_CLIENT_ID=workflow-web \
-    KEYCLOAK_CLIENT_SECRET=build-only-placeholder \
-    NEXT_TELEMETRY_DISABLED=1 \
-    npm run check
+RUN mkdir -p /test-results /workspace/.next \
+    && chown -R "${TEST_UID}:${TEST_GID}" /workspace /test-results
+ENV HOME=/tmp
+USER ${TEST_UID}:${TEST_GID}
+CMD ["npm", "run", "test:unit"]
 
 FROM dependencies AS build
 WORKDIR /workspace

@@ -4,9 +4,7 @@ set -Eeuo pipefail
 
 readonly SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/../.." && pwd)"
-readonly GENERATED_DIRECTORY="${PROJECT_DIRECTORY}/keycloak/generated"
-readonly GENERATED_IMPORT_DIRECTORY="${GENERATED_DIRECTORY}/import"
-readonly GENERATED_CONFIG_DIRECTORY="${GENERATED_DIRECTORY}/config"
+readonly WORKFLOW_ENV_FILE="${WORKFLOW_ENV_FILE:-${PROJECT_DIRECTORY}/.env}"
 
 mode="${1:-all}"
 [[ "${mode}" =~ ^(render|configure|all)$ ]] || {
@@ -14,19 +12,23 @@ mode="${1:-all}"
   exit 1
 }
 
-[[ -r "${PROJECT_DIRECTORY}/.env" ]] || {
-  echo ".env does not exist. Run make setup first." >&2
+[[ -r "${WORKFLOW_ENV_FILE}" ]] || {
+  echo "Environment file does not exist: ${WORKFLOW_ENV_FILE}" >&2
   exit 1
 }
 
 compose_project_name_override="${COMPOSE_PROJECT_NAME:-}"
 set -a
 # shellcheck disable=SC1091
-source "${PROJECT_DIRECTORY}/.env"
+source "${WORKFLOW_ENV_FILE}"
 set +a
 if [[ -n "${compose_project_name_override}" ]]; then
   export COMPOSE_PROJECT_NAME="${compose_project_name_override}"
 fi
+
+readonly GENERATED_DIRECTORY="${KEYCLOAK_GENERATED_DIRECTORY:-${PROJECT_DIRECTORY}/keycloak/generated}"
+readonly GENERATED_IMPORT_DIRECTORY="${GENERATED_DIRECTORY}/import"
+readonly GENERATED_CONFIG_DIRECTORY="${GENERATED_DIRECTORY}/config"
 
 required_variables=(
   KEYCLOAK_REALM

@@ -1,0 +1,1 @@
+{"suite":"keycloak","kind":"test","name":"realm is valid","status":"passed","duration_ms":5,"message":null,"log":"logs/keycloak/contracts.log"}

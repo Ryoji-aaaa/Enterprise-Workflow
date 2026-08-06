@@ -19,6 +19,7 @@
 
   <properties>
     <java.version>21</java.version>
+    <surefire.reportsDirectory>${project.build.directory}/surefire-reports</surefire.reportsDirectory>
   </properties>
 
   <dependencies>
@@ -93,6 +94,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <argLine>-Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+          <reportsDirectory>${surefire.reportsDirectory}</reportsDirectory>
         </configuration>
       </plugin>
     </plugins>

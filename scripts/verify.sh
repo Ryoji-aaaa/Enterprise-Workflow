@@ -6,6 +6,7 @@ SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIRECTORY
 PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 readonly PROJECT_DIRECTORY
+readonly WORKFLOW_ENV_FILE="${WORKFLOW_ENV_FILE:-${PROJECT_DIRECTORY}/.env}"
 readonly COMPOSE=(docker compose)
 # shellcheck source=scripts/lib/log.sh
 source "${SCRIPT_DIRECTORY}/lib/log.sh"
@@ -15,15 +16,15 @@ readonly VERIFY_START=${SECONDS}
 
 cd "${PROJECT_DIRECTORY}"
 
-[[ -r .env ]] || {
-  log_fail ".env does not exist. Run make setup first."
+[[ -r "${WORKFLOW_ENV_FILE}" ]] || {
+  log_fail "Environment file does not exist: ${WORKFLOW_ENV_FILE}"
   exit 1
 }
 
 compose_project_name_override="${COMPOSE_PROJECT_NAME:-}"
 set -a
 # shellcheck disable=SC1091
-source .env
+source "${WORKFLOW_ENV_FILE}"
 set +a
 if [[ -n "${compose_project_name_override}" ]]; then
   export COMPOSE_PROJECT_NAME="${compose_project_name_override}"
@@ -171,7 +172,7 @@ if contains_service keycloak; then
     --rm \
     --no-deps \
     keycloak-init \
-    /opt/workflow/verify-keycloak.sh
+    /opt/workflow/check-keycloak.sh --format human
   log_pass "Keycloak health and realm configuration are valid"
 fi
 
@@ -365,7 +366,7 @@ if contains_service frontend; then
   log_section "Frontend and BFF connectivity"
   log_info "Checking frontend HTTP, backend connectivity, and database isolation..."
   curl --fail --silent --show-error \
-    http://localhost:3000/login >/dev/null
+    "${BETTER_AUTH_URL:-http://localhost:3000}/login" >/dev/null
   "${COMPOSE[@]}" exec -T frontend node -e \
     "fetch('http://backend:8080/actuator/health').then(async r=>{if(!r.ok||(await r.json()).status!=='UP')process.exit(1)}).catch(()=>process.exit(1))"
   "${COMPOSE[@]}" exec -T frontend node -e \

@@ -4,7 +4,7 @@ SHELL := /usr/bin/env bash
 COMPOSE := docker compose
 
 .PHONY: help setup init build up down restart logs ps clean reset \
-	test test-backend test-frontend test-e2e verify verify-infra \
+	test verify verify-infra \
 	audit audit-frontend audit-e2e render-keycloak-config terraform-check
 
 help: ## Show available targets
@@ -39,16 +39,15 @@ clean: ## Stop services and remove generated build/test artifacts
 reset: setup ## Recreate development volumes and initialize all services
 	@./scripts/reset.sh
 
-test: test-backend test-frontend test-e2e ## Run all backend, frontend, and end-to-end tests
-
-test-backend: ## Run backend tests and PostgreSQL migration checks
-	@./scripts/test-backend.sh
-
-test-frontend: ## Run frontend lint, type checks, unit tests, and production build
-	@./scripts/test-frontend.sh
-
-test-e2e: ## Prepare the environment and run Playwright end-to-end tests
-	@./scripts/test-e2e.sh
+test: ## Run selected automated test suites with a unified report
+	@SUITES="$(SUITES)" \
+	  VERBOSE="$(VERBOSE)" \
+	  KEEP_TEST_ENV="$(KEEP_TEST_ENV)" \
+	  TEST_RUN_ID="$(TEST_RUN_ID)" \
+	  TEST_FRONTEND_PORT="$(TEST_FRONTEND_PORT)" \
+	  TEST_KEYCLOAK_PORT="$(TEST_KEYCLOAK_PORT)" \
+	  TEST_MAILPIT_PORT="$(TEST_MAILPIT_PORT)" \
+	  ./tools/test/run.sh
 
 verify: ## Verify the running local environment and architecture boundaries
 	@./scripts/verify.sh

@@ -102,11 +102,11 @@ APIが403を返して外側のトランザクションが終了しても記録�
 
 ## テスト
 
-`make test-backend`は開発ユーザー定義の整合性を確認し、Docker buildの専用testステージで
-毎回JUnitを実行した後、一時PostgreSQLでmigrationを検証する。
+`make test SUITES=backend`は開発ユーザー定義の整合性を確認し、Dockerの`test-runtime`
+image内でJUnitを実行した後、一時PostgreSQLでmigrationを検証する。
 内部ネットワークを外部接続可能へ変更せず、Maven依存の取得はbuildネットワーク内に限定する。
 JUnitのAPI結合テストではH2とHibernate `create-drop`を使用し、Flywayは無効化する。
-PostgreSQL固有のmigrationは`make test-backend`、起動済みローカルDBの適用状態は
+PostgreSQL固有のmigrationは`make test SUITES=backend`、起動済みローカルDBの適用状態は
 `make verify`で検証する。
 
 結合テストでは、JWTなし、不正issuer、email不備、許可ドメイン外、Client不一致、

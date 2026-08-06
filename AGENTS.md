@@ -182,9 +182,10 @@ Use these existing documents as the primary references for specific changes:
 Run the smallest relevant set during development and the full required set before
 completion:
 
-- Backend changes: `make test-backend`
-- Frontend changes: `make test-frontend`
-- User flow, authentication, authorization, or navigation changes: `make test-e2e`
+- Backend changes: `make test SUITES=backend`
+- Frontend changes: `make test SUITES=frontend`
+- Authentication or Keycloak changes: `make test SUITES=keycloak,e2e`
+- User flow, authorization, or navigation changes: `make test SUITES=e2e`
 - Cross-cutting, database, authentication, or infrastructure changes: `make test` and
   `make verify`
 - Terraform or infrastructure configuration changes: `make verify-infra`

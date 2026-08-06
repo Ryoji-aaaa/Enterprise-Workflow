@@ -10,10 +10,15 @@ export default defineConfig({
   expect: {
     timeout: 15_000,
   },
-  outputDir: "test-results/results",
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results/results",
   reporter: [
     ["line"],
-    ["html", { outputFolder: "playwright-report/report", open: "never" }],
+    ["junit", { outputFile: process.env.PLAYWRIGHT_JUNIT_OUTPUT ?? "test-results/junit.xml" }],
+    ["json", { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT ?? "test-results/report.json" }],
+    ["html", {
+      outputFolder: process.env.PLAYWRIGHT_HTML_OUTPUT ?? "playwright-report/report",
+      open: "never",
+    }],
   ],
   use: {
     baseURL: process.env.BASE_URL ?? "http://localhost:3000",

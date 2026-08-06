@@ -14,6 +14,6 @@ find frontend -maxdepth 1 -type d \
 find backend -maxdepth 1 -type d -name target \
   -prune -exec rm -rf -- {} +
 find keycloak/generated -mindepth 1 -delete
-find tests/e2e -maxdepth 1 -type d \
-  \( -name playwright-report -o -name test-results \) \
-  -prune -exec rm -rf -- {} +
+if [[ -d test-results ]]; then
+  find test-results -mindepth 1 -delete
+fi

@@ -58,7 +58,7 @@ Keycloak 26.7.0では、GET結果に存在しない`unmanagedAttributePolicy`へ
 一時コンテナ内に限定し、アプリケーション認証には使用しない。
 
 - `configure-keycloak.sh`: User ProfileのGETとPUT
-- `verify-keycloak.sh`: Realm、Client、ユーザー、User Profile、DiscoveryのGET検証
+- `check-keycloak.sh`: Realm、Client、ユーザー、User Profile、Discoveryのhuman/NDJSON検証
 
 トークン、管理者パスワード、レスポンス中の資格情報はログへ出力しない。
 検証処理は設定を変更しない。
