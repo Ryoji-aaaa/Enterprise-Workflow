@@ -37,7 +37,7 @@ jobs:
       TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Select immutable image tag
