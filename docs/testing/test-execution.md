@@ -64,6 +64,9 @@ line、理由を確認し、表示されたlog、E2Eの場合は`diagnostics/e2e
 対話TTYかつ通常表示では、実行中phaseの同じ行を1秒ごとに更新して整数秒の経過時間を表示する。
 CI、リダイレクト、`VERBOSE=1`では制御文字を使わず、0秒から5秒ごとに進捗行を追加する。
 完了行には所要時間を付けず、実測値はphase JSONの`duration_ms`へ保存する。
+対話TTYで色出力が有効な場合、最終summary前の`[RESULT]`行全体をSuite statusに応じて色付けし、
+PASSは緑、FAILとERRORは赤で表示する。`CI`、`NO_COLOR`、`TERM=dumb`、リダイレクトでは
+ANSI color codeを出力しない。
 
 終了コードは全成功が0、テストまたはRequired check failureが1、usage・preflight・setup・
 runner・reporter errorが2、利用者による割り込みが130である。

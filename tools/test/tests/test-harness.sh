@@ -9,6 +9,13 @@ SELECTED_SUITES=(backend)
 # shellcheck source=tools/test/lib/harness.bash
 source "${TEST_TOOL_DIRECTORY}/lib/harness.bash"
 
+if [[ "${1:-}" == "--emit-result-colors" ]]; then
+  print_suite_result_line Backend PASS 7 7 0 0 0
+  print_suite_result_line Frontend FAIL 7 6 1 0 0
+  print_suite_result_line E2E ERROR 0 0 0 1 0
+  exit 0
+fi
+
 fail() {
   printf 'Harness self-test failed: %s\n' "$*" >&2
   exit 1
@@ -31,6 +38,30 @@ for elapsed in 0 1 63; do
   assert_contains "${progress_line}" "${elapsed}s elapsed"
 done
 assert_not_contains "$(render_progress_line CHECK migration 63)" "1m"
+
+plain_result_output="$(env -u CI -u NO_COLOR TERM=xterm bash "${BASH_SOURCE[0]}" --emit-result-colors)"
+assert_contains "${plain_result_output}" "[RESULT] Backend  PASS"
+assert_not_contains "${plain_result_output}" $'\033['
+if command -v script >/dev/null 2>&1; then
+  printf -v color_test_command 'env -u CI -u NO_COLOR TERM=xterm bash %q --emit-result-colors' "${BASH_SOURCE[0]}"
+  color_result_output="$(script -qec "${color_test_command}" /dev/null)"
+  assert_contains "${color_result_output}" $'\033[32m[RESULT] Backend  PASS'
+  assert_contains "${color_result_output}" $'\033[31m[RESULT] Frontend FAIL'
+  assert_contains "${color_result_output}" $'\033[31m[RESULT] E2E      ERROR'
+  assert_contains "${color_result_output}" $'\033[0m'
+
+  printf -v no_color_test_command 'env -u CI NO_COLOR=1 TERM=xterm bash %q --emit-result-colors' "${BASH_SOURCE[0]}"
+  no_color_result_output="$(script -qec "${no_color_test_command}" /dev/null)"
+  assert_not_contains "${no_color_result_output}" $'\033['
+
+  printf -v ci_color_test_command 'env -u NO_COLOR CI=1 TERM=xterm bash %q --emit-result-colors' "${BASH_SOURCE[0]}"
+  ci_result_output="$(script -qec "${ci_color_test_command}" /dev/null)"
+  assert_not_contains "${ci_result_output}" $'\033['
+
+  printf -v dumb_terminal_test_command 'env -u CI -u NO_COLOR TERM=dumb bash %q --emit-result-colors' "${BASH_SOURCE[0]}"
+  dumb_terminal_result_output="$(script -qec "${dumb_terminal_test_command}" /dev/null)"
+  assert_not_contains "${dumb_terminal_result_output}" $'\033['
+fi
 
 assert_envsubst_requirement() {
   local expected_count="$1"

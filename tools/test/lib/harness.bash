@@ -2,6 +2,8 @@
 
 # shellcheck source=tools/test/lib/case-results.sh
 source "${TEST_TOOL_DIRECTORY}/lib/case-results.sh"
+# shellcheck source=scripts/lib/log.sh
+source "${PROJECT_DIRECTORY}/scripts/lib/log.sh"
 
 readonly SUITE_ORDER=(backend frontend keycloak e2e)
 readonly ALL_SUITE_CSV="backend,frontend,keycloak,e2e"
@@ -397,6 +399,31 @@ refresh_summary() {
   fi
 }
 
+print_suite_result_line() {
+  local title="$1"
+  local status="$2"
+  local executed="$3"
+  local passed="$4"
+  local failed="$5"
+  local errors="$6"
+  local skipped="$7"
+  local color
+  case "${status}" in
+    PASS)
+      color="${LOG_COLOR_GREEN}"
+      ;;
+    FAIL | ERROR)
+      color="${LOG_COLOR_RED}"
+      ;;
+    *)
+      color="${LOG_COLOR_YELLOW}"
+      ;;
+  esac
+  printf '%s[RESULT] %-8s %-5s executed=%s pass=%s fail=%s error=%s skip=%s%s\n' \
+    "${color}" "${title}" "${status}" "${executed}" "${passed}" "${failed}" "${errors}" "${skipped}" \
+    "${LOG_COLOR_RESET}"
+}
+
 print_suite_result() {
   local suite="$1"
   local title
@@ -410,8 +437,7 @@ print_suite_result() {
   fi
   item="$(jq --raw-output --arg suite "${suite}" '.suites[$suite] | [.status,.executed,.passed,.failed,.errors,.skipped] | @tsv' "${TEST_RUN_DIRECTORY}/summary.json")"
   IFS=$'\t' read -r status executed passed failed errors skipped <<<"${item}"
-  printf '[RESULT] %-8s %-5s executed=%s pass=%s fail=%s error=%s skip=%s\n' \
-    "${title}" "${status}" "${executed}" "${passed}" "${failed}" "${errors}" "${skipped}"
+  print_suite_result_line "${title}" "${status}" "${executed}" "${passed}" "${failed}" "${errors}" "${skipped}"
 }
 
 fallback_summary() {
