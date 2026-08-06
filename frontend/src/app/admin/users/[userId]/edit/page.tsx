@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { CurrentUser } from "@/lib/backend-api";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 
 type User = {
   id: string;
@@ -56,7 +57,7 @@ const employmentOptions: Array<[CurrentUser["employmentType"], string]> = [
 ];
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetchBackend(url, {
     ...init,
     cache: "no-store",
     headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
@@ -111,6 +112,7 @@ export default function EditUserPage() {
     try {
       applyData(await loadEditorData(userId));
     } catch (reason) {
+      if (reason instanceof AuthenticationRequiredError) return;
       const failure = reason as Error & { status?: number };
       setError(failure.status === 403 ? "この情報を管理する権限がありません（403）。" : failure.message);
     }
@@ -126,7 +128,7 @@ export default function EditUserPage() {
       setPositions(data.positions); setRoles(data.roles); setUsers(data.users);
       setError(null);
     }).catch((reason: unknown) => {
-      if (!active) return;
+      if (!active || reason instanceof AuthenticationRequiredError) return;
       const failure = reason as Error & { status?: number };
       setError(failure.status === 403 ? "この情報を管理する権限がありません（403）。" : failure.message);
     });
@@ -134,6 +136,7 @@ export default function EditUserPage() {
   }, [userId]);
 
   function showFailure(reason: unknown) {
+    if (reason instanceof AuthenticationRequiredError) return;
     const failure = reason as Error & { status?: number };
     setMessage(null);
     setError(failure.status === 409

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ShieldCheck, Sparkles } from "lucide-react";
 
 import { LoginButton } from "@/app/login/login-button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -14,12 +15,18 @@ import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reason?: string | string[] }>;
+}) {
+  const reason = (await searchParams).reason;
+  const sessionExpired = reason === "session-expired";
   const session = await auth.api.getSession({
     headers: await headers(),
   });
 
-  if (session) {
+  if (session && !sessionExpired) {
     redirect("/top");
   }
 
@@ -75,6 +82,13 @@ export default async function LoginPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {sessionExpired ? (
+                <Alert className="mb-4">
+                  <AlertDescription>
+                    セッションの有効期限が切れました。再度ログインしてください。
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <LoginButton />
               <p className="mt-4 text-center text-[11px]/5 text-muted-foreground">
                 認証画面へ安全に移動します。

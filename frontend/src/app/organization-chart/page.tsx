@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CurrentUser } from "@/lib/backend-api";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
   buildOrganizationChartIndex,
   canEditOrganizationChartUsers,
@@ -234,8 +235,8 @@ export default function OrganizationChartPage() {
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      fetch("/api/backend/organization-chart", { cache: "no-store", signal: controller.signal }),
-      fetch("/api/backend/me", { cache: "no-store", signal: controller.signal }),
+      fetchBackend("/api/backend/organization-chart", { cache: "no-store", signal: controller.signal }),
+      fetchBackend("/api/backend/me", { cache: "no-store", signal: controller.signal }),
     ]).then(async ([chartResponse, meResponse]) => {
       if (meResponse.ok) {
         const me = (await meResponse.json()) as CurrentUser;
@@ -249,8 +250,8 @@ export default function OrganizationChartPage() {
         setState({ kind: "error", message: "組織図を取得できませんでした。" });
       }
     })
-      .catch(() => {
-        if (!controller.signal.aborted) {
+      .catch((cause) => {
+        if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
           setState({ kind: "error", message: "組織図を取得できませんでした。" });
         }
       });

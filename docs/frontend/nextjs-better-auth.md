@@ -36,6 +36,8 @@ Keycloakのaccess token・refresh token・ID tokenは、`BETTER_AUTH_SECRET`を�
 
 Cookieの存在だけで認証済みとは扱わない。DBを使わないため、サーバー側からの個別session
 失効はできない。Keycloak側のsession失効、tokenの有効期限、アプリのCookie削除を組み合わせる。
+Better Auth sessionが有効でもKeycloak tokenを更新できない状態は発生し得るため、BFFの401時に
+ローカルのBetter Auth Cookieを明示的に削除して認証状態を収束させる。
 
 ## Generic OAuthとKeycloak
 
@@ -65,6 +67,9 @@ last nameを設定し、初回ログイン時のプロフィール補完画面�
 
 `/login`にはKeycloakログインを開始するボタンだけを配置し、メールアドレスやパスワードの
 入力欄を置かない。認証後は`/top`へ遷移する。
+`/login?reason=session-expired`では「セッションの有効期限が切れました。再度ログインしてください。」
+と表示する。このURLでは残存sessionがあっても`/top`へ自動redirectせず、期限切れ時の
+redirect loopを防ぐ。
 
 `/top`はServer ComponentでBetter Auth sessionを検証する。sessionがない場合は
 `/login`へ戻す。利用者情報はBetter Authのprofileを直接表示せず、BFFが取得した
@@ -96,6 +101,16 @@ logoutレスポンスは`no-store`かつ`Clear-Site-Data: "cache"`とする。
 6. 401、未登録403、その他403、5xx、接続失敗、timeoutを画面用結果へ変換
 7. tokenや内部例外をレスポンス・ログへ出力しない
 
+session不在、provider account不在、token取得・更新失敗、またはSpring Bootの401はすべて
+認証必須の401として扱う。BFFはBetter Authが返した`Set-Cookie`を引き継いだ後、受信した
+通常名、`__Secure-`名、chunkを含むBetter Auth Cookieの削除を最後に付与する。401応答は
+`no-store`とする。
+
+Client ComponentからBFFへの通信は共通clientを使用する。共通clientは401の場合だけ
+`/login?reason=session-expired`へ一度だけ`location.replace`し、呼び出し元の処理を中断する。
+更新・送信操作を再ログイン後に自動再送しない。403、404、409、5xx、接続失敗は各画面の
+既存処理へ渡す。
+
 token更新時にBetter Authが返すSet-CookieはRoute Handlerからブラウザへ引き継ぐ。
 access token、refresh token、ID tokenをClient Component、localStorage、
 sessionStorageへ渡さない。
@@ -120,6 +135,9 @@ Dockerボリュームを削除せず、
 - 認証済みページとlogoutレスポンスが`no-store`であること
 - 暗号化されたsession/account Cookie
 - BFFでのサーバー側access token取得
+- token更新不能時のBetter Auth Cookie削除と期限切れログイン画面への一方向遷移
+- Top以外のログイン後画面でもBFFの401を同じ期限切れ動作へ変換すること
+- 401以外では認証Cookieを削除せず、自動再ログインやリクエスト再送を行わないこと
 - Spring Boot `/api/me`のHTTP 200と業務ユーザー情報
 - 401、403、5xx、接続失敗、timeoutの安全な変換
 - TopページとBFFレスポンスにtoken materialが含まれないこと

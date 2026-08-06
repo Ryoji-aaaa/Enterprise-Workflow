@@ -7,6 +7,7 @@ import { Download, ExternalLink, Paperclip, Trash2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
   EXPENSE_ATTACHMENT_ACCEPT,
   expenseAttachmentErrorMessage,
@@ -34,7 +35,7 @@ export function ExpenseAttachmentSection({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/backend/expense-applications/${applicationId}/attachments`, {
+    fetchBackend(`/api/backend/expense-applications/${applicationId}/attachments`, {
       cache: "no-store",
       signal: controller.signal,
     }).then(async (response) => {
@@ -45,7 +46,7 @@ export function ExpenseAttachmentSection({
       setAttachments(body);
       setError(null);
     }).catch((cause) => {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
         setError(cause instanceof Error ? cause.message : "添付ファイルを取得できませんでした。");
       }
     }).finally(() => {
@@ -65,7 +66,7 @@ export function ExpenseAttachmentSection({
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const response = await fetch(
+      const response = await fetchBackend(
         `/api/backend/expense-applications/${applicationId}/attachments`,
         { method: "POST", body: formData },
       );
@@ -77,7 +78,9 @@ export function ExpenseAttachmentSection({
       }
       setAttachments((current) => [...current, body]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "ファイルを添付できませんでした。");
+      if (!(cause instanceof AuthenticationRequiredError)) {
+        setError(cause instanceof Error ? cause.message : "ファイルを添付できませんでした。");
+      }
     } finally {
       if (fileInput.current) fileInput.current.value = "";
       setProcessing(false);
@@ -89,7 +92,7 @@ export function ExpenseAttachmentSection({
     setProcessing(true);
     setError(null);
     try {
-      const response = await fetch(
+      const response = await fetchBackend(
         `/api/backend/expense-applications/${applicationId}/attachments/${attachment.id}`,
         { method: "DELETE" },
       );
@@ -101,7 +104,9 @@ export function ExpenseAttachmentSection({
       }
       setAttachments((current) => current.filter(({ id }) => id !== attachment.id));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "添付ファイルを削除できませんでした。");
+      if (!(cause instanceof AuthenticationRequiredError)) {
+        setError(cause instanceof Error ? cause.message : "添付ファイルを削除できませんでした。");
+      }
     } finally {
       setProcessing(false);
     }

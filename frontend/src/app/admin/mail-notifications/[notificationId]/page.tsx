@@ -8,6 +8,7 @@ import { MailOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
   displayDate,
   type MailNotificationDetail,
@@ -26,7 +27,7 @@ export default function MailNotificationDetailPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/backend/admin/mail-notifications/${encodeURIComponent(notificationId)}`, {
+    fetchBackend(`/api/backend/admin/mail-notifications/${encodeURIComponent(notificationId)}`, {
       cache: "no-store",
       signal: controller.signal,
     }).then(async (response) => {
@@ -36,7 +37,7 @@ export default function MailNotificationDetailPage() {
       setNotification((await response.json()) as MailNotificationDetail);
       setError(null);
     }).catch((cause) => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "メール通知履歴を取得できませんでした。");
+      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) setError(cause instanceof Error ? cause.message : "メール通知履歴を取得できませんでした。");
     });
     return () => controller.abort();
   }, [notificationId]);

@@ -59,6 +59,15 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.locator("#kc-login").click();
 }
 
+async function expectExpiredSessionLogin(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/login\?reason=session-expired$/);
+  await expect(page.getByText(
+    "セッションの有効期限が切れました。再度ログインしてください。",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByRole("button", { name: "ログイン", exact: true })).toBeVisible();
+}
+
 type ExpenseDetail = {
   id: string;
   version: number;
@@ -182,6 +191,76 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(await topResponse.text()).not.toMatch(
     /accessToken|refreshToken|idToken|eyJ[A-Za-z0-9_-]+\./,
   );
+});
+
+test("token更新不能時はtopとの往復をせず期限切れログインへ戻る", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+  await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
+  await page.route("**/api/backend/me", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({
+      code: "AUTHENTICATION_REQUIRED",
+      message: "再度ログインしてください。",
+    }),
+  }));
+
+  await page.goto("/top");
+  await expectExpiredSessionLogin(page);
+  expect((await page.context().cookies()).some((cookie) =>
+    /better-auth.*session/.test(cookie.name),
+  )).toBeTruthy();
+
+  await page.unroute("**/api/backend/me");
+  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await expect(page).toHaveURL(/\/top$/);
+  await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
+});
+
+test("top以外の画面でもBFF 401を期限切れログインへ統一する", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+  await page.route("**/api/backend/expense-applications?**", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({
+      code: "AUTHENTICATION_REQUIRED",
+      message: "再度ログインしてください。",
+    }),
+  }));
+
+  await page.goto("/expenses");
+  await expectExpiredSessionLogin(page);
+});
+
+test("無効なBetter Auth sessionへのBFF 401で認証Cookieを削除する", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+
+  const sessionCookies = (await page.context().cookies()).filter((cookie) =>
+    /better-auth.*session/.test(cookie.name),
+  );
+  expect(sessionCookies.length).toBeGreaterThan(0);
+  await page.context().addCookies(sessionCookies.map((cookie) => ({
+    name: cookie.name,
+    value: "invalid-session-cookie",
+    domain: cookie.domain,
+    path: cookie.path,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    sameSite: cookie.sameSite,
+  })));
+
+  const response = await page.request.get("/api/backend/me");
+  expect(response.status()).toBe(401);
+  expect(response.headers()["cache-control"]).toContain("no-store");
+  expect(response.headers()["set-cookie"]).toContain("Max-Age=0");
+
+  const authenticationCookies = (await page.context().cookies()).filter((cookie) =>
+    /better-auth.*(?:session|account_data)/.test(cookie.name),
+  );
+  expect(authenticationCookies).toHaveLength(0);
 });
 
 test("経費申請の一般・部門長・事業部長経路と差戻し再申請をBFF越しに処理する", async ({ browser }) => {

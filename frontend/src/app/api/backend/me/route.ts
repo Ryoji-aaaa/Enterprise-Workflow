@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { expiredBetterAuthCookies } from "@/lib/auth-cookies";
 import { getBackendMe } from "@/lib/backend-client";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,12 @@ export async function GET(request: Request) {
   for (const setCookie of result.setCookies) {
     response.headers.append("set-cookie", setCookie);
   }
+  if (status === 401) {
+    for (const expiredCookie of expiredBetterAuthCookies(request.headers)) {
+      response.headers.append("set-cookie", expiredCookie);
+    }
+  }
+  response.headers.set("Cache-Control", "no-store");
 
   return response;
 }

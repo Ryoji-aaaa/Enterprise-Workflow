@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { MockDashboard } from "@/app/top/mock-dashboard";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import type { CurrentUser } from "@/lib/backend-client";
 
 type State =
@@ -24,7 +25,7 @@ export function MePanel() {
 
     async function load() {
       try {
-        const response = await fetch("/api/backend/me", {
+        const response = await fetchBackend("/api/backend/me", {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -38,18 +39,15 @@ export function MePanel() {
         }
 
         const error = (await response.json()) as ErrorBody;
-        if (response.status === 401) {
-          router.replace("/login");
-          router.refresh();
-        } else if (error.code === "APPLICATION_USER_NOT_REGISTERED") {
+        if (error.code === "APPLICATION_USER_NOT_REGISTERED") {
           router.replace("/unregistered");
         } else if (response.status === 403) {
           router.replace("/unavailable");
         } else {
           setState({ kind: "unavailable" });
         }
-      } catch {
-        if (!controller.signal.aborted) {
+      } catch (cause) {
+        if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
           setState({ kind: "unavailable" });
         }
       }

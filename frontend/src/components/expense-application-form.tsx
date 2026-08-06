@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
   categoryLabels,
   expenseCategories,
@@ -50,7 +51,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   useEffect(() => {
     if (!applicationId) return;
     const controller = new AbortController();
-    fetch(`/api/backend/expense-applications/${applicationId}`, {
+    fetchBackend(`/api/backend/expense-applications/${applicationId}`, {
       cache: "no-store", signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) throw new Error("load");
@@ -65,8 +66,8 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       setVersion(application.version);
       setOriginalStatus(application.status);
       setLoading(false);
-    }).catch(() => {
-      if (!controller.signal.aborted) {
+    }).catch((cause) => {
+      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
         setError("申請内容を読み込めませんでした。");
         setLoading(false);
       }
@@ -92,7 +93,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
     setError(null);
     const payload = { category, title, purpose, expenseDate, remarks, items, version };
     try {
-      const saveResponse = await fetch(
+      const saveResponse = await fetchBackend(
         applicationId
           ? `/api/backend/expense-applications/${applicationId}`
           : "/api/backend/expense-applications",
@@ -111,7 +112,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
         return;
       }
       const action = originalStatus === "RETURNED" ? "resubmit" : "submit";
-      const submitResponse = await fetch(
+      const submitResponse = await fetchBackend(
         `/api/backend/expense-applications/${saved.id}/${action}`,
         { method: "POST" },
       );
@@ -123,7 +124,9 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       }
       router.push(`/expenses/${submitted.id}`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
+      if (!(cause instanceof AuthenticationRequiredError)) {
+        setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
+      }
     } finally {
       setSaving(false);
     }

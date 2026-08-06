@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { expiredBetterAuthCookies } from "@/lib/auth-cookies";
 import { proxyBackendRequest } from "@/lib/backend-client";
 import {
   backendProxyRequestHeaders,
@@ -57,6 +58,12 @@ async function proxy(
   });
   for (const cookie of result.setCookies) {
     response.headers.append("set-cookie", cookie);
+  }
+  if (response.status === 401) {
+    for (const expiredCookie of expiredBetterAuthCookies(request.headers)) {
+      response.headers.append("set-cookie", expiredCookie);
+    }
+    response.headers.set("Cache-Control", "no-store");
   }
   return response;
 }
