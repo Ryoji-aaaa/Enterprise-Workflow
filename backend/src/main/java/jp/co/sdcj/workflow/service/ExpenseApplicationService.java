@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.api.ApiException;
@@ -48,7 +49,7 @@ public class ExpenseApplicationService {
     private final ExpenseApprovalCandidateRepository candidateRepository;
     private final ExpenseApprovalRouteResolver routeResolver;
     private final AuditLogService auditLogService;
-    private final ExpenseNotificationService notificationService;
+    private final ObjectProvider<ExpenseNotificationService> notificationService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -61,7 +62,7 @@ public class ExpenseApplicationService {
             ExpenseApprovalCandidateRepository candidateRepository,
             ExpenseApprovalRouteResolver routeResolver,
             AuditLogService auditLogService,
-            ExpenseNotificationService notificationService,
+            ObjectProvider<ExpenseNotificationService> notificationService,
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper) {
         this.applicationRepository = applicationRepository;
@@ -172,7 +173,8 @@ public class ExpenseApplicationService {
                 applicationId.toString(), Map.of("status", required.name()),
                 Map.of("applicationNumber", application.getApplicationNumber(),
                         "status", application.getStatus().name(), "runNumber", runNumber), null);
-        notificationService.notifyCandidates(application, firstCandidates);
+        ExpenseNotificationService notifier = notificationService.getIfAvailable();
+        if (notifier != null) notifier.notifyCandidates(application, firstCandidates);
         return new ExpenseApplicationDetails(
                 application, items, run,
                 stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId()));

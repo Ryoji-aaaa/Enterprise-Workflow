@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import jp.co.sdcj.workflow.config.NotificationProperties;
@@ -14,6 +15,10 @@ import jp.co.sdcj.workflow.domain.ExpenseApplication;
 import jp.co.sdcj.workflow.domain.ExpenseApprovalCandidate;
 
 @Service
+@ConditionalOnProperty(
+        prefix = "workflow.notification",
+        name = "delivery-mode",
+        havingValue = "local-mailpit")
 public class ExpenseNotificationService {
     private static final Logger logger = LoggerFactory.getLogger(ExpenseNotificationService.class);
     private final JavaMailSender mailSender;

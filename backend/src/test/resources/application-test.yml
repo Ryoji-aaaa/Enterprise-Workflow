@@ -11,9 +11,6 @@ spring:
   sql:
     init:
       mode: never
-  mail:
-    host: localhost
-    port: 3025
 
 workflow:
   security:
@@ -22,8 +19,14 @@ workflow:
     allowed-email-domain: sdcj.co.jp
     identity-provider: keycloak
   notification:
+    delivery-mode: local-mailpit
     from: no-reply@workflow.local
     cooldown: 15m
+    smtp:
+      host: mailpit
+      port: 1025
+      auth: false
+      starttls: false
   attachment:
     max-file-size: 10MB
     max-files-per-application: 10

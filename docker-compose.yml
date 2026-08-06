@@ -54,6 +54,8 @@ services:
       KEYCLOAK_INTERNAL_ISSUER: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/${KEYCLOAK_REALM:-workflow}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
       ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-sdcj.co.jp}
+      WORKFLOW_NOTIFICATION_DELIVERY_MODE: local-mailpit
+      WORKFLOW_DEPLOYMENT_ENVIRONMENT: development
       MAIL_HOST: ${MAIL_HOST:-mailpit}
       MAIL_PORT: ${MAIL_PORT:-1025}
       MAIL_FROM: ${MAIL_FROM:-no-reply@workflow.local}

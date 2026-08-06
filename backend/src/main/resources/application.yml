@@ -15,9 +15,6 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER:http://localhost:8180/realms/workflow}
           jwk-set-uri: ${KEYCLOAK_INTERNAL_ISSUER:http://keycloak:8080/realms/workflow}/protocol/openid-connect/certs
-  mail:
-    host: ${MAIL_HOST:mailpit}
-    port: ${MAIL_PORT:1025}
   servlet:
     multipart:
       max-file-size: 10MB
@@ -47,8 +44,20 @@ workflow:
     allowed-email-domain: ${ALLOWED_EMAIL_DOMAIN:sdcj.co.jp}
     identity-provider: keycloak
   notification:
-    from: ${MAIL_FROM:no-reply@workflow.local}
+    delivery-mode: ${WORKFLOW_NOTIFICATION_DELIVERY_MODE:disabled}
+    from: ${MAIL_FROM:}
     cooldown: ${ACCESS_REQUEST_NOTIFICATION_COOLDOWN:15m}
+    batch-size: ${WORKFLOW_NOTIFICATION_BATCH_SIZE:20}
+    dispatch-interval: ${WORKFLOW_NOTIFICATION_DISPATCH_INTERVAL:2s}
+    processing-timeout: ${WORKFLOW_NOTIFICATION_PROCESSING_TIMEOUT:5m}
+    retry-delays: ${WORKFLOW_NOTIFICATION_RETRY_DELAYS:1m,5m,15m,1h}
+    smtp:
+      host: ${MAIL_HOST:}
+      port: ${MAIL_PORT:0}
+      username: ${MAIL_USERNAME:}
+      password: ${MAIL_PASSWORD:}
+      auth: ${MAIL_SMTP_AUTH:false}
+      starttls: ${MAIL_SMTP_STARTTLS:false}
   attachment:
     max-file-size: 10MB
     max-files-per-application: 10

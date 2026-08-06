@@ -20,9 +20,6 @@ module "environment" {
   provision_workloads             = var.provision_workloads
   contract_legacy_user_columns    = var.contract_legacy_user_columns
   allowed_email_domain            = var.allowed_email_domain
-  mail_host                       = var.mail_host
-  mail_port                       = var.mail_port
-  mail_from                       = var.mail_from
   vnet_address_space              = var.vnet_address_space
   container_apps_subnet_prefixes  = var.container_apps_subnet_prefixes
   postgres_subnet_prefixes        = var.postgres_subnet_prefixes

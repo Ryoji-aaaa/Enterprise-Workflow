@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.api.ApiException;
@@ -31,7 +32,7 @@ public class ExpenseApprovalService {
     private final ExpenseApprovalStepRepository stepRepository;
     private final ExpenseApprovalCandidateRepository candidateRepository;
     private final AuditLogService auditLogService;
-    private final ExpenseNotificationService notificationService;
+    private final ObjectProvider<ExpenseNotificationService> notificationService;
 
     public ExpenseApprovalService(
             ExpenseApplicationRepository applicationRepository,
@@ -39,7 +40,7 @@ public class ExpenseApprovalService {
             ExpenseApprovalStepRepository stepRepository,
             ExpenseApprovalCandidateRepository candidateRepository,
             AuditLogService auditLogService,
-            ExpenseNotificationService notificationService) {
+            ObjectProvider<ExpenseNotificationService> notificationService) {
         this.applicationRepository = applicationRepository;
         this.runRepository = runRepository;
         this.stepRepository = stepRepository;
@@ -84,9 +85,11 @@ public class ExpenseApprovalService {
                     Map.of("status", "PENDING_APPROVAL"),
                     Map.of("applicationNumber", locked.application().getApplicationNumber(),
                             "status", "APPROVED", "runNumber", locked.run().getRunNumber()), null);
-            notificationService.notifyApplicant(locked.application(), "承認が完了しました。");
+            ExpenseNotificationService notifier = notificationService.getIfAvailable();
+            if (notifier != null) notifier.notifyApplicant(locked.application(), "承認が完了しました。");
         } else {
-            notificationService.notifyCandidates(locked.application(),
+            ExpenseNotificationService notifier = notificationService.getIfAvailable();
+            if (notifier != null) notifier.notifyCandidates(locked.application(),
                     candidateRepository.findAllByApprovalStepId(next.getId()));
         }
         return new ExpenseApplicationDetails(
@@ -119,7 +122,9 @@ public class ExpenseApprovalService {
                         "status", "RETURNED", "runNumber", locked.run().getRunNumber(),
                         "stepId", stepId, "stepType", locked.step().getStepType().name()),
                 safeReason);
-        notificationService.notifyApplicant(locked.application(), "差し戻されました: " + safeReason);
+        ExpenseNotificationService notifier = notificationService.getIfAvailable();
+        if (notifier != null) notifier.notifyApplicant(
+                locked.application(), "差し戻されました: " + safeReason);
         return new ExpenseApplicationDetails(
                 locked.application(), List.of(), locked.run(), locked.steps());
     }

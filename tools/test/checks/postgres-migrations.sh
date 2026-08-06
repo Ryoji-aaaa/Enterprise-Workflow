@@ -193,7 +193,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V010 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V011 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -213,7 +213,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V010 schema.
+# validates the complete V011 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -644,8 +644,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 10 THEN
-        RAISE EXCEPTION 'expected 10 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 11 THEN
+        RAISE EXCEPTION 'expected 11 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -967,7 +967,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 10 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 11 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -989,11 +989,24 @@ BEGIN
         WHERE table_schema = 'public' AND table_name IN (
             'expense_applications', 'expense_application_items', 'expense_approval_runs',
             'expense_approval_steps', 'expense_approval_candidates',
-            'expense_application_attachments')) <> 6
+            'expense_application_attachments', 'notification_outbox')) <> 7
        OR NOT EXISTS (SELECT 1 FROM pg_sequences
                       WHERE schemaname = 'public'
                         AND sequencename = 'expense_application_number_seq') THEN
         RAISE EXCEPTION 'expense application schema is invalid';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'access_requests'
+          AND column_name = 'notification_queued_at'
+    ) OR (SELECT count(*) FROM pg_indexes
+          WHERE tablename = 'notification_outbox'
+            AND indexname IN (
+                'idx_notification_outbox_dispatch',
+                'idx_notification_outbox_sent',
+                'idx_notification_outbox_recipient',
+                'idx_notification_outbox_application')) <> 4 THEN
+        RAISE EXCEPTION 'notification outbox schema is invalid';
     END IF;
     IF (SELECT count(*) FROM pg_constraint WHERE conname IN (
             'uk_expense_applications_number', 'ck_expense_applications_amount',
@@ -1070,7 +1083,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 10
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 11
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 17

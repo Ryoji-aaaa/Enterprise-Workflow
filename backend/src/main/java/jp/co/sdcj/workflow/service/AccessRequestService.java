@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,13 +20,13 @@ public class AccessRequestService {
     private final AccessRequestRepository accessRequestRepository;
     private final AppUserRepository appUserRepository;
     private final PermissionRepository permissionRepository;
-    private final AccessRequestNotificationService notificationService;
+    private final ObjectProvider<AccessRequestNotificationService> notificationService;
 
     public AccessRequestService(
             AccessRequestRepository accessRequestRepository,
             AppUserRepository appUserRepository,
             PermissionRepository permissionRepository,
-            AccessRequestNotificationService notificationService) {
+            ObjectProvider<AccessRequestNotificationService> notificationService) {
         this.accessRequestRepository = accessRequestRepository;
         this.appUserRepository = appUserRepository;
         this.permissionRepository = permissionRepository;
@@ -49,14 +50,15 @@ public class AccessRequestService {
                         now));
 
         request = accessRequestRepository.save(request);
-        if (!notificationService.shouldNotify(request, now)) {
+        AccessRequestNotificationService notifier = notificationService.getIfAvailable();
+        if (notifier == null || !notifier.shouldNotify(request, now)) {
             return;
         }
 
         List<AppUser> administrators = appUserRepository.findAllById(
                 permissionRepository.findEffectiveUserIdsByPermissionCode(
                         PermissionCodes.USER_READ, now));
-        if (notificationService.send(request, administrators)) {
+        if (notifier.send(request, administrators)) {
             request.markNotificationSent(now);
         }
     }

@@ -61,6 +61,7 @@
 - [ADR-0013: 追記専用の監査ログと変更履歴](decisions/ADR-0013-append-only-audit-and-change-history.md)
 - [ADR-0014: 経費承認経路の申請時確定](decisions/ADR-0014-expense-approval-route-resolution.md)
 - [ADR-0015: 経費証憑のBackend専用Blob Storage](decisions/ADR-0015-expense-attachment-blob-storage.md)
+- [ADR-0016: ローカルMailpitとTransactional Outbox](decisions/ADR-0016-local-mailpit-transactional-outbox.md)
 
 ## 履歴資料
 

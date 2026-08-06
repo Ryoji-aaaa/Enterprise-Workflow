@@ -23,6 +23,8 @@ run_step "Checking manual seed job names and environment guards" \
   "${SCRIPT_DIRECTORY}/check-manual-seed-job-names.sh"
 run_step "Checking expense attachment storage and identity boundaries" \
   "${SCRIPT_DIRECTORY}/check-attachment-storage.sh"
+run_step "Checking fail-closed Azure notification boundaries" \
+  "${SCRIPT_DIRECTORY}/check-azure-notification-boundary.sh"
 
 log_section "Terraform validation"
 run_step "Initializing the bootstrap Terraform root without a backend" \
