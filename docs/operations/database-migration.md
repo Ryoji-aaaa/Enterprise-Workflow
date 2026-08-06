@@ -46,6 +46,12 @@ Storage Account、非公開container、Backend専用Managed Identity/RBACをappl
 Blob endpoint、container名、client IDを設定する。Blob設定不足でBackendが起動できない場合も
 `flyway repair`やDB手動変更を行わず、Terraformとrevision設定を修正する。
 
+通知基盤を含むrevisionではV011からV013を順に適用する。V011は`notification_outbox`と
+`access_requests.notification_queued_at`、V012は既存送付時刻のqueue時刻へのbackfill、V013は
+`MAIL_NOTIFICATION_READ`と`SYSTEM_ADMIN`への割当を追加する。Azureではdelivery modeが
+`disabled`のためOutbox行と履歴APIは作動しないが、schemaとPermissionは全環境で同じmigrationを
+適用する。適用後はFlyway V013成功、Permissionが1件、SYSTEM_ADMIN mappingが1件であることを確認する。
+
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
 `SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから

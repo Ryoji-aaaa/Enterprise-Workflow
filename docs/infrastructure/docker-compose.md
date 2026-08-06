@@ -22,6 +22,10 @@
 | `azurite` | `mcr.microsoft.com/azure-storage/azurite:3.36.0` | なし | 開発・E2E用Blob Storage |
 | `e2e` | Node.js 24.18.0 / Playwright 1.62.0でビルド | なし | Chromium E2E |
 
+ComposeはBackendへ`workflow.notification.delivery-mode=local-mailpit`を明示し、SMTP hostを
+内部service `mailpit`へ固定する。このmodeではOutbox Dispatcherと管理者向け履歴APIが有効になる。
+既定値は`disabled`であり、Compose外へ設定を流用しない。
+
 `keycloak-init`は`init`プロファイルに属する一時サービスである。
 通常起動には含めず、設定または検証時に`docker compose run --rm`で実行する。
 生成したRealm JSONはrootで動く一時initサービスが専用volumeへ`0440`でコピーし、

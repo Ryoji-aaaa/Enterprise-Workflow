@@ -100,6 +100,10 @@ token更新時にBetter Authが返すSet-CookieはRoute Handlerからブラウ�
 access token、refresh token、ID tokenをClient Component、localStorage、
 sessionStorageへ渡さない。
 
+汎用proxyのallowlistはメール通知履歴のcollectionとUUID詳細にGETだけを許可する。
+`/api/me.features.mailNotificationHistory`は環境名を公開せずローカル機能の有効性だけを返し、
+`MAIL_NOTIFICATION_READ`との両方を満たす場合だけメニューを表示する。
+
 ## 検証
 
 `make test SUITES=frontend`、`make test SUITES=e2e`、`make verify`、`make audit-frontend`は

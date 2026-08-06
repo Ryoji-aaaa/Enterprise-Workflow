@@ -193,7 +193,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V012 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V013 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -223,7 +223,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V012 schema.
+# validates the complete V013 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -654,8 +654,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 12 THEN
-        RAISE EXCEPTION 'expected 12 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 13 THEN
+        RAISE EXCEPTION 'expected 13 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -982,7 +982,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 12 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 13 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -997,7 +997,7 @@ BEGIN
         WHERE id = '00000000-0000-0000-0000-000000000001') <> 'SYSTEM' THEN
         RAISE EXCEPTION 'fresh database SYSTEM employment type is invalid';
     END IF;
-    IF (SELECT count(*) FROM roles) <> 9 OR (SELECT count(*) FROM permissions) <> 17 THEN
+    IF (SELECT count(*) FROM roles) <> 9 OR (SELECT count(*) FROM permissions) <> 18 THEN
         RAISE EXCEPTION 'fresh database authorization seeds are invalid';
     END IF;
     IF (SELECT count(*) FROM information_schema.tables
@@ -1054,6 +1054,14 @@ BEGIN
                    'EXPENSE_APPLICATION_APPROVE'))) <> 6 THEN
         RAISE EXCEPTION 'expense application permission mappings are invalid';
     END IF;
+    IF (SELECT count(*)
+        FROM role_permissions mapping
+        JOIN roles role ON role.id = mapping.role_id
+        JOIN permissions permission ON permission.id = mapping.permission_id
+        WHERE role.role_code = 'SYSTEM_ADMIN'
+          AND permission.permission_code = 'MAIL_NOTIFICATION_READ') <> 1 THEN
+        RAISE EXCEPTION 'mail notification permission mapping is invalid';
+    END IF;
     BEGIN
         INSERT INTO app_users (
             id, email, display_name, employment_type, account_status,
@@ -1098,10 +1106,10 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 12
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 13
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
-       OR (SELECT count(*) FROM permissions) <> 17
+       OR (SELECT count(*) FROM permissions) <> 18
        OR (SELECT count(*) FROM audit_logs
            WHERE action_type = 'MIGRATE_EXISTING_USER_DATA') <> 1 THEN
         RAISE EXCEPTION 'second startup was not idempotent';

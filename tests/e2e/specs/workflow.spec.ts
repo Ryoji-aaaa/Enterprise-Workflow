@@ -166,6 +166,7 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(meBody).toMatchObject({
     email: userEmail,
     displayName: "開発一般ユーザー",
+    features: { mailNotificationHistory: true },
   });
   expect(meBody.roles).toEqual(expect.arrayContaining([
     "APPLICATION_USER",
@@ -310,7 +311,16 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
   expect(await meResponse.json()).toMatchObject({
     email: adminEmail,
     displayName: "開発管理者",
+    features: { mailNotificationHistory: true },
   });
+
+  await expect(page.getByRole("link", { name: "送付済メール一覧" })).toBeVisible();
+  await page.getByRole("link", { name: "送付済メール一覧" }).click();
+  await expect(page.getByRole("heading", { name: "送付済メール一覧" })).toBeVisible();
+  await expect(page.getByText(/通知履歴（\d+件）/)).toBeVisible();
+  await page.getByRole("link", { name: "詳細" }).first().click();
+  await expect(page.getByRole("heading", { name: "メール通知詳細" })).toBeVisible();
+  await expect(page.getByText("本文", { exact: true })).toBeVisible();
 });
 
 test("社長が組織図とユーザー編集を利用しロール変更を監査できる", async ({ page }) => {
@@ -402,12 +412,18 @@ test("一般正社員は組織図を閲覧できユーザー管理は表示さ�
   const me = (await meResponse.json()) as { id: string };
   await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
   await expect(page.getByRole("link", { name: "ユーザー管理" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "送付済メール一覧" })).toHaveCount(0);
   await page.getByRole("link", { name: "組織図" }).click();
   await expect(page.getByText("仮 社長", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /ユーザー情報を編集/ })).toHaveCount(0);
 
   const directApiResponse = await page.request.get(`/api/backend/admin/users/${me.id}`);
   expect(directApiResponse.status()).toBe(403);
+  const mailHistoryResponse = await page.request.get("/api/backend/admin/mail-notifications");
+  expect(mailHistoryResponse.status()).toBe(403);
+  await page.goto("/admin/mail-notifications");
+  await expect(page.getByText("メール通知履歴を参照する権限がありません（403）。"))
+    .toBeVisible();
   await page.goto(`/admin/users/${me.id}/edit`);
   await expect(page.getByText("この情報を管理する権限がありません（403）。")).toBeVisible();
 });

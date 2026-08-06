@@ -13,8 +13,12 @@ public record MeResponse(
         EmploymentType employmentType,
         DepartmentResponse department,
         List<String> roles,
-        List<String> permissions
+        List<String> permissions,
+        FeaturesResponse features
 ) {
     public record DepartmentResponse(String name) {
+    }
+
+    public record FeaturesResponse(boolean mailNotificationHistory) {
     }
 }

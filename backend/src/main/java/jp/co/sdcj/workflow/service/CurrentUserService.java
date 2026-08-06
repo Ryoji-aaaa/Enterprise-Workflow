@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.api.MeResponse;
 import jp.co.sdcj.workflow.api.MeResponse.DepartmentResponse;
+import jp.co.sdcj.workflow.api.MeResponse.FeaturesResponse;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.OrganizationUnit;
 import jp.co.sdcj.workflow.domain.Permission;
@@ -34,6 +35,7 @@ public class CurrentUserService {
     private final UserRoleAssignmentRepository roleAssignmentRepository;
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final FeatureCapabilities featureCapabilities;
 
     public CurrentUserService(
             CurrentUserProvider currentUserProvider,
@@ -42,7 +44,8 @@ public class CurrentUserService {
             OrganizationUnitRepository organizationUnitRepository,
             UserRoleAssignmentRepository roleAssignmentRepository,
             RoleRepository roleRepository,
-            PermissionRepository permissionRepository) {
+            PermissionRepository permissionRepository,
+            FeatureCapabilities featureCapabilities) {
         this.currentUserProvider = currentUserProvider;
         this.appUserRepository = appUserRepository;
         this.organizationAssignmentRepository = organizationAssignmentRepository;
@@ -50,6 +53,7 @@ public class CurrentUserService {
         this.roleAssignmentRepository = roleAssignmentRepository;
         this.roleRepository = roleRepository;
         this.permissionRepository = permissionRepository;
+        this.featureCapabilities = featureCapabilities;
     }
 
     @Transactional
@@ -95,6 +99,7 @@ public class CurrentUserService {
                 user.getEmploymentType(),
                 department,
                 roles,
-                permissions);
+                permissions,
+                new FeaturesResponse(featureCapabilities.mailNotificationHistory()));
     }
 }

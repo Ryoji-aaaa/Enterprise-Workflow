@@ -15,9 +15,9 @@ Internet ──> Next.js Container App ──internal ingress──> Spring Boot
 
 Next.jsとKeycloakだけがexternal ingressを持つ。Spring Bootはinternal ingressであり、
 PostgreSQLはpublic networkを無効化したdelegated subnet上に置く。Next.jsにはDB設定を
-渡さない。MailpitはAzureへ配置しない。Azure上のメール配送サービスは未決定であり、
-決定までは通知送信が成功する前提にしない。SMTP未設定または障害は未登録ユーザーの
-メール通知だけを利用不能にし、認証済みユーザー向けの通常の業務APIは提供を継続する。
+渡さない。MailpitはAzureへ配置しない。stagingとproductionは通知delivery modeを常に
+`disabled`とし、SMTP、メール配送、通知Outbox行、管理者向けメール履歴API・画面を提供しない。
+Azure上のメール配送サービスは未決定であり、将来導入時は別設計として認可・監査・監視を見直す。
 
 Backend Container Appはstartupとreadinessで`/actuator/health/readiness`、livenessで
 `/actuator/health/liveness`を使う。livenessはアプリケーションの生存状態だけ、

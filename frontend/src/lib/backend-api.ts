@@ -16,12 +16,20 @@ export type CurrentUser = {
   } | null;
   roles: string[];
   permissions: string[];
+  features: {
+    mailNotificationHistory: boolean;
+  };
 };
 
 export function canViewOrganizationChart(user: CurrentUser): boolean {
   return user.permissions.includes("ORGANIZATION_CHART_READ")
     && (user.employmentType === "REGULAR_EMPLOYEE"
       || user.employmentType === "ASSOCIATE_EMPLOYEE");
+}
+
+export function canViewMailNotificationHistory(user: CurrentUser): boolean {
+  return user.features?.mailNotificationHistory === true
+    && user.permissions.includes("MAIL_NOTIFICATION_READ");
 }
 
 export type BackendApiResult =

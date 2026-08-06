@@ -306,7 +306,8 @@ class MeApiIntegrationTest {
                 .andExpect(jsonPath("$.employmentType").value("REGULAR_EMPLOYEE"))
                 .andExpect(jsonPath("$.department.name").value("開発部"))
                 .andExpect(jsonPath("$.roles", contains(RoleCodes.APPLICATION_USER)))
-                .andExpect(jsonPath("$.permissions", contains(PermissionCodes.WORKFLOW_SUBMIT)));
+                .andExpect(jsonPath("$.permissions", contains(PermissionCodes.WORKFLOW_SUBMIT)))
+                .andExpect(jsonPath("$.features.mailNotificationHistory").value(true));
     }
 
     @Test

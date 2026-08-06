@@ -16,7 +16,8 @@
 - Frontend features:
   [組織図](frontend/organization-chart.md) /
   [ユーザー管理](frontend/user-management.md) /
-  [経費精算申請](frontend/expense-application.md)
+  [経費精算申請](frontend/expense-application.md) /
+  [メール通知履歴](frontend/mail-notification-history.md)
 - Backend:
   [Spring Boot](backend/spring-boot.md) /
   [Flyway](backend/flyway.md) /
@@ -25,6 +26,7 @@
   [業務認可](backend/authorization.md) /
   [監査ログ](backend/audit-logging.md) /
   [経費精算申請](backend/expense-application.md) /
+  [ローカルメール通知Outbox](backend/notification-outbox.md) /
   [開発・staging用seedデータ](backend/development-seed-data.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /

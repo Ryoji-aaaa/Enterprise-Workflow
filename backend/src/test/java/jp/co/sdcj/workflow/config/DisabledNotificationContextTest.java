@@ -18,18 +18,25 @@ import jp.co.sdcj.workflow.service.notification.NoopNotificationPublisher;
 import jp.co.sdcj.workflow.service.notification.NotificationPublisher;
 import jp.co.sdcj.workflow.service.notification.NotificationRequest;
 import jp.co.sdcj.workflow.service.notification.OutboxNotificationPublisher;
+import jp.co.sdcj.workflow.api.AdminMailNotificationController;
+import jp.co.sdcj.workflow.service.FeatureCapabilities;
+import jp.co.sdcj.workflow.service.MailNotificationHistoryService;
 
 @SpringBootTest(properties = "workflow.notification.delivery-mode=disabled")
 @ActiveProfiles("test")
 class DisabledNotificationContextTest {
     @Autowired ApplicationContext context;
     @Autowired NotificationOutboxRepository outboxRepository;
+    @Autowired FeatureCapabilities featureCapabilities;
 
     @Test
     void disabledではSMTPとDispatcherとOutboxPublisherを登録しない() {
         assertThat(context.getBeansOfType(JavaMailSender.class)).isEmpty();
         assertThat(context.getBeansOfType(MailpitNotificationDispatcher.class)).isEmpty();
         assertThat(context.getBeansOfType(OutboxNotificationPublisher.class)).isEmpty();
+        assertThat(context.getBeansOfType(AdminMailNotificationController.class)).isEmpty();
+        assertThat(context.getBeansOfType(MailNotificationHistoryService.class)).isEmpty();
+        assertThat(featureCapabilities.mailNotificationHistory()).isFalse();
         assertThat(context.getBeansOfType(NotificationPublisher.class))
                 .hasSize(1)
                 .allSatisfy((name, publisher) ->

@@ -9,6 +9,7 @@ import {
   FileText,
   Grid2X2,
   LayoutDashboard,
+  MailCheck,
   MoreHorizontal,
   Plus,
   Search,
@@ -34,7 +35,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { canViewOrganizationChart, type CurrentUser } from "@/lib/backend-api";
+import {
+  canViewMailNotificationHistory,
+  canViewOrganizationChart,
+  type CurrentUser,
+} from "@/lib/backend-api";
 
 const menuItems = [
   { label: "モック文字１", icon: LayoutDashboard, active: true },
@@ -291,6 +296,16 @@ export function MockDashboard({
               <Users />
             </Button>
           )}
+          {canViewMailNotificationHistory(user) && (
+            <Button
+              aria-label="送付済メール一覧"
+              render={<Link href="/admin/mail-notifications" />}
+              size="icon-lg"
+              variant="ghost"
+            >
+              <MailCheck />
+            </Button>
+          )}
         </nav>
 
         <label className="relative mx-4 hidden max-w-xl flex-1 items-center lg:flex">
@@ -376,6 +391,16 @@ export function MockDashboard({
               >
                 <Users className="size-4.5" />
                 <span>ユーザー管理</span>
+              </Button>
+            )}
+            {canViewMailNotificationHistory(user) && (
+              <Button
+                className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70"
+                render={<Link href="/admin/mail-notifications" />}
+                variant="ghost"
+              >
+                <MailCheck className="size-4.5" />
+                <span>送付済メール一覧</span>
               </Button>
             )}
             {menuItems.map((item) => {

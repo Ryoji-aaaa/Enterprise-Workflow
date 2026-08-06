@@ -24,10 +24,10 @@ staging開発データはdeployから投入しない。必要な期間だけ、
 [`development-seed-data.md`](../backend/development-seed-data.md)の手動Container Apps Jobを
 対象別に開始する。productionにはseed Jobを作成せず、seed入口もproductionを拒否する。
 
-Azureには現時点でメールサービスを配置しない。SMTP未設定または障害があってもBackendの
-liveness/readinessはmailを評価せず、通常の業務APIを提供できる状態をReadyとする。
-未登録ユーザーのアクセス要求はDBへ保存されるが、管理者へのメール通知は送信されない。
-メールサービス導入後は配送成否をprobeから独立した監視として追加する。
+Azureにはメールサービスを配置せず、通知delivery modeは`disabled`固定とする。SMTP、メール配送、
+通知Outbox行、メール履歴API・画面は存在しない。Backendのliveness/readinessはmailを評価せず、
+通常の業務APIを提供できる状態をReadyとする。未登録ユーザーのアクセス要求はDBへ保存する。
+メールサービス導入時は別の設計変更とし、配送成否をprobeから独立して監視する。
 
 デプロイ後はPortalで最新Backend revisionがActiveかつRunning、trafficが100%、
 replicaが1以上であることを確認する。再ログイン後に`/api/backend/me`が
@@ -64,7 +64,7 @@ Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。dep
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（経費証憑revisionではV010）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV013）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
