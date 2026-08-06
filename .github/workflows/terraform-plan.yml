@@ -21,7 +21,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
       - name: Verify Terraform and infrastructure configuration
         run: make verify-infra
@@ -59,7 +59,7 @@ jobs:
       TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
       - name: Enforce production plan safety
         if: matrix.target_environment == 'production' && vars.PROVISION_WORKLOADS != 'false'

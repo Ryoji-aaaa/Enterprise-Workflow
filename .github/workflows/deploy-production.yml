@@ -46,9 +46,9 @@ jobs:
       TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: inputs.phase == 'foundation'
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         if: inputs.phase == 'workloads'
         with:
           ref: ${{ inputs.image_tag }}
