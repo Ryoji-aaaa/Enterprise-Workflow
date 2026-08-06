@@ -17,6 +17,7 @@ import jp.co.sdcj.workflow.config.NotificationProperties;
 import jp.co.sdcj.workflow.domain.NotificationOutbox;
 import jp.co.sdcj.workflow.domain.NotificationStatus;
 import jp.co.sdcj.workflow.domain.NotificationType;
+import jp.co.sdcj.workflow.repository.AccessRequestRepository;
 import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
 
 class NotificationOutboxTransactionsTest {
@@ -24,7 +25,7 @@ class NotificationOutboxTransactionsTest {
     void 失敗を待機時間付きで再試行し5回目にfailedへ遷移する() {
         NotificationOutboxRepository repository = mock(NotificationOutboxRepository.class);
         NotificationOutboxTransactions transactions = new NotificationOutboxTransactions(
-                repository, properties());
+                repository, mock(AccessRequestRepository.class), properties());
         Instant started = Instant.parse("2026-08-06T00:00:00Z");
         NotificationOutbox notification = notification(started);
         when(repository.findByIdForUpdate(notification.getId()))

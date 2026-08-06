@@ -14,4 +14,9 @@ public class NoopNotificationPublisher implements NotificationPublisher {
     public void publish(NotificationRequest request) {
         // Azure deliberately does not persist or deliver local development notifications.
     }
+
+    @Override
+    public boolean isEnabled() {
+        return false;
+    }
 }

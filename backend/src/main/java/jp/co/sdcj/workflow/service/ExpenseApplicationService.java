@@ -18,7 +18,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.api.ApiException;
@@ -36,6 +35,8 @@ import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
 import jp.co.sdcj.workflow.service.ResolvedApprovalRoute.ApplicantOrganizationSnapshot;
+import jp.co.sdcj.workflow.service.notification.NotificationMessageFactory;
+import jp.co.sdcj.workflow.service.notification.NotificationPublisher;
 
 @Service
 public class ExpenseApplicationService {
@@ -49,7 +50,8 @@ public class ExpenseApplicationService {
     private final ExpenseApprovalCandidateRepository candidateRepository;
     private final ExpenseApprovalRouteResolver routeResolver;
     private final AuditLogService auditLogService;
-    private final ObjectProvider<ExpenseNotificationService> notificationService;
+    private final NotificationPublisher notificationPublisher;
+    private final NotificationMessageFactory messageFactory;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -62,7 +64,8 @@ public class ExpenseApplicationService {
             ExpenseApprovalCandidateRepository candidateRepository,
             ExpenseApprovalRouteResolver routeResolver,
             AuditLogService auditLogService,
-            ObjectProvider<ExpenseNotificationService> notificationService,
+            NotificationPublisher notificationPublisher,
+            NotificationMessageFactory messageFactory,
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper) {
         this.applicationRepository = applicationRepository;
@@ -73,7 +76,8 @@ public class ExpenseApplicationService {
         this.candidateRepository = candidateRepository;
         this.routeResolver = routeResolver;
         this.auditLogService = auditLogService;
-        this.notificationService = notificationService;
+        this.notificationPublisher = notificationPublisher;
+        this.messageFactory = messageFactory;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
     }
@@ -151,6 +155,7 @@ public class ExpenseApplicationService {
         int runNumber = Math.toIntExact(runRepository.countByExpenseApplicationId(applicationId) + 1);
         ExpenseApprovalRun run = runRepository.save(new ExpenseApprovalRun(
                 applicationId, runNumber, organizationSnapshot(route), now, applicant.getId()));
+        ExpenseApprovalStep firstStep = null;
         List<ExpenseApprovalCandidate> firstCandidates = List.of();
         for (int index = 0; index < route.steps().size(); index++) {
             var resolvedStep = route.steps().get(index);
@@ -163,7 +168,10 @@ public class ExpenseApplicationService {
                             step.getId(), candidate.user(), candidate.assignment(), candidate.position()))
                     .toList();
             candidates = candidateRepository.saveAll(candidates);
-            if (index == 0) firstCandidates = candidates;
+            if (index == 0) {
+                firstStep = step;
+                firstCandidates = candidates;
+            }
         }
         application.submit(now, applicant.getId());
         String action = resubmit
@@ -173,8 +181,11 @@ public class ExpenseApplicationService {
                 applicationId.toString(), Map.of("status", required.name()),
                 Map.of("applicationNumber", application.getApplicationNumber(),
                         "status", application.getStatus().name(), "runNumber", runNumber), null);
-        ExpenseNotificationService notifier = notificationService.getIfAvailable();
-        if (notifier != null) notifier.notifyCandidates(application, firstCandidates);
+        if (firstStep == null) {
+            throw new IllegalStateException("Resolved approval route has no first step");
+        }
+        messageFactory.approvalRequests(application, run, firstStep, firstCandidates)
+                .forEach(notificationPublisher::publish);
         return new ExpenseApplicationDetails(
                 application, items, run,
                 stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId()));

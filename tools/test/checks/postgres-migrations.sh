@@ -193,7 +193,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V011 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V012 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -206,6 +206,16 @@ INSERT INTO app_users VALUES
 ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'keycloak', 'https://issuer.example', NULL,
  'legacy.user@sdcj.co.jp', 'Legacy User', '', 'USER', FALSE,
  '2024-02-01T00:00:00Z', '2024-02-02T00:00:00Z');
+
+INSERT INTO access_requests (
+    id, issuer, external_subject, email, display_name, request_status,
+    first_requested_at, last_requested_at, notification_sent_at, request_count
+) VALUES (
+    'cccccccc-cccc-cccc-cccc-ccccccccccc3', 'https://issuer.example',
+    'legacy-pending', 'legacy.pending@sdcj.co.jp', 'Legacy Pending', 'PENDING',
+    '2024-03-01T00:00:00Z', '2024-03-02T00:00:00Z',
+    '2024-03-02T00:00:00Z', 2
+);
 SQL
 
 # Mirror the production application-switch deployment: the new entity model
@@ -213,7 +223,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V011 schema.
+# validates the complete V012 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -644,8 +654,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 11 THEN
-        RAISE EXCEPTION 'expected 11 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 12 THEN
+        RAISE EXCEPTION 'expected 12 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -664,6 +674,11 @@ BEGIN
     IF (SELECT account_status FROM app_users
         WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2') <> 'DISABLED' THEN
         RAISE EXCEPTION 'disabled legacy user was not migrated to DISABLED';
+    END IF;
+    IF (SELECT notification_queued_at = notification_sent_at
+        FROM access_requests
+        WHERE id = 'cccccccc-cccc-cccc-cccc-ccccccccccc3') IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION 'legacy notification cooldown was not backfilled';
     END IF;
     IF (SELECT employment_type FROM app_users
         WHERE id = workflow_system_user_id()) <> 'SYSTEM'
@@ -967,7 +982,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 11 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 12 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -1083,7 +1098,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 11
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 12
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 17

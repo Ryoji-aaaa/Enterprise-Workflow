@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.config.NotificationProperties;
 import jp.co.sdcj.workflow.domain.NotificationStatus;
+import jp.co.sdcj.workflow.domain.NotificationType;
+import jp.co.sdcj.workflow.repository.AccessRequestRepository;
 import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
 
 @Service
@@ -20,12 +22,15 @@ import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
         havingValue = "local-mailpit")
 public class NotificationOutboxTransactions {
     private final NotificationOutboxRepository outboxRepository;
+    private final AccessRequestRepository accessRequestRepository;
     private final NotificationProperties properties;
 
     public NotificationOutboxTransactions(
             NotificationOutboxRepository outboxRepository,
+            AccessRequestRepository accessRequestRepository,
             NotificationProperties properties) {
         this.outboxRepository = outboxRepository;
+        this.accessRequestRepository = accessRequestRepository;
         this.properties = properties;
     }
 
@@ -49,6 +54,10 @@ public class NotificationOutboxTransactions {
         outboxRepository.findByIdForUpdate(notificationId).ifPresent(notification -> {
             if (notification.getStatus() == NotificationStatus.PROCESSING) {
                 notification.markSent(now);
+                if (notification.getNotificationType() == NotificationType.ACCESS_REQUEST) {
+                    accessRequestRepository.findById(notification.getSourceId())
+                            .ifPresent(request -> request.markNotificationSent(now));
+                }
             }
         });
     }

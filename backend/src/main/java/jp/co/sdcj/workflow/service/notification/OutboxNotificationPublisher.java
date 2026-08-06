@@ -4,6 +4,8 @@ import java.time.Instant;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.domain.NotificationOutbox;
 import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
@@ -21,6 +23,7 @@ public class OutboxNotificationPublisher implements NotificationPublisher {
     }
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void publish(NotificationRequest request) {
         if (outboxRepository.existsByDeduplicationKey(request.deduplicationKey())) {
             return;
@@ -40,5 +43,10 @@ public class OutboxNotificationPublisher implements NotificationPublisher {
                 request.bodyText(),
                 request.deduplicationKey(),
                 now));
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
     }
 }

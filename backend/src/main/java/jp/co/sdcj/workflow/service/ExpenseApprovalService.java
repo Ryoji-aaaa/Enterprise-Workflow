@@ -9,7 +9,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.transaction.annotation.Transactional;
 
 import jp.co.sdcj.workflow.api.ApiException;
@@ -24,6 +23,8 @@ import jp.co.sdcj.workflow.repository.ExpenseApplicationRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
+import jp.co.sdcj.workflow.service.notification.NotificationMessageFactory;
+import jp.co.sdcj.workflow.service.notification.NotificationPublisher;
 
 @Service
 public class ExpenseApprovalService {
@@ -32,7 +33,8 @@ public class ExpenseApprovalService {
     private final ExpenseApprovalStepRepository stepRepository;
     private final ExpenseApprovalCandidateRepository candidateRepository;
     private final AuditLogService auditLogService;
-    private final ObjectProvider<ExpenseNotificationService> notificationService;
+    private final NotificationPublisher notificationPublisher;
+    private final NotificationMessageFactory messageFactory;
 
     public ExpenseApprovalService(
             ExpenseApplicationRepository applicationRepository,
@@ -40,13 +42,15 @@ public class ExpenseApprovalService {
             ExpenseApprovalStepRepository stepRepository,
             ExpenseApprovalCandidateRepository candidateRepository,
             AuditLogService auditLogService,
-            ObjectProvider<ExpenseNotificationService> notificationService) {
+            NotificationPublisher notificationPublisher,
+            NotificationMessageFactory messageFactory) {
         this.applicationRepository = applicationRepository;
         this.runRepository = runRepository;
         this.stepRepository = stepRepository;
         this.candidateRepository = candidateRepository;
         this.auditLogService = auditLogService;
-        this.notificationService = notificationService;
+        this.notificationPublisher = notificationPublisher;
+        this.messageFactory = messageFactory;
     }
 
     @Transactional(readOnly = true)
@@ -85,12 +89,15 @@ public class ExpenseApprovalService {
                     Map.of("status", "PENDING_APPROVAL"),
                     Map.of("applicationNumber", locked.application().getApplicationNumber(),
                             "status", "APPROVED", "runNumber", locked.run().getRunNumber()), null);
-            ExpenseNotificationService notifier = notificationService.getIfAvailable();
-            if (notifier != null) notifier.notifyApplicant(locked.application(), "承認が完了しました。");
+            notificationPublisher.publish(messageFactory.approvedApplicant(
+                    locked.application(), locked.run()));
         } else {
-            ExpenseNotificationService notifier = notificationService.getIfAvailable();
-            if (notifier != null) notifier.notifyCandidates(locked.application(),
-                    candidateRepository.findAllByApprovalStepId(next.getId()));
+            messageFactory.approvalRequests(
+                            locked.application(),
+                            locked.run(),
+                            next,
+                            candidateRepository.findAllByApprovalStepId(next.getId()))
+                    .forEach(notificationPublisher::publish);
         }
         return new ExpenseApplicationDetails(
                 locked.application(),
@@ -122,9 +129,8 @@ public class ExpenseApprovalService {
                         "status", "RETURNED", "runNumber", locked.run().getRunNumber(),
                         "stepId", stepId, "stepType", locked.step().getStepType().name()),
                 safeReason);
-        ExpenseNotificationService notifier = notificationService.getIfAvailable();
-        if (notifier != null) notifier.notifyApplicant(
-                locked.application(), "差し戻されました: " + safeReason);
+        notificationPublisher.publish(messageFactory.returnedApplicant(
+                locked.application(), locked.run(), safeReason));
         return new ExpenseApplicationDetails(
                 locked.application(), List.of(), locked.run(), locked.steps());
     }

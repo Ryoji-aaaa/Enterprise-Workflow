@@ -22,6 +22,7 @@ workflow:
     delivery-mode: local-mailpit
     from: no-reply@workflow.local
     cooldown: 15m
+    dispatch-interval: 1h
     smtp:
       host: mailpit
       port: 1025
