@@ -10,6 +10,7 @@
 | Next.js | Keycloak | token交換、userinfo |
 | Next.js | Spring Boot | Bearer JWT付き業務API |
 | Spring Boot | PostgreSQL | 業務データ |
+| Spring Boot | Azurite / Azure Blob Storage | 領収書・証憑ファイル本体 |
 | Spring Boot | Mailpit | 未登録ユーザー通知 |
 | Keycloak | PostgreSQL | Realm・認証データ |
 
@@ -17,12 +18,15 @@
 
 - Spring BootとPostgreSQLのホストポート公開
 - BrowserからSpring BootまたはPostgreSQLへの直接接続
+- BrowserまたはNext.jsからAzurite / Azure Blob Storageへの直接接続
+- Blob URL、SAS、connection string、Storage keyのBrowserへの開示
 - Next.jsからPostgreSQLへの接続
 - Next.jsへのDB資格情報の設定
 - PostgreSQLの用途別ロールによる相互データベース接続
 
 `make verify`はCompose定義と実コンテナのネットワーク所属、公開ポート、
-Next.jsからPostgreSQLへのDNS到達不能、DB資格情報の非設定を検証します。
+Next.jsからPostgreSQLへのDNS到達不能、DB資格情報の非設定、Azuriteのホスト非公開と
+Backendだけが接続設定を持つことを検証します。
 PlaywrightはSpring Bootのホスト非公開とBFF経由アクセスを確認します。
 
 ネットワークの実装は[Docker Compose仕様](../infrastructure/docker-compose.md)、

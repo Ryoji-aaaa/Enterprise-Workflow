@@ -6,6 +6,10 @@ variable "revision_mode" {
   default = "Single"
 }
 variable "identity_id" { type = string }
+variable "additional_identity_ids" {
+  type    = set(string)
+  default = []
+}
 variable "registry_server" { type = string }
 variable "image" { type = string }
 variable "target_port" { type = number }

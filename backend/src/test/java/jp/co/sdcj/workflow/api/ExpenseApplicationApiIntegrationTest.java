@@ -2,26 +2,44 @@ package jp.co.sdcj.workflow.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,7 +47,10 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
@@ -51,6 +72,7 @@ import jp.co.sdcj.workflow.domain.UserRoleAssignment;
 import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.AuditLogRepository;
+import jp.co.sdcj.workflow.repository.ExpenseApplicationAttachmentRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
@@ -66,10 +88,14 @@ import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
 import jp.co.sdcj.workflow.service.ExpenseApprovalRouteResolver;
 import jp.co.sdcj.workflow.service.PermissionCodes;
 import jp.co.sdcj.workflow.service.ResolvedApprovalRoute;
+import jp.co.sdcj.workflow.storage.AttachmentStorage;
+import jp.co.sdcj.workflow.storage.AttachmentStorageException;
+import jp.co.sdcj.workflow.storage.StoredAttachmentContent;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class ExpenseApplicationApiIntegrationTest {
     private static final String ISSUER = "http://localhost:8180/realms/workflow";
     private static final String CLIENT_ID = "workflow-web";
@@ -93,6 +119,10 @@ class ExpenseApplicationApiIntegrationTest {
     @Autowired AuditLogRepository auditLogRepository;
     @Autowired ExpenseApprovalRouteResolver routeResolver;
     @MockitoBean JavaMailSender mailSender;
+    @MockitoBean AttachmentStorage attachmentStorage;
+    @MockitoSpyBean ExpenseApplicationAttachmentRepository attachmentRepository;
+
+    private final Map<String, byte[]> storedAttachments = new ConcurrentHashMap<>();
 
     private AppUser member;
     private AppUser sectionHead;
@@ -117,6 +147,7 @@ class ExpenseApplicationApiIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        setUpAttachmentStorage();
         clearDatabase();
         jdbcTemplate.execute("drop sequence if exists expense_application_number_seq");
         jdbcTemplate.execute("create sequence expense_application_number_seq start with 1 increment by 1");
@@ -174,6 +205,270 @@ class ExpenseApplicationApiIntegrationTest {
     @AfterEach
     void tearDown() {
         clearDatabase();
+        reset(attachmentRepository);
+    }
+
+    @Test
+    void 下書き添付を登録一覧表示プレビューDownload論理削除し監査する() throws Exception {
+        String applicationId = createDraft(member, "member", "添付APIテスト");
+        MockMultipartFile file = pdf("領収書.pdf");
+
+        String uploaded = mockMvc.perform(multipart(
+                        "/api/expense-applications/{id}/attachments", applicationId)
+                        .file(file)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.originalFileName").value("領収書.pdf"))
+                .andExpect(jsonPath("$.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.previewable").value(true))
+                .andExpect(jsonPath("$.deletable").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String attachmentId = JsonTestSupport.stringValue(uploaded, "id");
+
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(attachmentId))
+                .andExpect(jsonPath("$[0].uploadedByName").value(member.getDisplayName()))
+                .andExpect(jsonPath("$[0].sha256").doesNotExist());
+
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Length", String.valueOf(file.getSize())))
+                .andExpect(header().string(
+                        "Content-Disposition", org.hamcrest.Matchers.startsWith("inline")))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string(
+                        "Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content?download=true",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Content-Disposition", org.hamcrest.Matchers.startsWith("attachment")));
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNoContent());
+        assertThat(storedAttachments).isEmpty();
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+
+        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
+                .getDeletedAt()).isNotNull();
+        assertThat(auditLogRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+                .extracting("actionType")
+                .contains("EXPENSE_ATTACHMENT_UPLOADED",
+                        "EXPENSE_ATTACHMENT_CONTENT_ACCESSED", "EXPENSE_ATTACHMENT_DELETED");
+    }
+
+    @Test
+    void 承認待ちと承認済みは添付変更を拒否し候補者だけが閲覧できる() throws Exception {
+        String applicationId = createDraft(member, "member", "添付状態テスト");
+        String attachmentId = upload(applicationId, member, "member", "before-submit.pdf");
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf("pending.pdf"))
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_EDITABLE"));
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(sectionHead, "section-head")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].deletable").value(false));
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(sectionHead, "section-head")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(outsider, "outsider")))
+                .andExpect(status().isNotFound());
+
+        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                UUID.fromString(applicationId)).orElseThrow();
+        var steps = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.getFirst().getId())
+                        .with(validJwt(sectionHead, "section-head"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.get(1).getId())
+                        .with(validJwt(accountingMember, "accounting-member"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_EDITABLE"));
+    }
+
+    @Test
+    void 差戻し後は添付を追加できる() throws Exception {
+        String applicationId = createAndSubmit(member, "member");
+        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                UUID.fromString(applicationId)).orElseThrow();
+        UUID stepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
+                .getFirst().getId();
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", stepId)
+                        .with(validJwt(sectionHead, "section-head"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"comment\":\"証憑を追加してください\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RETURNED"));
+
+        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf("returned.pdf"))
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void Blob保存失敗とDB保存失敗で不完全な行またはBlobを残さない() throws Exception {
+        String applicationId = createDraft(member, "member", "添付補償テスト");
+        doThrow(new AttachmentStorageException(new IllegalStateException("store failed")))
+                .when(attachmentStorage).store(
+                        anyString(), any(byte[].class), anyString(), any(Map.class));
+        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf("store-failure.pdf"))
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE"));
+        assertThat(attachmentRepository.count()).isZero();
+
+        setUpAttachmentStorage();
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("test DB failure"))
+                .when(attachmentRepository).save(any());
+        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf("db-failure.pdf"))
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isConflict());
+        assertThat(attachmentRepository.count()).isZero();
+        assertThat(storedAttachments).isEmpty();
+    }
+
+    @Test
+    void 添付削除のDB更新失敗時はBlobを削除せず論理削除をrollbackする() throws Exception {
+        String applicationId = createDraft(member, "member", "添付削除DB失敗テスト");
+        String attachmentId = upload(applicationId, member, "member", "delete-db-failure.pdf");
+
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("test DB failure"))
+                .when(attachmentRepository).flush();
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
+                .getDeletedAt()).isNull();
+        assertThat(storedAttachments).hasSize(1);
+        verify(attachmentStorage, never()).delete(anyString());
+        assertThat(auditLogRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+                .extracting("actionType")
+                .doesNotContain("EXPENSE_ATTACHMENT_DELETED");
+    }
+
+    @Test
+    void Blob削除失敗時もDB論理削除を維持して204を返し再試行ログと監査を残す(
+            CapturedOutput output) throws Exception {
+        String applicationId = createDraft(member, "member", "添付削除Blob失敗テスト");
+        String attachmentId = upload(applicationId, member, "member", "delete-blob-failure.pdf");
+        String objectName = "expense-evidence/%s/%s".formatted(applicationId, attachmentId);
+        doThrow(new AttachmentStorageException(new IllegalStateException("delete failed")))
+                .when(attachmentStorage).delete(objectName);
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+
+        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
+                .getDeletedAt()).isNotNull();
+        assertThat(storedAttachments).containsKey(objectName);
+        assertThat(auditLogRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+                .extracting("actionType")
+                .contains("EXPENSE_ATTACHMENT_DELETED", "EXPENSE_ATTACHMENT_STORAGE_FAILED");
+        assertThat(output)
+                .contains("Attachment Blob deletion failed after metadata commit")
+                .contains("applicationId=" + applicationId)
+                .contains("attachmentId=" + attachmentId)
+                .contains("storageObjectName=" + objectName)
+                .contains("errorType=AttachmentStorageException")
+                .contains("retryRequired=true");
+    }
+
+    @Test
+    void 添付件数と合計サイズの上限を申請ロック下で拒否する() throws Exception {
+        String countApplicationId = createDraft(member, "member", "添付件数上限テスト");
+        insertAttachmentMetadata(UUID.fromString(countApplicationId), 10, 1);
+        mockMvc.perform(multipart(
+                        "/api/expense-applications/{id}/attachments", countApplicationId)
+                        .file(pdf("eleventh.pdf"))
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_COUNT_EXCEEDED"));
+        assertThat(storedAttachments).isEmpty();
+
+        String totalApplicationId = createDraft(member, "member", "添付合計上限テスト");
+        insertAttachmentMetadata(UUID.fromString(totalApplicationId), 3, 10 * 1024 * 1024);
+        mockMvc.perform(multipart(
+                        "/api/expense-applications/{id}/attachments", totalApplicationId)
+                        .file(pdf("over-total.pdf"))
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_TOTAL_SIZE_EXCEEDED"));
+        assertThat(storedAttachments).isEmpty();
     }
 
     @Test
@@ -529,18 +824,34 @@ class ExpenseApplicationApiIntegrationTest {
     }
 
     private String createAndSubmit(AppUser applicant, String subject) throws Exception {
-        String created = mockMvc.perform(post("/api/expense-applications")
-                        .with(validJwt(applicant, subject))
-                        .contentType(MediaType.APPLICATION_JSON).content(requestJson(null)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.totalAmount").value(1500))
-                .andReturn().getResponse().getContentAsString();
-        String id = JsonTestSupport.stringValue(created, "id");
+        String id = createDraft(applicant, subject, "交通費テスト");
         mockMvc.perform(post("/api/expense-applications/{id}/submit", id)
                         .with(validJwt(applicant, subject)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
         return id;
+    }
+
+    private String createDraft(AppUser applicant, String subject, String title) throws Exception {
+        String created = mockMvc.perform(post("/api/expense-applications")
+                        .with(validJwt(applicant, subject))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson(null).replace("交通費テスト", title)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.totalAmount").value(1500))
+                .andReturn().getResponse().getContentAsString();
+        return JsonTestSupport.stringValue(created, "id");
+    }
+
+    private String upload(
+            String applicationId, AppUser user, String subject, String fileName) throws Exception {
+        String response = mockMvc.perform(multipart(
+                        "/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf(fileName))
+                        .with(validJwt(user, subject)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonTestSupport.stringValue(response, "id");
     }
 
     private String requestJson(Long version) {
@@ -626,8 +937,70 @@ class ExpenseApplicationApiIntegrationTest {
                 .andReturn().getResponse().getStatus();
     }
 
+    @SuppressWarnings("unchecked")
+    private void setUpAttachmentStorage() {
+        reset(attachmentStorage);
+        storedAttachments.clear();
+        doAnswer(invocation -> {
+            String objectName = invocation.getArgument(0);
+            byte[] content = invocation.getArgument(1);
+            if (storedAttachments.putIfAbsent(objectName, content.clone()) != null) {
+                throw new AttachmentStorageException(
+                        new IllegalStateException("duplicate test attachment"));
+            }
+            return null;
+        }).when(attachmentStorage).store(
+                anyString(), any(byte[].class), anyString(), any(Map.class));
+        when(attachmentStorage.load(anyString())).thenAnswer(invocation -> {
+            byte[] content = storedAttachments.get(invocation.getArgument(0));
+            if (content == null) {
+                throw new AttachmentStorageException(
+                        new IllegalStateException("missing test attachment"));
+            }
+            return new StoredAttachmentContent(new ByteArrayInputStream(content), content.length);
+        });
+        doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            if (storedAttachments.remove(invocation.getArgument(0)) == null) {
+                throw new AttachmentStorageException(
+                        new IllegalStateException("missing test attachment"));
+            }
+            return null;
+        }).when(attachmentStorage).delete(anyString());
+    }
+
+    private static MockMultipartFile pdf(String fileName) {
+        return new MockMultipartFile(
+                "file", fileName, "application/pdf",
+                "%PDF-1.7\nfixture".getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void insertAttachmentMetadata(UUID applicationId, int count, long fileSize) {
+        for (int index = 0; index < count; index++) {
+            UUID attachmentId = UUID.randomUUID();
+            jdbcTemplate.update("""
+                    insert into expense_application_attachments (
+                        id, expense_application_id, original_file_name,
+                        uploaded_by_name_snapshot, storage_object_name, content_type,
+                        file_size, sha256, created_by, created_at, updated_by, updated_at, version
+                    ) values (?, ?, ?, ?, ?, 'application/pdf', ?, ?, ?, current_timestamp,
+                              ?, current_timestamp, 0)
+                    """,
+                    attachmentId,
+                    applicationId,
+                    "existing-%d.pdf".formatted(index),
+                    member.getDisplayName(),
+                    "expense-evidence/%s/%s".formatted(applicationId, attachmentId),
+                    fileSize,
+                    "0".repeat(64),
+                    member.getId(),
+                    member.getId());
+        }
+    }
+
     private void clearDatabase() {
         for (String table : List.of(
+                "expense_application_attachments",
                 "expense_approval_candidates", "expense_approval_steps", "expense_approval_runs",
                 "expense_application_items", "expense_applications", "role_permissions",
                 "user_role_change_histories", "user_role_assignments", "permissions", "roles",

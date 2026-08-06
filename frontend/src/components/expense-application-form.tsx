@@ -157,7 +157,10 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
           <label className="grid gap-1 text-sm md:col-span-2">件名<Input maxLength={200} onChange={(e) => setTitle(e.target.value)} required value={title} /></label>
           <label className="grid gap-1 text-sm md:col-span-2">利用目的<textarea className="min-h-24 rounded-md border bg-background p-3" onChange={(e) => setPurpose(e.target.value)} required value={purpose} /></label>
           <label className="grid gap-1 text-sm md:col-span-2">備考<textarea className="min-h-20 rounded-md border bg-background p-3" onChange={(e) => setRemarks(e.target.value)} value={remarks} /></label>
-          <p className="text-sm text-muted-foreground md:col-span-2">領収書添付はPoC対象外です。</p>
+          <p className="text-sm text-muted-foreground md:col-span-2">
+            領収書・証憑を添付する場合は、先に下書きを保存してください。
+            下書き保存後の詳細画面から添付できます。
+          </p>
         </CardContent>
       </Card>
 

@@ -48,6 +48,8 @@ class PostgreSqlRepositoryIT {
                 () -> requiredEnvironment("POSTGRES_TEST_USERNAME"));
         registry.add("spring.datasource.password",
                 () -> requiredEnvironment("POSTGRES_TEST_PASSWORD"));
+        registry.add("workflow.attachment.storage.endpoint",
+                () -> "https://storage.invalid");
     }
 
     @Test

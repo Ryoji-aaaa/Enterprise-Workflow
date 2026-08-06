@@ -28,7 +28,8 @@ make verify-infra
 
 このターゲットは`terraform fmt -check`、bootstrap・staging・production各rootの
 `terraform init -backend=false`と`validate`に加え、Backend probe、内部Backend URL、
-staging限定の手動seed Job名とproduction guardを検証する。各rootへ`.terraform/`を生成するが、
+staging限定の手動seed Job名とproduction guard、経費証憑container・identity・RBAC境界を検証する。
+各rootへ`.terraform/`を生成するが、
 Azureへのlogin、plan、applyは行わない。Terraformにも`-no-color`を渡すため、CIログへANSI
 制御文字を出力しない。
 

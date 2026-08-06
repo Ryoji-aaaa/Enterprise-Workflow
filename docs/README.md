@@ -31,6 +31,7 @@
   [Keycloak](infrastructure/keycloak.md) /
   [PostgreSQL](infrastructure/postgresql.md) /
   [Azure architecture](infrastructure/azure-architecture.md) /
+  [経費証憑Blob Storage](infrastructure/expense-attachment-storage.md) /
   [Terraform](infrastructure/terraform.md) /
   [GitHub Actions](infrastructure/github-actions.md) /
   [Keycloak on Azure](infrastructure/keycloak-azure.md)
@@ -59,6 +60,7 @@
 - [ADR-0012: 組織・役職・業務権限の分離](decisions/ADR-0012-separate-organization-position-and-authorization.md)
 - [ADR-0013: 追記専用の監査ログと変更履歴](decisions/ADR-0013-append-only-audit-and-change-history.md)
 - [ADR-0014: 経費承認経路の申請時確定](decisions/ADR-0014-expense-approval-route-resolution.md)
+- [ADR-0015: 経費証憑のBackend専用Blob Storage](decisions/ADR-0015-expense-attachment-blob-storage.md)
 
 ## 履歴資料
 

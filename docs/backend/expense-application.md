@@ -4,7 +4,8 @@
 
 会食費、交通費、研修費、資格受験費、その他経費について、下書き作成、編集、申請、
 一覧・詳細、承認、差戻し、再申請、承認前の取下げを提供する。BrowserはNext.js BFFだけを
-呼び、Spring BootだけがPostgreSQLへ接続する。添付、OCR、外貨、税・インボイス詳細、
+呼び、Spring BootだけがPostgreSQLと証憑Blob Storageへ接続する。領収書・証憑の添付を提供し、
+OCR、外貨、税・インボイス詳細、
 会計・支払連携、金額別追加承認、承認済み取消はPoC対象外である。
 
 ## データモデル
@@ -14,6 +15,12 @@ V009は`expense_applications`、`expense_application_items`、`expense_approval_
 申請番号は`EXP-YYYYMMDD-000001`形式で、明細合計をBackendが再計算する。通貨はJPYだけを
 許可する。各明細と明細合計は1円以上999,999,999,999円以下の整数とし、合計超過は
 `EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED`の422業務エラーとして保存前に拒否する。
+
+V010は`expense_application_attachments`を追加する。PostgreSQLには元ファイル名、正規化した
+Content-Type、サイズ、SHA-256、Blob object名、登録者、論理削除情報だけを保存し、ファイル本体は
+Blob Storageへ保存する。1申請につき有効な添付は10件、合計30 MiB、1ファイル10 MiBまでで、
+PDF、JPEG、PNGだけを許可する。拡張子、申告Content-Type、magic numberを一致させ、空ファイル、
+制御文字やpath separatorを含むファイル名、255文字を超えるファイル名を拒否する。
 
 Runは申請・再申請ごとに作成し、Stepは`DEPARTMENT_MANAGER`と`ACCOUNTING`、Candidateは
 そのStepを処理できるユーザーを表す。再申請時も旧Run・Step・Candidateを更新せず、新しい
@@ -59,6 +66,10 @@ DRAFT -> PENDING_APPROVAL -> APPROVED
 `EXPENSE_APPLICATION_APPROVE`は`WORKFLOW_APPROVER`へ割り当てる。承認にはDB Permissionと
 Candidate登録の両方を要求し、自己承認を拒否する。Keycloak Roleは使用しない。
 
+添付の追加・削除は申請者本人かつ`DRAFT`または`RETURNED`の場合だけ許可する。閲覧は申請者本人と
+現在RunのCandidateだけに許可し、Candidate外には申請の存在を開示しない。Frontendの表示制御に
+依存せず、一覧、content取得、追加、削除の各Backend APIで同じ条件を検証する。
+
 ## API
 
 ```text
@@ -68,11 +79,27 @@ GET/PUT /api/expense-applications/{id}
 POST /api/expense-applications/{id}/submit|resubmit|cancel
 GET /api/expense-approvals/pending
 POST /api/expense-approvals/{stepId}/approve|return
+GET/POST /api/expense-applications/{id}/attachments
+GET /api/expense-applications/{id}/attachments/{attachmentId}/content
+DELETE /api/expense-applications/{id}/attachments/{attachmentId}
 ```
 
 一覧は`page`、`size`と任意の`status`を受け取る。他人の詳細は最新RunのCandidateに
 限って参照でき、過去RunだけのCandidateには開示しない。通知は最初・次の候補、最終承認・差戻し時の申請者へ送る。メール失敗は
 警告ログにして業務transactionをロールバックしない。
+
+添付APIはBlob URL、SAS、接続文字列、object名、SHA-256をBrowserへ返さない。content取得だけが
+BackendでBlob streamを開き、`Content-Type`、UTF-8の`Content-Disposition`、`Content-Length`、
+`Cache-Control: private, no-store`、`X-Content-Type-Options: nosniff`を設定してBFFへ返す。
+`download=true`の場合だけ`attachment`、それ以外は`inline`とする。
+
+BlobとPostgreSQLは分散transactionではない。登録ではBlobを上書き禁止で先に保存し、申請lock後に
+上限を再確認してメタデータと監査をcommitする。DB保存またはcommit失敗時はBlobをbest-effortで
+削除する。削除では申請と添付をlockし、DBの論理削除と監査を同じtransactionで先にcommitした後、
+Blobをbest-effortで削除する。Blob削除に失敗してもAPIは204を返し、論理削除済み添付は一覧、content
+取得、再削除から除外する。残ったorphan Blobは運用ログと失敗監査で追跡し、将来の定期cleanupまたは
+削除queueの対象とする。Azure Blob soft deleteは誤削除からの復旧手段であり、DBとの分散transactionを
+提供するものではない。
 
 ## 監査
 
@@ -81,3 +108,7 @@ POST /api/expense-approvals/{stepId}/approve|return
 状態前後、差戻し理由の必要最小限だけを記録し、token、Cookie、認証ヘッダーは保存しない。
 Candidate外・自己承認・所有者外の参照または更新は、既存の拒否監査方針に従って別transactionで
 `DENIED`を記録する。
+
+添付では登録、content取得、削除、認可拒否、形式・上限拒否、Blob障害を既存`audit_logs`へ記録する。
+申請ID、添付ID、元ファイル名、Content-Type、サイズ、SHA-256と理由コードを必要最小限として扱い、
+ファイル内容、credential、接続文字列、SAS、SDKの生例外メッセージは記録しない。

@@ -10,6 +10,7 @@ backend_container_app_name         = "ca-enterprise-workflow-production-backend"
 keycloak_container_app_name        = "ca-enterprise-workflow-production-keycloak"
 key_vault_name                     = "kv-ew-production-unique"
 postgres_server_name               = "psql-enterprise-workflow-production-unique"
+attachment_storage_account_name    = "stewfproductionunique"
 allowed_email_domain               = "sdcj.co.jp"
 mail_from                          = "no-reply@example.invalid"
 provision_workloads                = false

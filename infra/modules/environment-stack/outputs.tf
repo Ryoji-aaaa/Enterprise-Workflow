@@ -15,3 +15,6 @@ output "manual_seed_job_names" {
     for target, job in azurerm_container_app_job.manual_seed : target => job.name
   }
 }
+output "attachment_storage_account_name" { value = module.attachment_storage.name }
+output "attachment_storage_blob_endpoint" { value = module.attachment_storage.primary_blob_endpoint }
+output "backend_blob_identity_client_id" { value = module.backend_blob_identity.client_id }

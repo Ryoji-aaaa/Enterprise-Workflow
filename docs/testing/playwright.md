@@ -12,7 +12,7 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 
 実行処理は次の順序で行う。
 
-1. ローカル設定と全サービスのhealthを確認する
+1. ローカル設定とAzuriteを含む全サービスのhealthを確認する
 2. 内部Admin REST APIでKeycloak設定を冪等更新する
 3. E2E imageをbuildする
 4. 未登録テストユーザーの申請、`E2E`接頭辞の経費申請、対象Mailpit通知だけを初期化する
@@ -48,6 +48,9 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 17. 一般ユーザー、課長、事業部長の経費申請経路をBFF経由で完了する
 18. 経費申請を理由付きで差し戻し、新しいRunで再申請・承認する
 19. 候補者外ユーザーの経費承認を403で拒否し、Mailpit通知を確認する
+20. 下書きへPDF・PNGを添付し、一覧、preview、download、削除を確認する
+21. 申請後は添付変更UIを非表示にし、現在Candidateだけが閲覧できることを確認する
+22. 差戻し後に証憑を削除・再登録し、再申請後は再び変更できないことを確認する
 
 雇用区分のBackend境界は正社員・準社員を許可し、パート・嘱託を権限保持時も拒否するAPI
 統合テストで確認する。Frontend単体テストは`PART_TIME`、`CONTRACT_EMPLOYEE`、`SYSTEM`を
@@ -79,7 +82,7 @@ trace、screenshot、videoを関連付けるために使用する。JSONはPlayw
 - 件名が`[Workflow] 未登録ユーザーからアクセスがありました`のMailpitメッセージ
 - 前回のPlaywright成果物
 - 中断された前回テストが残した社長の`仮 社長 E2E`表示名と有効な`AUDITOR`割当
-- 件名が`E2E`で始まる経費申請と、その明細・承認Run・Step・Candidate
+- 件名が`E2E`で始まる経費申請と、その明細・承認Run・Step・Candidate・添付metadata
 
 事後検証では未登録ユーザーの申請が1行、`request_count`が2以上、対象通知が1件
 であることを確認する。他ユーザーのDBデータや別件名のメールは削除しない。
@@ -101,4 +104,5 @@ Playwrightが失敗した場合、実行ログにもこの2つの保存先を表
 Keycloak issuer、OAuth redirect、Cookieのhostを実利用と同じ`localhost`へ揃えるため、
 E2E runnerだけhost networkを使用する。frontend、backend、PostgreSQLのCompose
 networkや公開ポートは変更しない。Spring BootとPostgreSQLは引き続きホスト非公開で、
-ブラウザの業務APIアクセスはNext.js BFFを経由する。
+ブラウザの業務APIアクセスはNext.js BFFを経由する。Azuriteもホストへ公開せず、Playwrightは
+FrontendとBackendを通してだけファイルを保存・取得する。

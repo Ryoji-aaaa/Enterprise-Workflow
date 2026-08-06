@@ -50,6 +50,10 @@ DELETE FROM expense_approval_runs
 WHERE expense_application_id IN (
     SELECT id FROM expense_applications WHERE title LIKE 'E2E%'
 );
+DELETE FROM expense_application_attachments
+WHERE expense_application_id IN (
+    SELECT id FROM expense_applications WHERE title LIKE 'E2E%'
+);
 DELETE FROM expense_applications WHERE title LIKE 'E2E%';
 
 UPDATE app_users

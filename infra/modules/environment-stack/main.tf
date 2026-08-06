@@ -40,6 +40,30 @@ module "runtime_identity" {
   resource_group_name = data.azurerm_resource_group.this.name
 }
 
+module "backend_blob_identity" {
+  source = "../identity"
+
+  name                = "uami-enterprise-workflow-${var.environment}-backend-blob"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+module "attachment_storage" {
+  source = "../blob-storage"
+
+  name                       = var.attachment_storage_account_name
+  location                   = var.location
+  resource_group_name        = data.azurerm_resource_group.this.name
+  container_name             = "expense-evidence"
+  soft_delete_retention_days = 30
+}
+
+resource "azurerm_role_assignment" "backend_attachment_blob" {
+  scope                = module.attachment_storage.container_scope
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = module.backend_blob_identity.principal_id
+}
+
 module "key_vault" {
   source = "../key-vault"
 
@@ -84,23 +108,28 @@ module "backend" {
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
   identity_id                  = module.runtime_identity.id
+  additional_identity_ids      = [module.backend_blob_identity.id]
   registry_server              = module.registry.login_server
   image                        = "${module.registry.login_server}/enterprise-workflow-backend:${var.image_tag}"
   target_port                  = 8080
   external_enabled             = false
   key_vault_uri                = module.key_vault.vault_uri
   environment_variables = merge({
-    SPRING_DATASOURCE_URL           = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
-    SPRING_DATASOURCE_USERNAME      = "workflow"
-    KEYCLOAK_ISSUER                 = local.keycloak_issuer
-    KEYCLOAK_INTERNAL_ISSUER        = local.keycloak_issuer
-    KEYCLOAK_CLIENT_ID              = var.keycloak_client_id
-    ALLOWED_EMAIL_DOMAIN            = var.allowed_email_domain
-    MAIL_HOST                       = var.mail_host
-    MAIL_PORT                       = tostring(var.mail_port)
-    MAIL_FROM                       = var.mail_from
-    WORKFLOW_DEPLOYMENT_ENVIRONMENT = var.environment
-    WORKFLOW_SEED_ENABLED           = "false"
+    SPRING_DATASOURCE_URL               = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
+    SPRING_DATASOURCE_USERNAME          = "workflow"
+    KEYCLOAK_ISSUER                     = local.keycloak_issuer
+    KEYCLOAK_INTERNAL_ISSUER            = local.keycloak_issuer
+    KEYCLOAK_CLIENT_ID                  = var.keycloak_client_id
+    ALLOWED_EMAIL_DOMAIN                = var.allowed_email_domain
+    MAIL_HOST                           = var.mail_host
+    MAIL_PORT                           = tostring(var.mail_port)
+    MAIL_FROM                           = var.mail_from
+    WORKFLOW_DEPLOYMENT_ENVIRONMENT     = var.environment
+    WORKFLOW_SEED_ENABLED               = "false"
+    AZURE_STORAGE_BLOB_ENDPOINT         = module.attachment_storage.primary_blob_endpoint
+    AZURE_STORAGE_CONTAINER_NAME        = module.attachment_storage.container_name
+    AZURE_CLIENT_ID                     = module.backend_blob_identity.client_id
+    ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"
     }, var.contract_legacy_user_columns ? tomap({}) : tomap({
       # Pin only the application-switch deployment. Once the legacy contract is
       # approved, omitting the target lets later Flyway versions apply normally.
@@ -135,7 +164,12 @@ module "backend" {
     port = 8080
   }
 
-  depends_on = [module.postgres, module.key_vault, azurerm_role_assignment.acr_pull]
+  depends_on = [
+    module.postgres,
+    module.key_vault,
+    azurerm_role_assignment.acr_pull,
+    azurerm_role_assignment.backend_attachment_blob,
+  ]
 }
 
 module "keycloak" {

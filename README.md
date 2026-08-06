@@ -10,7 +10,7 @@ UI基盤の構成は[shadcn/ui・Tailwind CSS仕様](docs/frontend/shadcn-tailwi
 記載しています。
 
 経費精算申請PoCは、会食費・交通費・研修費・資格受験費・その他経費の下書き、申請、
-部門長・経理承認、差戻し、再申請、取下げを提供します。申請者画面は`/expenses`、
+領収書・証憑の添付、部門長・経理承認、差戻し、再申請、取下げを提供します。申請者画面は`/expenses`、
 承認者画面は`/approvals`です。仕様は
 [Backend経費申請](docs/backend/expense-application.md)と
 [Frontend経費申請](docs/frontend/expense-application.md)を参照してください。
@@ -19,12 +19,13 @@ UI基盤の構成は[shadcn/ui・Tailwind CSS仕様](docs/frontend/shadcn-tailwi
 
 ```text
 browser ──> Next.js BFF ──> Spring Boot ──> PostgreSQL
-   │                              └───────> Mailpit
+   │                              ├───────> Mailpit
+   │                              └───────> Azurite / Azure Blob Storage
    └──────> Keycloak ────────────────────> PostgreSQL
 ```
 
-Spring BootとPostgreSQLはホストへポートを公開しません。Next.jsはPostgreSQLへ
-接続せず、業務データをSpring Boot APIから取得します。
+Spring Boot、PostgreSQL、Azuriteはホストへポートを公開しません。Next.jsはPostgreSQLや
+Blob Storageへ接続せず、業務データと証憑をSpring Boot APIから取得します。
 
 ## 前提条件
 
@@ -87,7 +88,8 @@ Docker volumeと開発DBは保持します。開発データも削除する破�
 make reset
 ```
 
-`make reset`は現在のCompose projectのvolumeを削除する破壊的操作です。
+`make reset`は現在のCompose projectのvolumeを削除する破壊的操作です。PostgreSQL、Keycloak、
+Azuriteの開発データが対象になります。
 
 ## テスト
 
@@ -113,7 +115,7 @@ make test SUITES=e2e
 make verify
 ```
 
-`make verify`はコンテナhealth、PostgreSQLとKeycloakの初期化、Flywayと開発seed、
+`make verify`はコンテナhealth、PostgreSQL・Keycloak・Azuriteの初期化、Flywayと開発seed、
 FrontendからBackendへの接続、DB資格情報の非注入、公開ポート・Docker network・非root実行を
 検証します。`./scripts/verify.sh backend frontend`のようにサービスを指定した部分検証も可能です。
 

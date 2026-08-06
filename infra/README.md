@@ -9,7 +9,7 @@ IdentityでKey Vaultのversionless secret URIを参照する。
 
 ```text
 bootstrap/                 state Storage、共有ACR、環境RG、GitHub identity/OIDC
-environments/staging/      stagingのVNet、Key Vault、PostgreSQL、Container Apps
+environments/staging/      stagingのVNet、Key Vault、PostgreSQL、Blob Storage、Container Apps
 environments/production/   productionの完全に独立した同等構成
 modules/                   再利用するAzure resource群
 ```
@@ -54,7 +54,7 @@ terraform init \
 初回環境構築は二段階で行う。
 
 1. `provision_workloads=false`でapplyし、VNet、Log Analytics、Container Apps
-   Environment、Managed Identity、Key Vaultを作成する。
+   Environment、Managed Identity、Key Vault、経費証憑用Storage Accountと非公開containerを作成する。
 2. 人間がKey Vaultへ秘密値を登録する。
 3. SHA tagの通常3イメージをACRへpushし、stagingでは同じtagのseed専用イメージもpushする。
 4. `provision_workloads=true`、`image_tag=<40文字SHA>`でapplyする。
@@ -83,6 +83,18 @@ allowlistする。backendのdatabase bootstrapはアプリ起動前に管理者�
 V007の旧列削除を行う。以後は`true`を維持する。`true`側ではFlyway targetを固定せず、
 後続migrationもlatestまで適用する。詳細は
 [`docs/backend/flyway.md`](../docs/backend/flyway.md)を参照する。
+
+経費証憑用Storage Accountは環境ごとの`attachment_storage_account_name`で作成する。shared keyを
+無効化し、Backend Blob専用User Assigned Managed Identityだけへcontainer scopeの
+`Storage Blob Data Contributor`を付与する。Backendにはendpoint、container名、専用identityの
+client IDだけを設定し、FrontendとKeycloakにはidentity・RBAC・接続情報を追加しない。詳細は
+[`docs/infrastructure/expense-attachment-storage.md`](../docs/infrastructure/expense-attachment-storage.md)を
+参照する。
+
+GitHub Actionsの環境別planでは、GitHub Environment variable
+`AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`を`TF_VAR_attachment_storage_account_name`へ渡す。
+`staging-plan`と`production-plan`には各環境のglobal uniqueなStorage Account名を個別に登録し、
+未設定または空の場合はAzure loginとplanをskipする。workflow内に環境別の固定値を置かない。
 
 `terraform.tfvars`、plan、stateはGitへ追加しない。リポジトリrootからの静的検証は資格情報なしで
 実行でき、Terraform以外のインフラ不変条件も同時に確認する。

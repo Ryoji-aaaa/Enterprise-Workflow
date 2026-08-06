@@ -10,6 +10,7 @@ variable "backend_container_app_name" { type = string }
 variable "keycloak_container_app_name" { type = string }
 variable "key_vault_name" { type = string }
 variable "postgres_server_name" { type = string }
+variable "attachment_storage_account_name" { type = string }
 variable "postgres_administrator_login" {
   type    = string
   default = "workflowadmin"

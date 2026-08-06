@@ -7,7 +7,7 @@ readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 
 cd "${PROJECT_DIRECTORY}"
 
-echo "この処理は開発用のPostgreSQLおよびKeycloakデータを削除します。"
+echo "この処理は開発用のPostgreSQL、Keycloak、およびAzurite証憑データを削除します。"
 echo "Compose project: $(docker compose config --format json | jq -r '.name')"
 docker compose down --volumes --remove-orphans
 ./scripts/init.sh

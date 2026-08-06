@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { proxyBackendRequest } from "@/lib/backend-client";
-import { isAllowedBackendProxyRequest } from "@/lib/backend-proxy-policy";
+import {
+  backendProxyRequestHeaders,
+  backendProxyResponseHeaders,
+  hasOversizedBackendProxyBody,
+  isAllowedBackendProxyRequest,
+} from "@/lib/backend-proxy-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +25,19 @@ async function proxy(
       { status: 404 },
     );
   }
+  if (hasOversizedBackendProxyBody(
+    request.method,
+    backendPath,
+    request.headers.get("content-length"),
+  )) {
+    return NextResponse.json(
+      {
+        code: "EXPENSE_ATTACHMENT_TOO_LARGE",
+        message: "ファイルサイズが上限を超えています。",
+      },
+      { status: 413 },
+    );
+  }
   const query = new URL(request.url).search;
   const body = request.method === "GET" || request.method === "HEAD"
     ? undefined
@@ -30,16 +48,12 @@ async function proxy(
     {
       method: request.method,
       body,
-      headers: request.headers.get("content-type")
-        ? { "Content-Type": request.headers.get("content-type")! }
-        : undefined,
+      headers: backendProxyRequestHeaders(request.headers, request.method, backendPath),
     },
   );
   const response = new NextResponse(result.response.body, {
     status: result.response.status,
-    headers: {
-      "Content-Type": result.response.headers.get("content-type") ?? "application/json",
-    },
+    headers: backendProxyResponseHeaders(result.response.headers),
   });
   for (const cookie of result.setCookies) {
     response.headers.append("set-cookie", cookie);

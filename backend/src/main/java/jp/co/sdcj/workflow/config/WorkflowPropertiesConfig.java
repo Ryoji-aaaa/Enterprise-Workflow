@@ -4,6 +4,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties({SecurityProperties.class, NotificationProperties.class})
+@EnableConfigurationProperties({
+    SecurityProperties.class,
+    NotificationProperties.class,
+    AttachmentProperties.class
+})
 public class WorkflowPropertiesConfig {
 }

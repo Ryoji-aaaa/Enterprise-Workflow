@@ -33,7 +33,7 @@ GitHub Environmentは実デプロイ用の`staging`、`production`と、PR plan�
 | `staging` | `staging-plan` | PRでのstaging plan |
 | `production` | `production-plan` | PRでのproduction plan |
 
-4 Environmentそれぞれに次の23 variablesを登録する。
+4 Environmentそれぞれに次の24 variablesを登録する。
 
 ```text
 AZURE_CLIENT_ID
@@ -51,6 +51,7 @@ AZURE_KEYCLOAK_CONTAINER_APP_NAME
 AZURE_GITHUB_IDENTITY_PRINCIPAL_ID
 AZURE_KEY_VAULT_NAME
 AZURE_POSTGRES_SERVER_NAME
+AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME
 ALLOWED_EMAIL_DOMAIN
 MAIL_FROM
 PROVISION_WORKLOADS
@@ -90,6 +91,9 @@ staging identityには`staging`と`staging-plan`、production identityには`pro
 
 `AZURE_OIDC_CONFIGURED`はFederated Credentialと全必須variableの登録完了後だけ`true`に
 する。未設定時もPRのfmt/validateは実行し、Azure login、plan、deployは明示的にskipする。
+`AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`は環境ごとにglobal uniqueな値を登録し、
+`staging-plan`と`production-plan`では対応する環境の値を個別に設定する。workflow内へ固定値や
+別環境のfallbackを持たせない。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の

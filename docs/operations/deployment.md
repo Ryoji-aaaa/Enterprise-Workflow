@@ -3,7 +3,8 @@
 初回は次の順番で行う。
 
 1. bootstrap resourceとOIDC/RBACを作る。
-2. 環境を`provision_workloads=false`でapplyする。
+2. 環境を`provision_workloads=false`でapplyし、経費証憑Storage Account、非公開container、
+   Backend Blob専用Managed Identityを含むfoundationを作る。
 3. Key Vaultへ6個の通常秘密値と、stagingだけに開発seed passwordを登録する。
 4. GitHub Environmentの`PROVISION_WORKLOADS`を`true`にする。
 5. staging workflowを手動実行するか、実装をmainへmergeする。
@@ -42,15 +43,29 @@ Backend ingressはinternalのままとし、外部URLやBrowserから直接疎�
 ログで`/api/me`到達を確認する。環境変数をPortalから修正せず、Terraformの生成値を直して
 Frontend revisionを更新する。
 
+Backend revisionには`AZURE_STORAGE_BLOB_ENDPOINT`、`AZURE_STORAGE_CONTAINER_NAME`、
+`AZURE_CLIENT_ID`がTerraformから設定され、Blob専用identityが追加されていることを確認する。
+`AZURE_STORAGE_CONNECTION_STRING`、Storage key、SASは設定しない。Storage Accountはshared key無効、
+container非公開で、Backend専用identityだけがcontainer scopeの`Storage Blob Data Contributor`を持つ。
+FrontendとKeycloakへこのidentityまたはBlob RBACを付与しない。確認方法と障害時の境界は
+[経費証憑Blob Storage](../infrastructure/expense-attachment-storage.md)を参照する。
+
+PRの環境別planを有効にする前に、`staging-plan`と`production-plan`のGitHub Environmentへ
+`AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`を各環境の値で個別に登録する。値が未設定の状態で
+`AZURE_OIDC_CONFIGURED=true`へ変更せず、workflowが`Azure plan skipped`ではなくstaging、
+production双方の`Terraform plan`まで成功したことを確認する。
+
 ## stagingの確認項目
 
-stagingではPostgreSQL、Key Vault、3つの通常Container Apps、3つの手動seed JobがTerraform
+stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、
+3つの通常Container Apps、3つの手動seed JobがTerraform
 stateと一致することを確認する。現在の業務DBはFlyway V008まで適用済みであり、GitHub
 Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logでFlywayがV008まで成功し、readinessが成功している。
+3. BackendのConsole logで対象revisionの最新Flyway（経費証憑revisionではV010）まで成功し、
+   readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
 
@@ -72,6 +87,7 @@ System log、Log Analytics、依存先の順に調べる。代表例は次のと
 | Docker build中のDocker Hub `i/o timeout` | base image取得時だけの一時通信障害ならworkflowを再実行する。コード、migration、Terraformの失敗と混同しない。 |
 | Container Apps Jobが`Failed` | System logだけで判断せず、対象executionのConsole logでSpring例外と`manual_seed_result ... failed=...`を確認する。部分成功後は原因を直し、冪等な対象Jobを再実行する。 |
 | Flyway V007が失敗 | 旧revisionの停止とwrite drain、reconciliation対象データ、Console log、履歴を確認する。`flyway repair`は使用せず、原因を解消してcontract deployを再試行する。 |
+| 添付APIが`EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE` | Backend revisionにBlob専用identityとendpoint/container/client IDがあること、container scope RBACが反映済みであること、Storage Accountのservice状態を確認する。connection stringやshared keyを追加せずTerraformを修正する。 |
 
 PortalでTerraform管理の環境変数、secret参照、probe、trafficを恒久変更しない。調査中に必要な
 構成差分が判明した場合はコードと文書をレビューし、GitHub Actionsからapplyする。
