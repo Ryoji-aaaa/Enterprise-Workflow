@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { expiredBetterAuthCookies } from "@/lib/auth-cookies";
 import { serverEnvironment } from "@/lib/environment";
 
 function keycloakLogoutUrl(): URL {
@@ -13,15 +14,6 @@ function keycloakLogoutUrl(): URL {
     `${serverEnvironment.betterAuthUrl}/login`,
   );
   return url;
-}
-
-function betterAuthCookieNames(request: Request): string[] {
-  const cookieHeader = request.headers.get("cookie") ?? "";
-
-  return cookieHeader
-    .split(";")
-    .map((cookie) => cookie.trim().split("=", 1)[0])
-    .filter((name) => /^(?:__Secure-)?better-auth\./.test(name));
 }
 
 export async function POST(request: Request) {
@@ -37,16 +29,11 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-  for (const cookieName of betterAuthCookieNames(request)) {
-    response.cookies.set({
-      name: cookieName,
-      value: "",
-      path: "/",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 0,
-    });
+  for (const setCookie of signOutResponse.headers.getSetCookie()) {
+    response.headers.append("set-cookie", setCookie);
+  }
+  for (const expiredCookie of expiredBetterAuthCookies(request.headers)) {
+    response.headers.append("set-cookie", expiredCookie);
   }
   response.headers.set("Cache-Control", "no-store");
   response.headers.set("Clear-Site-Data", '"cache"');

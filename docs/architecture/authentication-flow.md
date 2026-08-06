@@ -26,6 +26,21 @@ sessionStorage、画面レスポンスへ公開しません。
 - 管理操作に必要なDB権限がない場合、HTTP 403を返して認可拒否を監査する。
 - Next.jsは未登録とその他の利用不可を別画面へ変換し、内部情報を表示しない。
 
+## セッション・認証期限切れ
+
+Better AuthのsessionとKeycloakのtoken・SSO sessionは有効期限が一致するとは限らない。
+Better Auth sessionが残っていてもaccess tokenを取得・更新できない場合、またはSpring Bootが
+HTTP 401を返した場合は、Next.js BFFが認証状態全体を失効済みとして扱う。
+
+BFFはHTTP 401を返すと同時に、受信したBetter Authのsession、account、chunk Cookieを
+明示的に削除する。Browserの共通BFF clientは401を検知すると、失敗したリクエストを再送せず
+`/login?reason=session-expired`へ履歴を置換して遷移する。ログイン画面は期限切れの案内を表示し、
+利用者が明示的に再ログインした後は`/top`へ戻る。期限切れ処理ではKeycloak logoutを呼び出さず、
+Keycloak側のSSO sessionの状態は次のログイン開始時にKeycloak自身が判定する。
+
+HTTP 403は業務上の利用拒否、HTTP 5xxと接続失敗は一時的な利用不可として扱い、認証Cookieを
+削除したりログイン画面へ遷移したりしない。
+
 ## 事前登録ユーザーの初回連携
 
 外部ID対応がなく、検証済みJWTのemailに一致する`PRE_REGISTERED`ユーザーが存在する場合、

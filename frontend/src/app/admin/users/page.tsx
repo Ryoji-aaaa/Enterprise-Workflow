@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CurrentUser } from "@/lib/backend-api";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 
 type AdminUser = {
   id: string;
@@ -50,8 +51,8 @@ export default function AdminUsersPage() {
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      fetch("/api/backend/me", { cache: "no-store", signal: controller.signal }),
-      fetch(`/api/backend/admin/users?page=${page}&size=25&sort=email`, {
+      fetchBackend("/api/backend/me", { cache: "no-store", signal: controller.signal }),
+      fetchBackend(`/api/backend/admin/users?page=${page}&size=25&sort=email`, {
         cache: "no-store",
         signal: controller.signal,
       }),
@@ -65,8 +66,8 @@ export default function AdminUsersPage() {
       } else {
         setError("ユーザー一覧を取得できませんでした。");
       }
-    }).catch(() => {
-      if (!controller.signal.aborted) setError("ユーザー一覧を取得できませんでした。");
+    }).catch((cause) => {
+      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) setError("ユーザー一覧を取得できませんでした。");
     });
     return () => controller.abort();
   }, [page]);

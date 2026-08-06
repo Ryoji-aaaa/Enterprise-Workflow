@@ -7,6 +7,7 @@ import { ExpenseAttachmentSection } from "@/components/expense-attachment-sectio
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
   canShowExpenseApprovalActions,
   categoryLabels,
@@ -30,7 +31,7 @@ export function ExpenseApplicationDetail({ applicationId, approvalView = false }
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/backend/expense-applications/${applicationId}`, {
+    fetchBackend(`/api/backend/expense-applications/${applicationId}`, {
       cache: "no-store", signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) throw new Error(response.status === 403
@@ -38,7 +39,7 @@ export function ExpenseApplicationDetail({ applicationId, approvalView = false }
       setApplication((await response.json()) as ExpenseApplication);
       setError(null);
     }).catch((cause) => {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
         setError(cause instanceof Error ? cause.message : "申請を取得できませんでした。");
       }
     });
@@ -49,7 +50,7 @@ export function ExpenseApplicationDetail({ applicationId, approvalView = false }
     setProcessing(true);
     setError(null);
     try {
-      const response = await fetch(path, {
+      const response = await fetchBackend(path, {
         method: "POST",
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined,
@@ -59,7 +60,9 @@ export function ExpenseApplicationDetail({ applicationId, approvalView = false }
       setApplication(result);
       setComment("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "処理できませんでした。");
+      if (!(cause instanceof AuthenticationRequiredError)) {
+        setError(cause instanceof Error ? cause.message : "処理できませんでした。");
+      }
     } finally {
       setProcessing(false);
     }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
   displayDate,
   type MailNotificationPage,
@@ -56,7 +57,7 @@ export default function MailNotificationsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/backend/admin/mail-notifications?${queryString(filters, page)}`, {
+    fetchBackend(`/api/backend/admin/mail-notifications?${queryString(filters, page)}`, {
       cache: "no-store",
       signal: controller.signal,
     }).then(async (response) => {
@@ -65,7 +66,7 @@ export default function MailNotificationsPage() {
       setData((await response.json()) as MailNotificationPage);
       setError(null);
     }).catch((cause) => {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
         setError(cause instanceof Error ? cause.message : "メール通知履歴を取得できませんでした。");
       }
     });
