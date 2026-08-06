@@ -61,12 +61,7 @@ prepare_test_environment() {
   TEST_TEMP_DIRECTORY="/tmp/workflow-test-${RUN_ID}"
   WORKFLOW_ENV_FILE="${TEST_TEMP_DIRECTORY}/test.env"
   KEYCLOAK_GENERATED_DIRECTORY="${TEST_TEMP_DIRECTORY}/keycloak-generated"
-  BACKEND_TEST_IMAGE="workflow-backend-test:${RUN_ID,,}"
-  FRONTEND_TEST_IMAGE="workflow-frontend-test:${RUN_ID,,}"
-  E2E_TEST_IMAGE="workflow-e2e-test:${RUN_ID,,}"
-  TEST_KEYCLOAK_INIT_IMAGE="workflow-keycloak-init-test:${RUN_ID,,}"
-  TEST_REPORT_IMAGE="workflow-test-report:local"
-  TEST_REPORT_PRESERVE_IMAGE="workflow-test-report:local-preserve"
+  configure_test_images "${RUN_ID}"
 
   mkdir -p "${KEYCLOAK_GENERATED_DIRECTORY}/config" "${KEYCLOAK_GENERATED_DIRECTORY}/import"
   cp "${source_env}" "${WORKFLOW_ENV_FILE}"
@@ -103,6 +98,7 @@ prepare_test_environment() {
 build_reporter_image() {
   compose build test-report || return 2
   docker image tag "${TEST_REPORT_IMAGE}" "${TEST_REPORT_PRESERVE_IMAGE}" || return 2
+  REPORTER_RUNTIME_IMAGE="${TEST_REPORT_IMAGE}"
 }
 
 port_in_use() {
@@ -111,17 +107,9 @@ port_in_use() {
 }
 
 host_preflight() {
-  local -a required=(awk bash curl cut date diff docker git grep id jq make sed tail tee timeout)
-  local -a missing=()
-  local command_name
   local port
-  for command_name in "${required[@]}"; do
-    command -v "${command_name}" >/dev/null 2>&1 || missing+=("${command_name}")
-  done
-  ((${#missing[@]} == 0)) || {
-    printf 'Missing required commands: %s\n' "${missing[*]}" >&2
-    return 2
-  }
+  build_required_host_commands
+  validate_required_host_commands || return 2
   docker compose version >/dev/null
   docker buildx version >/dev/null
   docker info >/dev/null
@@ -199,6 +187,7 @@ finish_run() {
     compose logs --no-color >"${TEST_RUN_DIRECTORY}/logs/setup/compose.log" 2>&1 || true
   fi
   if [[ "${KEEP_TEST_ENV:-0}" == "1" ]]; then
+    REPORTER_RUNTIME_IMAGE="${TEST_REPORT_IMAGE}"
     docker image rm "${TEST_REPORT_PRESERVE_IMAGE}" >/dev/null 2>&1 || true
     record_skipped_check harness cleanup "KEEP_TEST_ENV=1 retained the isolated environment"
     print_retained_environment
@@ -215,6 +204,9 @@ finish_run() {
   refresh_summary
   if ((FINAL_SUMMARY_PRINTED == 0)); then
     run_reporter
+  fi
+  if [[ "${KEEP_TEST_ENV:-0}" != "1" ]]; then
+    remove_reporter_images
   fi
   if ((original_exit == 130)); then
     final_exit=130

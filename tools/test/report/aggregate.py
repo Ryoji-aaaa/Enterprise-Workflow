@@ -316,15 +316,29 @@ def aggregate_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, list[TestCas
     phases = phase_records(run_dir)
     cases_by_suite: dict[str, list[TestCase]] = {suite: [] for suite in selected}
     suite_result_errors: dict[str, list[str]] = {suite: [] for suite in selected}
+    suite_has_unexecuted_phase_error: dict[str, bool] = {suite: False for suite in selected}
     failures: list[dict[str, Any]] = []
 
     for suite in selected:
+        playwright_executed = suite == "e2e" and any(
+            phase.get("suite") == "e2e"
+            and phase.get("kind") == "test"
+            and phase.get("name") == "playwright"
+            and phase.get("status") in {"passed", "failed"}
+            for phase in phases
+        )
+        e2e_stopped_before_playwright = suite == "e2e" and not playwright_executed and any(
+            phase.get("suite") == "e2e"
+            and phase.get("status") in {"error", "cancelled"}
+            for phase in phases
+        )
         if suite in JUNIT_SUITES:
             junit_dir = run_dir / "raw" / "junit" / suite
             xml_files = sorted(junit_dir.rglob("*.xml")) if junit_dir.is_dir() else []
-            if not xml_files:
+            junit_required = not e2e_stopped_before_playwright
+            if junit_required and not xml_files:
                 suite_result_errors[suite].append(f"JUnit XML is missing for selected suite {suite}")
-            for path in xml_files:
+            for path in xml_files if junit_required else []:
                 try:
                     cases_by_suite[suite].extend(parse_junit_file(path, suite))
                 except ResultError as error:
@@ -339,12 +353,6 @@ def aggregate_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, list[TestCas
                 except ResultError as error:
                     suite_result_errors[suite].append(str(error))
 
-        playwright_executed = suite == "e2e" and any(
-            phase.get("suite") == "e2e"
-            and phase.get("kind") == "test"
-            and phase.get("name") == "playwright"
-            for phase in phases
-        )
         if playwright_executed:
             playwright_path = run_dir / "raw" / "e2e" / "report.json"
             if not playwright_path.is_file():
@@ -355,9 +363,6 @@ def aggregate_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, list[TestCas
                 except ResultError as error:
                     suite_result_errors[suite].append(str(error))
 
-        if not cases_by_suite[suite] and not suite_result_errors[suite]:
-            suite_result_errors[suite].append(f"Selected suite {suite} discovered zero tests")
-
         for phase in phases:
             if (
                 phase.get("suite") == suite
@@ -365,7 +370,10 @@ def aggregate_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, list[TestCas
                 and phase.get("status") in {"error", "cancelled"}
             ):
                 reason = phase.get("reason") or f"Phase {phase.get('name', 'unknown')} ended as {phase.get('status')}"
-                suite_result_errors[suite].append(str(reason))
+                if suite == "e2e" and not playwright_executed and phase.get("kind") == "check":
+                    suite_has_unexecuted_phase_error[suite] = True
+                else:
+                    suite_result_errors[suite].append(str(reason))
             if (
                 phase.get("suite") == suite
                 and phase.get("kind") == "test"
@@ -386,11 +394,17 @@ def aggregate_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, list[TestCas
                 suite_result_errors[suite].append(
                     str(phase.get("reason") or f"Test runner {phase.get('name', 'unknown')} failed without a failing structured test case")
                 )
+        if (
+            not cases_by_suite[suite]
+            and not suite_result_errors[suite]
+            and not suite_has_unexecuted_phase_error[suite]
+        ):
+            suite_result_errors[suite].append(f"Selected suite {suite} discovered zero tests")
 
     suites: dict[str, dict[str, Any]] = {}
     for suite in selected:
         counts = suite_counts(cases_by_suite[suite])
-        if suite_result_errors[suite]:
+        if suite_result_errors[suite] or suite_has_unexecuted_phase_error[suite]:
             status = "ERROR"
             for reason in dict.fromkeys(suite_result_errors[suite]):
                 failures.append({

@@ -22,6 +22,9 @@ CURRENT_PHASE_NAME=""
 CURRENT_PHASE_LOG=""
 CURRENT_PHASE_STARTED_MS=0
 FINAL_SUMMARY_PRINTED=0
+REPORTER_RUNTIME_IMAGE=""
+REQUIRED_HOST_COMMANDS=()
+MISSING_HOST_COMMANDS=()
 
 epoch_ms() {
   date +%s%3N
@@ -34,6 +37,35 @@ contains_selected_suite() {
     [[ "${suite}" == "${expected}" ]] && return 0
   done
   return 1
+}
+
+build_required_host_commands() {
+  REQUIRED_HOST_COMMANDS=(awk bash curl cut date diff docker git grep id jq make sed tail tee timeout)
+  if contains_selected_suite keycloak || contains_selected_suite e2e; then
+    REQUIRED_HOST_COMMANDS+=(envsubst)
+  fi
+}
+
+validate_required_host_commands() {
+  local command_name
+  MISSING_HOST_COMMANDS=()
+  for command_name in "${REQUIRED_HOST_COMMANDS[@]}"; do
+    command -v "${command_name}" >/dev/null 2>&1 || MISSING_HOST_COMMANDS+=("${command_name}")
+  done
+  ((${#MISSING_HOST_COMMANDS[@]} == 0)) || {
+    printf 'Missing required commands: %s\n' "${MISSING_HOST_COMMANDS[*]}" >&2
+    return 2
+  }
+}
+
+configure_test_images() {
+  local run_id="$1"
+  BACKEND_TEST_IMAGE="workflow-backend-test:${run_id,,}"
+  FRONTEND_TEST_IMAGE="workflow-frontend-test:${run_id,,}"
+  E2E_TEST_IMAGE="workflow-e2e-test:${run_id,,}"
+  TEST_KEYCLOAK_INIT_IMAGE="workflow-keycloak-init-test:${run_id,,}"
+  TEST_REPORT_IMAGE="workflow-test-report:${run_id,,}"
+  TEST_REPORT_PRESERVE_IMAGE="workflow-test-report-preserve:${run_id,,}"
 }
 
 validate_selected_suites() {
@@ -351,14 +383,16 @@ compose() {
 refresh_summary() {
   ((REPORTER_READY == 1)) || return 0
   local exit_code
+  local reporter_output="${TEST_RUN_DIRECTORY}/logs/setup/reporter-refresh.log"
+  local runtime_image="${REPORTER_RUNTIME_IMAGE:-${TEST_REPORT_IMAGE}}"
   set +e
   docker run --rm --user "${TEST_UID}:${TEST_GID}" \
     --volume "${TEST_RUN_DIRECTORY}:/test-results" \
-    "${TEST_REPORT_IMAGE}" --run-dir /test-results \
-    >"${TEST_RUN_DIRECTORY}/logs/setup/reporter-refresh.log" 2>&1
+    "${runtime_image}" --run-dir /test-results --print-summary \
+      --display-path "test-results/${RUN_ID}" >"${reporter_output}" 2>&1
   exit_code=$?
   set -e
-  if ((exit_code <= 1)) && [[ -s "${TEST_RUN_DIRECTORY}/summary.json" ]]; then
+  if validate_reporter_completion "${exit_code}" "${reporter_output}"; then
     cp "${TEST_RUN_DIRECTORY}/summary.json" "${TEST_RUN_DIRECTORY}/summary.last-good.json"
   fi
 }
@@ -468,9 +502,36 @@ fallback_summary() {
     '=================================================================='
 }
 
+validate_reporter_artifacts() {
+  local exit_code="$1"
+  local overall
+  [[ -s "${TEST_RUN_DIRECTORY}/summary.json" ]] || return 1
+  jq empty "${TEST_RUN_DIRECTORY}/summary.json" >/dev/null 2>&1 || return 1
+  [[ -s "${TEST_RUN_DIRECTORY}/summary.md" ]] || return 1
+  [[ -s "${TEST_RUN_DIRECTORY}/merged-junit.xml" ]] || return 1
+  overall="$(jq --raw-output '.overall // empty' "${TEST_RUN_DIRECTORY}/summary.json")" || return 1
+  case "${overall}:${exit_code}" in
+    PASS:0 | FAIL:1 | ERROR:2)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+validate_reporter_completion() {
+  local exit_code="$1"
+  local reporter_output="$2"
+  validate_reporter_artifacts "${exit_code}" \
+    && grep -Fq 'FINAL TEST SUMMARY' "${reporter_output}"
+}
+
 run_reporter() {
   local exit_code
+  local overall
   local reporter_output="${TEST_RUN_DIRECTORY}/logs/setup/reporter-final.log"
+  local runtime_image="${REPORTER_RUNTIME_IMAGE:-${TEST_REPORT_IMAGE}}"
   if ((REPORTER_READY == 0)); then
     fallback_summary
     FINAL_SUMMARY_PRINTED=1
@@ -480,25 +541,30 @@ run_reporter() {
   set +e
   docker run --rm --user "${TEST_UID}:${TEST_GID}" \
     --volume "${TEST_RUN_DIRECTORY}:/test-results" \
-    "${TEST_REPORT_IMAGE}" --run-dir /test-results --print-summary \
+    "${runtime_image}" --run-dir /test-results --print-summary \
       --display-path "test-results/${RUN_ID}" >"${reporter_output}" 2>&1
   exit_code=$?
   set -e
   FINAL_SUMMARY_PRINTED=1
-  if ((exit_code > 1)) \
-      || [[ ! -s "${TEST_RUN_DIRECTORY}/summary.json" ]] \
-      || [[ ! -s "${TEST_RUN_DIRECTORY}/summary.md" ]] \
-      || [[ ! -s "${TEST_RUN_DIRECTORY}/merged-junit.xml" ]] \
-      || ! grep -q 'FINAL TEST SUMMARY' "${reporter_output}"; then
+  if ! validate_reporter_completion "${exit_code}" "${reporter_output}"; then
     cat "${reporter_output}" >&2 2>/dev/null || true
     fallback_summary
     HARNESS_HAS_ERROR=1
     return 0
-  elif ((exit_code != 0)); then
-    HARNESS_HAS_FAILURE=1
   fi
   cat "${reporter_output}"
   rm -f "${TEST_RUN_DIRECTORY}/summary.last-good.json"
+  overall="$(jq --raw-output '.overall' "${TEST_RUN_DIRECTORY}/summary.json")"
+  case "${overall}" in
+    PASS)
+      ;;
+    FAIL)
+      HARNESS_HAS_FAILURE=1
+      ;;
+    ERROR)
+      HARNESS_HAS_ERROR=1
+      ;;
+  esac
 }
 
 finalize_interrupted_phase() {
@@ -520,13 +586,24 @@ finalize_interrupted_phase() {
 cleanup_test_environment() {
   local image
   local compose_status=0
+  local reporter_archive=""
   local -a images=("${BACKEND_TEST_IMAGE:-}" "${FRONTEND_TEST_IMAGE:-}" "${E2E_TEST_IMAGE:-}")
+  if docker image inspect "${TEST_REPORT_PRESERVE_IMAGE:-}" >/dev/null 2>&1; then
+    reporter_archive="${TEST_TEMP_DIRECTORY}/reporter-preserve.tar"
+    docker image save --output "${reporter_archive}" "${TEST_REPORT_PRESERVE_IMAGE}" || return 2
+  fi
   if ((COMPOSE_STARTED == 1)); then
     compose down --volumes --remove-orphans --rmi local || compose_status=2
   fi
+  if [[ -n "${reporter_archive}" ]] \
+      && ! docker image inspect "${TEST_REPORT_PRESERVE_IMAGE}" >/dev/null 2>&1; then
+    docker image load --input "${reporter_archive}" >/dev/null || return 2
+  fi
+  rm -f "${reporter_archive}"
   if docker image inspect "${TEST_REPORT_PRESERVE_IMAGE:-}" >/dev/null 2>&1; then
-    docker image tag "${TEST_REPORT_PRESERVE_IMAGE}" "${TEST_REPORT_IMAGE}" || return 2
-    docker image rm "${TEST_REPORT_PRESERVE_IMAGE}" >/dev/null || return 2
+    REPORTER_RUNTIME_IMAGE="${TEST_REPORT_PRESERVE_IMAGE}"
+  else
+    REPORTER_RUNTIME_IMAGE="${TEST_REPORT_IMAGE}"
   fi
   ((compose_status == 0)) || return 2
   for image in "${images[@]}"; do
@@ -538,6 +615,13 @@ cleanup_test_environment() {
   if [[ -n "${TEST_TEMP_DIRECTORY:-}" && "${TEST_TEMP_DIRECTORY}" == /tmp/workflow-test-* ]]; then
     rm -rf -- "${TEST_TEMP_DIRECTORY}"
   fi
+}
+
+remove_reporter_images() {
+  local image
+  for image in "${TEST_REPORT_IMAGE}" "${TEST_REPORT_PRESERVE_IMAGE}"; do
+    docker image rm "${image}" >/dev/null 2>&1 || true
+  done
 }
 
 print_retained_environment() {
@@ -554,7 +638,8 @@ print_retained_environment() {
   printf 'Cleanup command:\n'
   printf '%q ' "${cleanup_command[@]}"
   printf '\n'
-  printf 'docker image rm %q %q %q 2>/dev/null || true\n' \
-    "${BACKEND_TEST_IMAGE}" "${FRONTEND_TEST_IMAGE}" "${E2E_TEST_IMAGE}"
+  printf 'docker image rm %q %q %q %q %q %q 2>/dev/null || true\n' \
+    "${BACKEND_TEST_IMAGE}" "${FRONTEND_TEST_IMAGE}" "${E2E_TEST_IMAGE}" \
+    "${TEST_KEYCLOAK_INIT_IMAGE}" "${TEST_REPORT_IMAGE}" "${TEST_REPORT_PRESERVE_IMAGE}"
   printf 'rm -rf -- %q\n' "${TEST_TEMP_DIRECTORY}"
 }

@@ -55,7 +55,8 @@ summary.md
 merged-junit.xml
 ```
 
-最新run IDは`test-results/latest-run.txt`で確認できる。失敗時は最終summaryの失敗名、fileと
+最新run IDは`test-results/latest-run.txt`で確認できる。並行run中は最後に書き込んだrunを指すため、
+個別成果物の確認には各コマンドが表示したrun IDを使用する。失敗時は最終summaryの失敗名、fileと
 line、理由を確認し、表示されたlog、E2Eの場合は`diagnostics/e2e/`のHTML report、trace、
 スクリーンショット、videoの順に調査する。端末へ表示するmessageは1000文字までだが、
 構造化結果とlogには完全な内容を保持する。
@@ -73,7 +74,8 @@ KeycloakとE2Eは`workflow-test-<run-id>`という専用Compose project、専用
 異なるポートを使用する。既定はFrontend 13000、Keycloak 18180、Mailpit 18025で、使用中なら
 既存環境を停止せずerrorにする。並行runでは`TEST_FRONTEND_PORT`、`TEST_KEYCLOAK_PORT`、
 `TEST_MAILPIT_PORT`へ別のポートを指定する。`.env`がなければ`.env.example`を基底に一時envだけを作り、
-秘密を含むenvとKeycloak生成JSONは`/tmp`から成果物へコピーしない。
+各runのReporter image tagもrun ID単位で分離する。秘密を含むenvとKeycloak生成JSONは`/tmp`から
+成果物へコピーしない。
 
 通常終了時は専用Compose projectとvolumeに加え、run固有のBackend、Frontend、E2E test imageと
 一時領域を削除する。cleanupに失敗した場合は秘密を含む一時領域を保持し、表示された手動cleanup

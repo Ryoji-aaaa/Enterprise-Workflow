@@ -180,6 +180,34 @@ class AggregateTest(unittest.TestCase):
         })
         return run_dir
 
+    def e2e_phase_run(self, status: str, *, include_junit: bool = True) -> Path:
+        run_dir = self.fixture("all-pass")
+        (run_dir / "metadata.json").write_text(
+            '{"run_id":"e2e-phase","selected_suites":["e2e"]}', encoding="utf-8"
+        )
+        if not include_junit:
+            (run_dir / "raw/junit/e2e/junit.xml").unlink()
+        self.add_phase(run_dir, "001-e2e-playwright.json", {
+            "suite": "e2e",
+            "kind": "test",
+            "name": "playwright",
+            "status": status,
+            "reason": f"playwright {status} before results",
+        })
+        return run_dir
+
+    def write_playwright_report(self, run_dir: Path) -> None:
+        report_path = run_dir / "raw/e2e/report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps({"suites": [{
+            "file": "specs/workflow.spec.ts",
+            "specs": [{"title": "e2e passes", "line": 10, "tests": [{"results": [{
+                "status": "passed",
+                "duration": 30,
+                "attachments": [{"path": "/test-results/diagnostics/e2e/results/pass/trace.zip"}],
+            }]}]}],
+        }]}), encoding="utf-8")
+
     def test_playwright_json_enriches_location_attachments_and_retries(self):
         run_dir = self.e2e_failure_run()
         report_path = run_dir / "raw/e2e/report.json"
@@ -205,9 +233,52 @@ class AggregateTest(unittest.TestCase):
         self.assertEqual("logs/e2e/playwright.log", failure["log"])
         self.assertEqual("diagnostics/e2e/", failure["diagnostics"])
 
-    def test_playwright_json_missing_is_error(self):
+    def test_failed_playwright_json_missing_is_error(self):
         summary, _ = aggregate_run(self.e2e_failure_run())
         self.assertEqual("ERROR", summary["suites"]["e2e"]["status"])
+        self.assertIn("Playwright JSON report is missing", [
+            failure["message"] for failure in summary["failures"]
+        ])
+
+    def test_passed_playwright_json_missing_is_error(self):
+        summary, _ = aggregate_run(self.e2e_phase_run("passed"))
+        self.assertEqual("ERROR", summary["suites"]["e2e"]["status"])
+        self.assertIn("Playwright JSON report is missing", [
+            failure["message"] for failure in summary["failures"]
+        ])
+
+    def test_error_playwright_without_results_reports_only_original_error(self):
+        summary, _ = aggregate_run(self.e2e_phase_run("error", include_junit=False))
+        self.assertEqual("ERROR", summary["suites"]["e2e"]["status"])
+        self.assertEqual(
+            ["playwright error before results"],
+            [failure["message"] for failure in summary["failures"]],
+        )
+
+    def test_cancelled_playwright_without_results_reports_only_original_error(self):
+        summary, _ = aggregate_run(self.e2e_phase_run("cancelled", include_junit=False))
+        self.assertEqual("ERROR", summary["suites"]["e2e"]["status"])
+        self.assertEqual(
+            ["playwright cancelled before results"],
+            [failure["message"] for failure in summary["failures"]],
+        )
+
+    def test_passed_playwright_with_json_remains_pass_and_enriches_cases(self):
+        run_dir = self.e2e_phase_run("passed")
+        self.write_playwright_report(run_dir)
+        summary, cases = aggregate_run(run_dir)
+        self.assertEqual("PASS", summary["suites"]["e2e"]["status"])
+        self.assertEqual("specs/workflow.spec.ts", cases["e2e"][0].file)
+        self.assertEqual(10, cases["e2e"][0].line)
+        self.assertEqual(1, len(cases["e2e"][0].attachments))
+        self.assertEqual(1, len(cases["e2e"][0].retry_results))
+
+    def test_setup_error_failure_list_has_no_missing_playwright_artifacts(self):
+        summary, _ = aggregate_run(self.fixture("setup-error"))
+        messages = [failure["message"] for failure in summary["failures"]]
+        self.assertEqual(["services did not become healthy"], messages)
+        self.assertNotIn("Playwright JSON report is missing", messages)
+        self.assertNotIn("JUnit XML is missing for selected suite e2e", messages)
 
     def test_playwright_json_malformed_is_error(self):
         run_dir = self.e2e_failure_run()
