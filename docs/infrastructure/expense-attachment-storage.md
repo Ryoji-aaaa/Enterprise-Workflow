@@ -42,10 +42,17 @@ connection string、Storage key、SASをKey Vault、Terraform、Container App環
 削除する。補償削除にも失敗した場合は申請ID、添付ID、例外型だけを構造化ログへ記録し、内容や
 credentialを記録しない。
 
-削除は申請と添付をlockし、Blob削除が成功した場合だけDBを論理削除して監査を保存する。
-object名は`expense-evidence/{applicationId}/{attachmentId}`で再利用しない。Blob障害時は503を返し、
-DB変更を確定しない。soft deleteからの復元は自動化していないため、必要時は対象環境、添付ID、
-監査ログを特定し、Azure権限を持つ運用者が承認済み手順で行う。
+削除は申請と添付をlockし、DBの論理削除と成功監査を同じtransactionで先にcommitしてからBlobを
+best-effortで削除する。DB更新またはcommitに失敗した場合はBlob削除を開始せず、有効なmetadataと
+Blobを維持する。Blob削除に失敗してもAPIは204を返し、論理削除済み添付は一覧、content取得、再削除で
+404として扱う。申請ID、添付ID、object名、例外型、再試行が必要であることを運用ログへ記録し、
+失敗監査も追加するが、credential、connection string、SDKの生例外messageは記録しない。
+
+object名は`expense-evidence/{applicationId}/{attachmentId}`で再利用しない。削除失敗で残るorphan Blobは
+private container内に残り、APIからは参照できない。現時点では自動再試行を持たず、将来の定期cleanup
+または削除queueで回収できる。soft deleteからの復元も自動化していないため、必要時は対象環境、
+添付ID、監査ログを特定し、Azure権限を持つ運用者が承認済み手順で行う。Blob soft deleteは誤削除
+対策であり、PostgreSQLとの分散transactionを提供するものではない。
 
 ## 検証
 

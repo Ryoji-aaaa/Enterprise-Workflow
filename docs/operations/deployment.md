@@ -50,6 +50,11 @@ container非公開で、Backend専用identityだけがcontainer scopeの`Storage
 FrontendとKeycloakへこのidentityまたはBlob RBACを付与しない。確認方法と障害時の境界は
 [経費証憑Blob Storage](../infrastructure/expense-attachment-storage.md)を参照する。
 
+PRの環境別planを有効にする前に、`staging-plan`と`production-plan`のGitHub Environmentへ
+`AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`を各環境の値で個別に登録する。値が未設定の状態で
+`AZURE_OIDC_CONFIGURED=true`へ変更せず、workflowが`Azure plan skipped`ではなくstaging、
+production双方の`Terraform plan`まで成功したことを確認する。
+
 ## stagingの確認項目
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、

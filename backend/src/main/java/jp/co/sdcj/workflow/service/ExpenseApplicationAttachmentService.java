@@ -163,25 +163,36 @@ public class ExpenseApplicationAttachmentService {
     }
 
     public void delete(UUID applicationId, UUID attachmentId, AppUser user) {
+        DeletedAttachment deleted = transactionTemplate.execute(status -> {
+            ExpenseApplication application = accessService.ownedForUpdate(
+                    applicationId, user, "EXPENSE_ATTACHMENT_DELETE_DENIED");
+            requireEditable(application, user, "EXPENSE_ATTACHMENT_DELETE_DENIED");
+            ExpenseApplicationAttachment attachment = attachmentRepository
+                    .findActiveForUpdate(applicationId, attachmentId)
+                    .orElseThrow(() -> attachmentNotFound(
+                            user, attachmentId, "EXPENSE_ATTACHMENT_DELETE_DENIED"));
+            attachment.delete(user.getId(), Instant.now());
+            auditLogService.recordSuccess(
+                    AuditActor.user(user), "EXPENSE_ATTACHMENT_DELETED", TARGET_TYPE,
+                    attachmentId.toString(), auditData(attachment),
+                    Map.of("expenseApplicationId", applicationId, "deleted", true), null);
+            attachmentRepository.flush();
+            return new DeletedAttachment(attachment.getStorageObjectName());
+        });
+        if (deleted == null) {
+            throw new IllegalStateException("Attachment deletion transaction returned no result");
+        }
+
         try {
-            transactionTemplate.executeWithoutResult(status -> {
-                ExpenseApplication application = accessService.ownedForUpdate(
-                        applicationId, user, "EXPENSE_ATTACHMENT_DELETE_DENIED");
-                requireEditable(application, user, "EXPENSE_ATTACHMENT_DELETE_DENIED");
-                ExpenseApplicationAttachment attachment = attachmentRepository
-                        .findActiveForUpdate(applicationId, attachmentId)
-                        .orElseThrow(() -> attachmentNotFound(
-                                user, attachmentId, "EXPENSE_ATTACHMENT_DELETE_DENIED"));
-                storage.delete(attachment.getStorageObjectName());
-                attachment.delete(user.getId(), Instant.now());
-                auditLogService.recordSuccess(
-                        AuditActor.user(user), "EXPENSE_ATTACHMENT_DELETED", TARGET_TYPE,
-                        attachmentId.toString(), auditData(attachment),
-                        Map.of("expenseApplicationId", applicationId, "deleted", true), null);
-            });
+            storage.delete(deleted.storageObjectName());
         } catch (AttachmentStorageException exception) {
-            recordStorageFailure(user, applicationId, attachmentId, "DELETE_FAILED");
-            throw storageUnavailable();
+            LOGGER.error(
+                    "Attachment Blob deletion failed after metadata commit "
+                            + "applicationId={} attachmentId={} storageObjectName={} "
+                            + "errorType={} retryRequired=true",
+                    applicationId, attachmentId, deleted.storageObjectName(),
+                    exception.getClass().getSimpleName());
+            recordDeleteStorageFailure(user, applicationId, attachmentId);
         }
     }
 
@@ -244,6 +255,18 @@ public class ExpenseApplicationAttachmentService {
                 attachmentId.toString(), "%s:%s".formatted(applicationId, reason));
     }
 
+    private void recordDeleteStorageFailure(
+            AppUser user, UUID applicationId, UUID attachmentId) {
+        try {
+            recordStorageFailure(user, applicationId, attachmentId, "DELETE_FAILED_RETRY_REQUIRED");
+        } catch (RuntimeException auditFailure) {
+            LOGGER.error(
+                    "Attachment Blob deletion failure audit could not be recorded "
+                            + "applicationId={} attachmentId={} errorType={}",
+                    applicationId, attachmentId, auditFailure.getClass().getSimpleName());
+        }
+    }
+
     private static Map<String, Object> auditData(ExpenseApplicationAttachment attachment) {
         return Map.of(
                 "expenseApplicationId", attachment.getExpenseApplicationId(),
@@ -267,5 +290,8 @@ public class ExpenseApplicationAttachmentService {
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE",
                 "添付ファイルのストレージへ接続できません。");
+    }
+
+    private record DeletedAttachment(String storageObjectName) {
     }
 }

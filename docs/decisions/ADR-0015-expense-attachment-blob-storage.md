@@ -21,7 +21,9 @@ Assigned Managed Identityに対象container scopeの`Storage Blob Data Contribut
 connection string、SASを使わない。ローカルとE2Eではホスト非公開のAzuriteを使用する。
 
 BlobとDBの分散transactionは導入せず、登録時のDB失敗にはBlobのbest-effort補償削除を行う。削除は
-Blob成功後だけDB論理削除と監査を確定する。Blob名はUUIDで一意にし、上書き・再利用しない。
+DB論理削除と監査を同じtransactionで先にcommitし、その後Blobをbest-effortで削除する。Blob削除が
+失敗してもAPIは204を返して削除済みmetadataを参照対象から除外し、orphan Blobは失敗監査と運用ログで
+追跡する。Blob名はUUIDで一意にし、上書き・再利用しない。
 
 ## Rationale
 
@@ -43,6 +45,8 @@ BrowserからStorageを直接操作せずにローカルE2Eを再現できる。
 BlobとDBの整合性は補償処理、監査、障害調査で維持する必要があり、完全な原子性はない。Azure環境ごとに
 Storage Account、container、専用identity、RBACが増える。soft deleteは30日とするが、法定保存期間や
 正式なretention policyは別途決定が必要であり、現時点ではlifecycleによる自動削除を設定しない。
+削除後のBlob cleanup失敗ではprivate container内にorphanが残り得るため、必要に応じて定期cleanupまたは
+削除queueを追加する。Blob soft deleteは誤削除対策であり、DBとの分散transactionの代替ではない。
 
 ファイル内容のmalware scan、OCR、thumbnail生成、暗号化keyの顧客管理、private endpointはこの判断の
 対象外である。必要になった場合もBrowserへBlob権限を移さず、Backend境界または非同期処理として追加する。

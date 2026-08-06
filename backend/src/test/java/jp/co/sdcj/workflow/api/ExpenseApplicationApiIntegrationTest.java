@@ -6,7 +6,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -33,8 +35,11 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -43,6 +48,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -89,6 +95,7 @@ import jp.co.sdcj.workflow.storage.StoredAttachmentContent;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class ExpenseApplicationApiIntegrationTest {
     private static final String ISSUER = "http://localhost:8180/realms/workflow";
     private static final String CLIENT_ID = "workflow-web";
@@ -250,12 +257,19 @@ class ExpenseApplicationApiIntegrationTest {
                         applicationId, attachmentId)
                         .with(validJwt(member, "member")))
                 .andExpect(status().isNoContent());
+        assertThat(storedAttachments).isEmpty();
         mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
                         .with(validJwt(member, "member")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
         mockMvc.perform(get(
                         "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
                         applicationId, attachmentId)
                         .with(validJwt(member, "member")))
                 .andExpect(status().isNotFound())
@@ -359,6 +373,79 @@ class ExpenseApplicationApiIntegrationTest {
                 .andExpect(status().isConflict());
         assertThat(attachmentRepository.count()).isZero();
         assertThat(storedAttachments).isEmpty();
+    }
+
+    @Test
+    void 添付削除のDB更新失敗時はBlobを削除せず論理削除をrollbackする() throws Exception {
+        String applicationId = createDraft(member, "member", "添付削除DB失敗テスト");
+        String attachmentId = upload(applicationId, member, "member", "delete-db-failure.pdf");
+
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("test DB failure"))
+                .when(attachmentRepository).flush();
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
+                .getDeletedAt()).isNull();
+        assertThat(storedAttachments).hasSize(1);
+        verify(attachmentStorage, never()).delete(anyString());
+        assertThat(auditLogRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+                .extracting("actionType")
+                .doesNotContain("EXPENSE_ATTACHMENT_DELETED");
+    }
+
+    @Test
+    void Blob削除失敗時もDB論理削除を維持して204を返し再試行ログと監査を残す(
+            CapturedOutput output) throws Exception {
+        String applicationId = createDraft(member, "member", "添付削除Blob失敗テスト");
+        String attachmentId = upload(applicationId, member, "member", "delete-blob-failure.pdf");
+        String objectName = "expense-evidence/%s/%s".formatted(applicationId, attachmentId);
+        doThrow(new AttachmentStorageException(new IllegalStateException("delete failed")))
+                .when(attachmentStorage).delete(objectName);
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(member, "member")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
+
+        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
+                .getDeletedAt()).isNotNull();
+        assertThat(storedAttachments).containsKey(objectName);
+        assertThat(auditLogRepository.findAll(
+                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+                .extracting("actionType")
+                .contains("EXPENSE_ATTACHMENT_DELETED", "EXPENSE_ATTACHMENT_STORAGE_FAILED");
+        assertThat(output)
+                .contains("Attachment Blob deletion failed after metadata commit")
+                .contains("applicationId=" + applicationId)
+                .contains("attachmentId=" + attachmentId)
+                .contains("storageObjectName=" + objectName)
+                .contains("errorType=AttachmentStorageException")
+                .contains("retryRequired=true");
     }
 
     @Test
@@ -873,6 +960,7 @@ class ExpenseApplicationApiIntegrationTest {
             return new StoredAttachmentContent(new ByteArrayInputStream(content), content.length);
         });
         doAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             if (storedAttachments.remove(invocation.getArgument(0)) == null) {
                 throw new AttachmentStorageException(
                         new IllegalStateException("missing test attachment"));

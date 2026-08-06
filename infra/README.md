@@ -91,6 +91,11 @@ client IDだけを設定し、FrontendとKeycloakにはidentity・RBAC・接続�
 [`docs/infrastructure/expense-attachment-storage.md`](../docs/infrastructure/expense-attachment-storage.md)を
 参照する。
 
+GitHub Actionsの環境別planでは、GitHub Environment variable
+`AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`を`TF_VAR_attachment_storage_account_name`へ渡す。
+`staging-plan`と`production-plan`には各環境のglobal uniqueなStorage Account名を個別に登録し、
+未設定または空の場合はAzure loginとplanをskipする。workflow内に環境別の固定値を置かない。
+
 `terraform.tfvars`、plan、stateはGitへ追加しない。リポジトリrootからの静的検証は資格情報なしで
 実行でき、Terraform以外のインフラ不変条件も同時に確認する。
 

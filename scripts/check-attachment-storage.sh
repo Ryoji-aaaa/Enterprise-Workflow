@@ -7,6 +7,7 @@ readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 readonly STACK_FILE="${PROJECT_DIRECTORY}/infra/modules/environment-stack/main.tf"
 readonly STORAGE_FILE="${PROJECT_DIRECTORY}/infra/modules/blob-storage/main.tf"
 readonly CONTAINER_APP_FILE="${PROJECT_DIRECTORY}/infra/modules/container-app/main.tf"
+readonly TERRAFORM_PLAN_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/terraform-plan.yml"
 
 grep -Fq 'shared_access_key_enabled       = false' "${STORAGE_FILE}"
 grep -Fq 'allow_nested_items_to_be_public = false' "${STORAGE_FILE}"
@@ -20,6 +21,17 @@ grep -Fq 'AZURE_CLIENT_ID' "${STACK_FILE}"
 grep -Fq 'ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"' "${STACK_FILE}"
 grep -Fq 'identity_ids = concat([var.identity_id], tolist(var.additional_identity_ids))' \
   "${CONTAINER_APP_FILE}"
+grep -Fq \
+  'TF_VAR_attachment_storage_account_name: ${{ vars.AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME }}' \
+  "${TERRAFORM_PLAN_WORKFLOW}"
+[[ "$(grep -Fc 'TF_VAR_attachment_storage_account_name' "${TERRAFORM_PLAN_WORKFLOW}")" == "2" ]]
+grep -Fq 'target_environment: staging' "${TERRAFORM_PLAN_WORKFLOW}"
+grep -Fq 'target_environment: production' "${TERRAFORM_PLAN_WORKFLOW}"
+
+if grep -Fq 'stewfattach' "${TERRAFORM_PLAN_WORKFLOW}"; then
+  echo "Terraform plan workflow must not contain a fixed attachment Storage Account name." >&2
+  exit 1
+fi
 
 [[ "$(grep -Fc 'additional_identity_ids      = [module.backend_blob_identity.id]' \
   "${STACK_FILE}")" == "1" ]]

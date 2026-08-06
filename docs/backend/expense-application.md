@@ -95,7 +95,11 @@ BackendでBlob streamを開き、`Content-Type`、UTF-8の`Content-Disposition`�
 
 BlobとPostgreSQLは分散transactionではない。登録ではBlobを上書き禁止で先に保存し、申請lock後に
 上限を再確認してメタデータと監査をcommitする。DB保存またはcommit失敗時はBlobをbest-effortで
-削除する。削除では申請と添付をlockし、Blob削除成功後だけDBの論理削除と監査を確定する。
+削除する。削除では申請と添付をlockし、DBの論理削除と監査を同じtransactionで先にcommitした後、
+Blobをbest-effortで削除する。Blob削除に失敗してもAPIは204を返し、論理削除済み添付は一覧、content
+取得、再削除から除外する。残ったorphan Blobは運用ログと失敗監査で追跡し、将来の定期cleanupまたは
+削除queueの対象とする。Azure Blob soft deleteは誤削除からの復旧手段であり、DBとの分散transactionを
+提供するものではない。
 
 ## 監査
 

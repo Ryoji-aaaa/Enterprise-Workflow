@@ -9,7 +9,6 @@ import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.models.BlobHttpHeaders;
 import com.azure.storage.blob.models.BlobProperties;
 import com.azure.storage.blob.models.BlobRequestConditions;
-import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.options.BlobParallelUploadOptions;
 
 import org.springframework.stereotype.Component;
@@ -60,7 +59,7 @@ public class AzureBlobAttachmentStorage implements AttachmentStorage {
             }
         } catch (AttachmentStorageException exception) {
             throw exception;
-        } catch (BlobStorageException exception) {
+        } catch (RuntimeException exception) {
             throw new AttachmentStorageException(exception);
         }
     }
