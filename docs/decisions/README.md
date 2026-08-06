@@ -19,3 +19,4 @@ ADRは現在の設計判断と、その理由・制約を記録します。`Acce
 | [ADR-0012](ADR-0012-separate-organization-position-and-authorization.md) | Accepted | 組織・役職・業務権限の分離 |
 | [ADR-0013](ADR-0013-append-only-audit-and-change-history.md) | Accepted | 監査ログと変更履歴の追記専用化 |
 | [ADR-0014](ADR-0014-expense-approval-route-resolution.md) | Accepted | 経費承認経路を申請時に確定 |
+| [ADR-0015](ADR-0015-expense-attachment-blob-storage.md) | Accepted | 経費証憑をBackend専用Blob Storageへ保存 |

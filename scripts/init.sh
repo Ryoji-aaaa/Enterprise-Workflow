@@ -10,8 +10,8 @@ cd "${PROJECT_DIRECTORY}"
 ./keycloak/scripts/initialize-keycloak.sh render
 docker compose build
 
-echo "Starting PostgreSQL, Mailpit, and Keycloak..."
-./scripts/wait-for-services.sh postgres mailpit keycloak
+echo "Starting PostgreSQL, Azurite, Mailpit, and Keycloak..."
+./scripts/wait-for-services.sh postgres azurite mailpit keycloak
 
 echo "Applying idempotent Keycloak configuration..."
 ./keycloak/scripts/initialize-keycloak.sh configure

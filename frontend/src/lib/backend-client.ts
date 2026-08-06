@@ -126,7 +126,7 @@ export async function proxyBackendRequest(
   try {
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token.accessToken}`);
-    headers.set("Accept", "application/json");
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
     const response = await fetch(`${serverEnvironment.backendInternalUrl}${path}`, {
       ...init,
       cache: "no-store",

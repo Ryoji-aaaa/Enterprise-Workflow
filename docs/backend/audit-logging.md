@@ -139,3 +139,9 @@ Authorization header
 追記する。業務更新と成功監査は同じtransactionに含める。承認履歴を管理監査ログだけで
 代用せず、必要に応じてrequest/correlation IDで関連付ける。Candidate外・自己承認・所有者外の
 参照または更新は、拒否された業務transactionから独立した`DENIED`監査として保持する。
+
+領収書・証憑では登録、content取得、論理削除、認可・形式・上限による拒否、Blob Storage障害を
+記録する。経費申請ID、添付ID、元ファイル名、正規化Content-Type、サイズ、SHA-256、理由コードだけを
+対象とし、ファイル内容、Blob URL、SAS、connection string、credential、SDKの生例外メッセージは
+記録しない。content取得は認可成功かつBlob streamを開けた時点を成功とし、Browserが最後まで受信した
+ことは監査の保証対象外とする。

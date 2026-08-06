@@ -17,7 +17,7 @@ resource "azurerm_container_app" "this" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [var.identity_id]
+    identity_ids = concat([var.identity_id], tolist(var.additional_identity_ids))
   }
 
   registry {

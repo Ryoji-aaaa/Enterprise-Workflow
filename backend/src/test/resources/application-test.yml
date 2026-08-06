@@ -24,6 +24,19 @@ workflow:
   notification:
     from: no-reply@workflow.local
     cooldown: 15m
+  attachment:
+    max-file-size: 10MB
+    max-files-per-application: 10
+    max-total-size-per-application: 30MB
+    max-original-file-name-length: 255
+    allowed-content-types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+    storage:
+      container-name: expense-evidence
+      endpoint: https://127.0.0.1:10000/devstoreaccount1
+      create-container: false
   seed:
     enabled: false
     admin-email: example.admin1@sdcj.co.jp

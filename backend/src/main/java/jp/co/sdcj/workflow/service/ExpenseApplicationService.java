@@ -41,6 +41,7 @@ public class ExpenseApplicationService {
     private static final BigDecimal MAX_TOTAL_AMOUNT = new BigDecimal("999999999999");
 
     private final ExpenseApplicationRepository applicationRepository;
+    private final ExpenseApplicationAccessService accessService;
     private final ExpenseApplicationItemRepository itemRepository;
     private final ExpenseApprovalRunRepository runRepository;
     private final ExpenseApprovalStepRepository stepRepository;
@@ -53,6 +54,7 @@ public class ExpenseApplicationService {
 
     public ExpenseApplicationService(
             ExpenseApplicationRepository applicationRepository,
+            ExpenseApplicationAccessService accessService,
             ExpenseApplicationItemRepository itemRepository,
             ExpenseApprovalRunRepository runRepository,
             ExpenseApprovalStepRepository stepRepository,
@@ -63,6 +65,7 @@ public class ExpenseApplicationService {
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper) {
         this.applicationRepository = applicationRepository;
+        this.accessService = accessService;
         this.itemRepository = itemRepository;
         this.runRepository = runRepository;
         this.stepRepository = stepRepository;
@@ -212,15 +215,8 @@ public class ExpenseApplicationService {
 
     @Transactional(readOnly = true)
     public ExpenseApplicationDetails getAccessible(UUID id, AppUser user) {
-        ExpenseApplication application = applicationRepository.findById(id)
-                .orElseThrow(ExpenseApplicationService::notFound);
-        if (!application.getApplicantUserId().equals(user.getId())
-                && !candidateRepository.existsForApplication(id, user.getId())) {
-            auditLogService.recordDenied(
-                    AuditActor.user(user), "EXPENSE_APPLICATION_READ_DENIED",
-                    "EXPENSE_APPLICATION", id.toString(), "NOT_OWNER_OR_CURRENT_CANDIDATE");
-            throw notFound();
-        }
+        ExpenseApplication application = accessService.accessible(
+                id, user, "EXPENSE_APPLICATION_READ_DENIED");
         return details(application, null);
     }
 
@@ -237,15 +233,7 @@ public class ExpenseApplicationService {
     }
 
     private ExpenseApplication ownedForUpdate(UUID id, AppUser user) {
-        ExpenseApplication application = applicationRepository.findByIdForUpdate(id)
-                .orElseThrow(ExpenseApplicationService::notFound);
-        if (!application.getApplicantUserId().equals(user.getId())) {
-            auditLogService.recordDenied(
-                    AuditActor.user(user), "EXPENSE_APPLICATION_UPDATE_DENIED",
-                    "EXPENSE_APPLICATION", id.toString(), "NOT_OWNER");
-            throw notFound();
-        }
-        return application;
+        return accessService.ownedForUpdate(id, user, "EXPENSE_APPLICATION_UPDATE_DENIED");
     }
 
     private List<ExpenseApplicationItem> saveItems(
@@ -325,9 +313,6 @@ public class ExpenseApplicationService {
         }
     }
 
-    private static ApiException notFound() {
-        return new ApiException(HttpStatus.NOT_FOUND, "EXPENSE_APPLICATION_NOT_FOUND", "経費申請が見つかりません。");
-    }
     private static ApiException conflict(String code, String message) {
         return new ApiException(HttpStatus.CONFLICT, code, message);
     }

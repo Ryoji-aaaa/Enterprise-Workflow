@@ -8,6 +8,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jp.co.sdcj.workflow.service.ManagementFailureAuditService;
@@ -62,6 +63,17 @@ public class ApiExceptionHandler {
         recordManagementFailure(request, "CONFLICT");
         return ResponseEntity.status(409)
                 .body(new ApiError("CONFLICT", "他の更新と競合しました。再読み込みしてください。"));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> handleMaxUploadSizeExceeded(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request) {
+        recordManagementFailure(request, "EXPENSE_ATTACHMENT_TOO_LARGE");
+        return ResponseEntity.status(413)
+                .body(new ApiError(
+                        "EXPENSE_ATTACHMENT_TOO_LARGE",
+                        "ファイルサイズが上限を超えています。"));
     }
 
     private void recordManagementFailure(HttpServletRequest request, String reason) {

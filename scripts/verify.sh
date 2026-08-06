@@ -32,7 +32,7 @@ fi
 
 requested_services=("$@")
 if ((${#requested_services[@]} == 0)); then
-  requested_services=(postgres mailpit keycloak backend frontend)
+  requested_services=(postgres azurite mailpit keycloak backend frontend)
 fi
 
 contains_service() {
@@ -150,6 +150,13 @@ if contains_service postgres; then
   log_pass "PostgreSQL initialization and database-role isolation are valid"
 fi
 
+if contains_service azurite; then
+  log_section "Azurite readiness and isolation"
+  log_info "Checking private attachment Blob emulator readiness and host isolation..."
+  assert_no_published_ports azurite
+  log_pass "Azurite is healthy and has no published host port"
+fi
+
 if contains_service mailpit; then
   log_section "Mailpit readiness"
   log_info "Checking the Mailpit readiness endpoint..."
@@ -224,13 +231,14 @@ WHERE table_schema = 'public'
     'expense_application_items',
     'expense_approval_runs',
     'expense_approval_steps',
-    'expense_approval_candidates'
+    'expense_approval_candidates',
+    'expense_application_attachments'
   );
 SQL
   )"
-  [[ "${schema_table_count}" == "20" ]] || {
+  [[ "${schema_table_count}" == "21" ]] || {
     fail_check "Flyway history and workflow schema tables were not initialized." \
-      "20 tables" "${schema_table_count} tables"
+      "21 tables" "${schema_table_count} tables"
   }
 
   migration_summary="$(
@@ -250,7 +258,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V006__seed_and_migrate_user_organization_authorization_data.sql',
     'V007__contract_legacy_app_user_columns.sql',
     'V008__add_employment_type_project_and_organization_chart_roles.sql',
-    'V009__create_expense_application_schema.sql'
+    'V009__create_expense_application_schema.sql',
+    'V010__create_expense_application_attachment_schema.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -259,9 +268,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "9:9" ]] || {
+  [[ "${migration_summary}" == "10:10" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "9 total migrations:9 successful checksummed migrations" "${migration_summary}"
+      "10 total migrations:10 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(
@@ -382,10 +391,16 @@ if contains_service frontend; then
     fail_check "Frontend container contains database connection environment variables." \
       "no DATABASE, DB_, or POSTGRES variables" "one or more matching variables"
   fi
+  if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    "${frontend_id}" | grep -Ei '^(AZURE_STORAGE|ATTACHMENT_STORAGE)'; then
+    fail_check "Frontend container contains attachment Storage environment variables." \
+      "no AZURE_STORAGE or ATTACHMENT_STORAGE variables" "one or more matching variables"
+  fi
   log_pass "Frontend connectivity and database isolation are valid"
 fi
 
 if contains_service postgres \
+  && contains_service azurite \
   && contains_service mailpit \
   && contains_service keycloak \
   && contains_service backend \
@@ -400,16 +415,20 @@ if contains_service postgres \
   jq --exit-status '
     ((.services.backend.ports // []) | length == 0) and
     ((.services.postgres.ports // []) | length == 0) and
+    ((.services.azurite.ports // []) | length == 0) and
     (.services.frontend.networks | has("application-network")) and
     (.services.frontend.networks | has("database-network") | not) and
     (.services.backend.networks | has("application-network")) and
     (.services.backend.networks | has("database-network")) and
+    (.services.azurite.networks | keys == ["application-network"]) and
     (.services.postgres.networks | keys == ["database-network"]) and
     (.services.keycloak.networks | has("database-network")) and
     (.services.keycloak.networks | has("public-network")) and
     (.services.mailpit.networks | has("application-network")) and
     ([.services.frontend.environment | keys[]
       | select(test("^(DATABASE|DB_|POSTGRES)"; "i"))] | length == 0) and
+    ([.services.frontend.environment | keys[]
+      | select(test("^(AZURE_STORAGE|ATTACHMENT_STORAGE)"; "i"))] | length == 0) and
     .networks["application-network"].internal == true and
     .networks["database-network"].internal == true
   ' "${compose_json}" >/dev/null
@@ -418,7 +437,7 @@ if contains_service postgres \
   database_network="$(jq -r '.networks["database-network"].name' "${compose_json}")"
   public_network="$(jq -r '.networks["public-network"].name' "${compose_json}")"
 
-  for service in frontend backend postgres keycloak mailpit; do
+  for service in frontend backend postgres azurite keycloak mailpit; do
     docker inspect "$(container_id "${service}")" \
       | jq '.[0].NetworkSettings.Networks | keys' >"${network_json}"
     case "${service}" in
@@ -438,6 +457,11 @@ if contains_service postgres \
         jq --exit-status \
           --arg database "${database_network}" \
           '. == [$database]' "${network_json}" >/dev/null
+        ;;
+      azurite)
+        jq --exit-status \
+          --arg application "${application_network}" \
+          '. == [$application]' "${network_json}" >/dev/null
         ;;
       keycloak)
         jq --exit-status \

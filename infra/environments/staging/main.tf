@@ -13,6 +13,7 @@ module "environment" {
   keycloak_container_app_name     = var.keycloak_container_app_name
   key_vault_name                  = var.key_vault_name
   postgres_server_name            = var.postgres_server_name
+  attachment_storage_account_name = var.attachment_storage_account_name
   postgres_administrator_login    = var.postgres_administrator_login
   postgres_administrator_password = var.postgres_administrator_password
   image_tag                       = var.image_tag

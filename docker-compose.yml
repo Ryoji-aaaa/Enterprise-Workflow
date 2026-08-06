@@ -61,6 +61,8 @@ services:
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
       SPRING_PROFILES_ACTIVE: development
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      ATTACHMENT_STORAGE_CREATE_CONTAINER: "true"
     healthcheck:
       test: ["CMD", "bash", "/app/healthcheck.sh"]
       interval: 10s
@@ -74,9 +76,37 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_healthy
+      azurite:
+        condition: service_healthy
     networks:
       - application-network
       - database-network
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:${AZURITE_VERSION:-3.36.0}
+    command:
+      - azurite-blob
+      - --blobHost
+      - 0.0.0.0
+      - --blobPort
+      - "10000"
+      - --location
+      - /data
+      - --skipApiVersionCheck
+    volumes:
+      - azurite-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:10000/devstoreaccount1?comp=list').then(()=>process.exit(0)).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks:
+      - application-network
 
   postgres:
     image: postgres:${POSTGRES_VERSION:-18.4}
@@ -197,6 +227,7 @@ services:
 
 volumes:
   postgres-data:
+  azurite-data:
   keycloak-import:
 
 networks:

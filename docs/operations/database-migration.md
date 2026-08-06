@@ -25,6 +25,27 @@ Flyway起動で適用する。適用後は`expense_applications`から`expense_a
 5テーブルと`expense_application_number_seq`、`EXPENSE_APPLICATION_CREATE`、
 `EXPENSE_APPLICATION_READ_OWN`、`EXPENSE_APPLICATION_APPROVE`を確認する。手動seed Jobは不要である。
 
+経費証憑を含むrevisionでは続けてV010を適用する。V010は既存行を更新せず、
+`expense_application_attachments`、申請への外部key、storage object一意制約、サイズ・SHA-256・
+論理削除整合性制約、有効添付の一覧indexを追加する。適用後は次を確認する。
+
+```sql
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name = 'expense_application_attachments';
+
+SELECT version, description, success
+FROM flyway_schema_history
+WHERE version IN ('009', '010')
+ORDER BY installed_rank;
+```
+
+V010はmetadata schemaだけを作成し、Blob containerや既存ファイルを操作しない。先にTerraformで
+Storage Account、非公開container、Backend専用Managed Identity/RBACをapplyし、Backend revisionへ
+Blob endpoint、container名、client IDを設定する。Blob設定不足でBackendが起動できない場合も
+`flyway repair`やDB手動変更を行わず、Terraformとrevision設定を修正する。
+
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
 `SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから

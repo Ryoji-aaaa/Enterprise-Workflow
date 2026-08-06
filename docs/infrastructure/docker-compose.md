@@ -19,6 +19,7 @@
 | `mailpit` | `axllent/mailpit:v1.30.5` | `8025:8025` | 開発用メール確認 |
 | `frontend` | Node.js 24.18.0 / Next.js 16.2.11でビルド | `3000:3000` | Next.js BFF |
 | `backend` | Java 21 / Maven 3.9.16でビルド | なし | Spring Boot業務API |
+| `azurite` | `mcr.microsoft.com/azure-storage/azurite:3.36.0` | なし | 開発・E2E用Blob Storage |
 | `e2e` | Node.js 24.18.0 / Playwright 1.62.0でビルド | なし | Chromium E2E |
 
 `keycloak-init`は`init`プロファイルに属する一時サービスである。
@@ -31,12 +32,19 @@ Keycloakへread-onlyで渡す。これによりhost側の`0600`を維持した�
 `BETTER_AUTH_RATE_LIMIT_ENABLED=false`で無効化する。Azureではこの変数を設定せず、
 production既定のrate limitを有効なままにする。
 
+`azurite`はBlob serviceだけをapplication network内で起動し、ホストへ10000番portを公開しない。
+Backendは開発用well-known accountのconnection stringで接続し、`expense-evidence` containerを
+`createIfNotExists`相当で初期化する。FrontendとBrowserへconnection stringやAzurite endpointを
+渡さない。Azure SDKがAzurite releaseより新しいservice versionを送る場合にもBlob互換動作を検証
+できるよう、emulatorだけ`--skipApiVersionCheck`を使用する。Azure側のservice versionや認証検証を
+無効化する設定ではない。E2Eも必ずBFFとBackendを経由し、Azuriteへ直接接続しない。
+
 ネットワークの許可・禁止経路は
 [ネットワーク境界](../architecture/network-boundaries.md)を正本とする。
 
 ## 永続化
 
-PostgreSQLの`/var/lib/postgresql`だけを名前付きボリューム`postgres-data`へ保存する。
+PostgreSQLの`/var/lib/postgresql`を`postgres-data`、Azuriteの`/data`を`azurite-data`へ保存する。
 KeycloakのRealmやユーザーもKeycloak専用DBを通じて同じボリューム内へ永続化される。
 
 通常の再起動や検証ではボリュームを削除しない。`make reset`だけが明示的に
@@ -45,6 +53,7 @@ KeycloakのRealmやユーザーもKeycloak専用DBを通じて同じボリュー
 ## healthcheck
 
 - PostgreSQL: `pg_isready`
+- Azurite: application network内のBlob service endpointをNode.js `fetch`で確認
 - Mailpit: `/readyz`
 - Keycloak: 管理ポート9000の`/health/ready`を確認し、JSONの`status`が`UP`であることを検証
 - backend: runtime image内から総合`/actuator/health`のHTTP 200と`UP`を確認し、ローカルでは
@@ -58,10 +67,10 @@ Keycloak公式イメージへ`curl`などを追加せず、Bashの`/dev/tcp`を�
 `make init`は次の順序で処理する。
 
 1. Keycloak startup import用JSONを生成し、frontend/backend imageをbuildする
-2. PostgreSQL、Mailpit、Keycloakをhealthyまで待機する
+2. PostgreSQL、Mailpit、Keycloak、Azuriteをhealthyまで待機する
 3. 内部Admin REST APIでKeycloak設定を冪等更新する
 4. backendを起動し、業務DBスキーマと開発ユーザーを冪等初期化する
 5. frontendを起動する
-6. HTTP応答、公開ポート、実network境界を検証する
+6. HTTP応答、公開ポート、Azurite非公開、実network境界を検証する
 
 待機時間は既定300秒で、失敗時は対象サービスと直近100行のログを表示する。

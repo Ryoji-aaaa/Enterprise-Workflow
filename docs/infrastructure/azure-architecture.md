@@ -2,13 +2,15 @@
 
 stagingとproductionはResource Group、VNet、Container Apps Environment、Log
 Analytics、PostgreSQL Flexible Server、Key Vault、Managed Identity、Container Apps、
-Terraform state keyを分離する。Azure Container Registryだけを共有する。
+経費証憑用Storage Account、Terraform state keyを分離する。Azure Container Registryだけを共有する。
 
 ```text
 Internet ──> Next.js Container App ──internal ingress──> Spring Boot
     └──────> Keycloak Container App                         │
                        │                                    │
                        └────────private VNet────────> PostgreSQL
+                                                            │
+                                                            └──> private Blob container
 ```
 
 Next.jsとKeycloakだけがexternal ingressを持つ。Spring Bootはinternal ingressであり、
@@ -31,7 +33,16 @@ Environment内のFrontendからだけ到達できる。環境のdefault domain�
 Backendをexternalへ変更せず、Browserからの業務APIアクセスは引き続きFrontend BFFを
 経由する。
 
-全Container Appは共通の環境別User Assigned Managed Identityを持つ。ACRからのpullには
+経費証憑は環境別のStorageV2 accountにある非公開`expense-evidence` containerへ保存する。
+Storage AccountはHTTPS/TLS 1.2以上、public container無効、shared key無効、OAuth既定とし、
+Blob versioningとlifecycle自動削除は使わない。Blobおよびcontainerのsoft deleteは30日である。
+BackendにはBlob専用User Assigned Managed Identityを追加し、container scopeの
+`Storage Blob Data Contributor`だけを割り当てる。Frontend、Keycloak、共通runtime identityには
+Blob RBACを付与しない。BackendにはBlob endpoint、container名、専用identityのclient IDだけを
+渡し、connection string、Storage key、SASは使用しない。
+
+全Container Appは共通の環境別User Assigned Managed Identityを持ち、Backendだけが前述のBlob専用
+identityも持つ。ACRからのpullには
 `AcrPull`、Key Vault secret参照には`Key Vault Secrets User`を使い、ACR admin userや
 レジストリpasswordは使わない。Key VaultはGitHub-hosted runnerから秘密値を取得する
 必要があるためpublic endpointを有効にしているが、Azure RBACでアクセスを制限する。

@@ -10,3 +10,6 @@ output "postgres_fqdn" {
   sensitive = true
 }
 output "manual_seed_job_names" { value = module.environment.manual_seed_job_names }
+output "attachment_storage_account_name" { value = module.environment.attachment_storage_account_name }
+output "attachment_storage_blob_endpoint" { value = module.environment.attachment_storage_blob_endpoint }
+output "backend_blob_identity_client_id" { value = module.environment.backend_blob_identity_client_id }
