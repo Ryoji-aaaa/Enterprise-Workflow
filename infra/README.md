@@ -42,6 +42,13 @@ GitHub APIで取得したowner IDとrepository IDを`terraform.tfvars`へ設定�
 backendとStorage操作にはShared KeyではなくMicrosoft Entra IDを使用する。
 bootstrap完了後、環境のbackend設定を初期化する。
 
+環境のfoundation構築前に、staging/productionのGitHub Actions用Managed Identityへ、
+それぞれの環境Resource Groupスコープで`Storage Blob Data Contributor`をAzure Portalから
+事前付与する。環境rootのAzureRM providerは`storage_use_azuread = true`によりこの権限を使って
+Storage data planeへ接続する。このRole AssignmentはbootstrapのTerraform管理対象に含めず、
+Shared Keyも再有効化しない。Portalでの設定手順は
+[`docs/operations/azure-portal-setup.md`](../docs/operations/azure-portal-setup.md)を参照する。
+
 ```bash
 cd ../environments/staging
 terraform init \

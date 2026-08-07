@@ -9,6 +9,10 @@ readonly STORAGE_FILE="${PROJECT_DIRECTORY}/infra/modules/blob-storage/main.tf"
 readonly CONTAINER_APP_FILE="${PROJECT_DIRECTORY}/infra/modules/container-app/main.tf"
 readonly TERRAFORM_PLAN_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/terraform-plan.yml"
 readonly ATTACHMENT_STORAGE_VAR_MAPPING='TF_VAR_attachment_storage_account_name: ${{ vars.AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME }}'
+readonly -a ENVIRONMENT_PROVIDER_FILES=(
+  "${PROJECT_DIRECTORY}/infra/environments/staging/providers.tf"
+  "${PROJECT_DIRECTORY}/infra/environments/production/providers.tf"
+)
 readonly -a TERRAFORM_WORKFLOWS=(
   "${TERRAFORM_PLAN_WORKFLOW}"
   "${PROJECT_DIRECTORY}/.github/workflows/deploy-staging.yml"
@@ -27,6 +31,14 @@ grep -Fq 'AZURE_CLIENT_ID' "${STACK_FILE}"
 grep -Fq 'ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"' "${STACK_FILE}"
 grep -Fq 'identity_ids = concat([var.identity_id], tolist(var.additional_identity_ids))' \
   "${CONTAINER_APP_FILE}"
+for provider_file in "${ENVIRONMENT_PROVIDER_FILES[@]}"; do
+  provider_name="${provider_file#"${PROJECT_DIRECTORY}/"}"
+  if [[ "$(grep -Ec '^[[:space:]]*storage_use_azuread[[:space:]]*=[[:space:]]*true[[:space:]]*$' \
+    "${provider_file}")" != "1" ]]; then
+    echo "${provider_name} must enable Azure AD authentication for Storage data plane operations." >&2
+    exit 1
+  fi
+done
 for workflow in "${TERRAFORM_WORKFLOWS[@]}"; do
   workflow_name="${workflow#"${PROJECT_DIRECTORY}/"}"
   if ! grep -Fq "${ATTACHMENT_STORAGE_VAR_MAPPING}" "${workflow}"; then

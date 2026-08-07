@@ -92,9 +92,14 @@ Subject   repo:<owner>@<owner-id>/<repository>@<repository-id>:environment:<envi
 immutable IDと一致することを確認する。
 
 `Access control (IAM) > Role assignments`では、各identityが自環境Resource Groupだけに
-`Contributor`と`User Access Administrator`、state Storageに
+`Contributor`、`User Access Administrator`、`Storage Blob Data Contributor`、state Storageに
 `Storage Blob Data Contributor`、共有ACRに`AcrPush`と
 `User Access Administrator`を持つことを確認する。subscription全体へ付けない。
+環境Resource Groupスコープの`Storage Blob Data Contributor`がなければ、各Resource Groupの
+`Access control (IAM) > Add role assignment`から対応するGitHub Actions用Managed Identityへ
+foundation構築前に付与する。このRole Assignmentはbootstrapへ追加せずPortalで管理する。
+AzureRM providerはMicrosoft Entra IDでStorage data planeへ接続するため、Shared Keyを
+再有効化しない。
 
 GitHubの`Settings > Environments`で`staging`と`production`を作り、
 [`github-actions.md`](../infrastructure/github-actions.md)のvariablesを環境別に登録する。

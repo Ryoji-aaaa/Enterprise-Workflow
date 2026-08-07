@@ -89,6 +89,14 @@ repo:<owner>@<owner-id>/<repository>@<repository-id>:environment:<environment>
 staging identityには`staging`と`staging-plan`、production identityには`production`と
 `production-plan`のcredentialを設定する。既存の実デプロイ用credentialは変更・削除しない。
 
+staging/productionの初回foundation構築より前に、各GitHub Actions用Managed Identityへ
+対応する環境Resource Groupスコープの`Storage Blob Data Contributor`をAzure Portalから
+事前付与する。環境rootのAzureRM providerは`storage_use_azuread = true`でこの権限を使用し、
+Shared Keyが無効なStorage Accountのdata planeへ接続する。このRole Assignmentはbootstrapに
+追加せず、Portalで管理する環境構築の前提条件とする。state Storageに対する同名roleとは
+scopeが異なるため、両方を維持する。Shared Keyは再有効化しない。具体的な確認手順は
+[`azure-portal-setup.md`](../operations/azure-portal-setup.md)を参照する。
+
 `AZURE_OIDC_CONFIGURED`はFederated Credentialと全必須variableの登録完了後だけ`true`に
 する。未設定時もPRのfmt/validateは実行し、Azure login、plan、deployは明示的にskipする。
 `AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`は環境ごとにglobal uniqueな値を登録し、
