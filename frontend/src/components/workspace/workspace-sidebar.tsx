@@ -1,0 +1,80 @@
+"use client";
+
+import { Settings } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+import { useCurrentUser } from "./current-user-context";
+import {
+  getVisibleWorkspaceNavigationItems,
+  isWorkspaceNavigationItemActive,
+  workspaceMockNavigationItems,
+} from "./workspace-navigation";
+
+export function WorkspaceSidebar() {
+  const user = useCurrentUser();
+  const pathname = usePathname();
+  const navigationItems = getVisibleWorkspaceNavigationItems(user);
+
+  return (
+    <aside
+      aria-label="サイドメニュー"
+      className="hidden border-r bg-sidebar md:flex md:flex-col"
+    >
+      <nav aria-label="ワークスペースナビゲーション" className="flex-1 space-y-1 p-3">
+        {navigationItems.map((item) => {
+          const Icon = item.icon;
+          const active = isWorkspaceNavigationItemActive(pathname, item);
+          return (
+            <Button
+              className={cn(
+                "h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm",
+                active
+                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70",
+              )}
+              key={item.href}
+              render={(
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  href={item.href}
+                />
+              )}
+              variant="ghost"
+            >
+              <Icon className="size-4.5" />
+              <span>{item.label}</span>
+            </Button>
+          );
+        })}
+        {workspaceMockNavigationItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Button
+              className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70"
+              key={item.label}
+              type="button"
+              variant="ghost"
+            >
+              <Icon className="size-4.5" />
+              <span>{item.label}</span>
+            </Button>
+          );
+        })}
+      </nav>
+      <div className="border-t p-3">
+        <Button
+          className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-sm text-sidebar-foreground/70"
+          type="button"
+          variant="ghost"
+        >
+          <Settings className="size-4.5" />
+          <span>モック文字７</span>
+        </Button>
+      </div>
+    </aside>
+  );
+}

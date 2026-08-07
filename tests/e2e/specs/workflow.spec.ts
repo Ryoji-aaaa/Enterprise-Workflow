@@ -68,6 +68,25 @@ async function expectExpiredSessionLogin(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "ログイン", exact: true })).toBeVisible();
 }
 
+async function expectWorkspaceChrome(page: Page): Promise<void> {
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(page.getByRole("button", { name: "ログアウト", exact: true })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toBeVisible();
+}
+
+async function expectNoWorkspaceChrome(page: Page): Promise<void> {
+  await expect(page.getByRole("navigation", { name: "モバイルナビゲーション" })).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+}
+
+async function expectActiveSidebarLink(page: Page, name: string): Promise<void> {
+  await expect(
+    page
+      .getByRole("complementary", { name: "サイドメニュー" })
+      .getByRole("link", { name, exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+}
+
 type ExpenseDetail = {
   id: string;
   version: number;
@@ -148,12 +167,23 @@ test("未認証ユーザーをログイン画面へリダイレクトする", as
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("button", { name: "ログイン", exact: true })).toBeVisible();
   await expect(page.getByText(userEmail)).toHaveCount(0);
+  await expectNoWorkspaceChrome(page);
+});
+
+test("未認証ユーザーをワークスペース画面からログイン画面へリダイレクトする", async ({ page }) => {
+  await page.goto("/expenses");
+
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("button", { name: "ログイン", exact: true })).toBeVisible();
+  await expectNoWorkspaceChrome(page);
 });
 
 test("一般ユーザーがログインしてモックダッシュボードを表示できる", async ({ page }) => {
   await login(page, userEmail, userPassword);
 
   await expect(page).toHaveURL(/\/top$/);
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "トップ");
   await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "モック文字８", exact: true }),
@@ -191,6 +221,22 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(await topResponse.text()).not.toMatch(
     /accessToken|refreshToken|idToken|eyJ[A-Za-z0-9_-]+\./,
   );
+
+  let meRequestsAfterTop = 0;
+  await page.route("**/api/backend/me", async (route) => {
+    meRequestsAfterTop += 1;
+    await route.continue();
+  });
+  await page.getByRole("link", { name: "経費申請", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "経費申請", exact: true })).toBeVisible();
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "経費申請");
+  await page.getByRole("link", { name: "組織図", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "組織図", exact: true })).toBeVisible();
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "組織図");
+  expect(meRequestsAfterTop).toBe(0);
+  await page.unroute("**/api/backend/me");
 });
 
 test("token更新不能時はtopとの往復をせず期限切れログインへ戻る", async ({ page }) => {
@@ -276,6 +322,8 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
       .toEqual(["第1SI営業課", "経理課"]);
     expect(general.pendingStepId).not.toBeNull();
     await manager.goto("/approvals");
+    await expectWorkspaceChrome(manager);
+    await expectActiveSidebarLink(manager, "承認待ち");
     await expect(manager.getByText(`E2E一般申請-${suffix}`, { exact: true })).toBeVisible();
 
     const outsiderResponse = await outsider.request.post(
@@ -362,6 +410,9 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
     const applicantDetail = (await applicantDetailResponse.json()) as ExpenseDetail;
     expect(applicantDetail.status).toBe("APPROVED");
     expect(applicantDetail.approvalRun.runNumber).toBe(2);
+    await applicant.goto(`/expenses/${general.id}`);
+    await expectWorkspaceChrome(applicant);
+    await expectActiveSidebarLink(applicant, "経費申請");
 
     await expect.poll(
       () => searchNotificationCount(expenseApprovalSubject, expenseManagerEmail),
@@ -383,6 +434,8 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
   await login(page, adminEmail, adminPassword);
 
   await expect(page).toHaveURL(/\/top$/);
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "トップ");
   await expect(page.getByText("開発管理者", { exact: true })).toBeVisible();
 
   const meResponse = await page.request.get("/api/backend/me");
@@ -395,9 +448,13 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
 
   await expect(page.getByRole("link", { name: "送付済メール一覧" })).toBeVisible();
   await page.getByRole("link", { name: "送付済メール一覧" }).click();
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "送付済メール一覧");
   await expect(page.getByRole("heading", { name: "送付済メール一覧" })).toBeVisible();
   await expect(page.getByText(/通知履歴（\d+件）/)).toBeVisible();
   await page.getByRole("link", { name: "詳細" }).first().click();
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "送付済メール一覧");
   await expect(page.getByRole("heading", { name: "メール通知詳細" })).toBeVisible();
   await expect(page.getByText("本文", { exact: true })).toBeVisible();
 });
@@ -406,8 +463,12 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   await login(page, presidentEmail, presidentPassword);
 
   await expect(page).toHaveURL(/\/top$/);
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "トップ");
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileNavigation = page.getByRole("navigation", { name: "モバイルナビゲーション" });
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+  await expect(mobileNavigation.getByRole("link", { name: "トップ" })).toBeVisible();
   await expect(mobileNavigation.getByRole("link", { name: "組織図" })).toBeVisible();
   await expect(mobileNavigation.getByRole("link", { name: "ユーザー管理" })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -416,6 +477,8 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   expect(meResponse.status()).toBe(200);
   const me = (await meResponse.json()) as { id: string };
   await page.getByRole("link", { name: "組織図" }).click();
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "組織図");
   await expect(page.getByRole("heading", { name: "組織図" })).toBeVisible();
   const governance = page.getByRole("heading", { name: "統治機関・会議体" });
   await expect(governance).toBeVisible();
@@ -444,13 +507,21 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
 
   await presidentEdit.click();
   await expect(page).toHaveURL(new RegExp(`/admin/users/${me.id}/edit$`));
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "ユーザー管理");
   await expect(page.getByRole("heading", { name: "ユーザー情報編集" })).toBeVisible();
 
   await page.goto("/top");
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "トップ");
   await page.getByRole("link", { name: "ユーザー管理" }).click();
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "ユーザー管理");
   await expect(page.getByRole("heading", { name: "ユーザー管理" })).toBeVisible();
   await expect(page.getByText(/ユーザー一覧（\d+件）/)).toBeVisible();
   await page.goto(`/admin/users/${me.id}/edit`);
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "ユーザー管理");
   await expect(page.getByRole("heading", { name: "ユーザー情報編集" })).toBeVisible();
   await expect(page.getByLabel("email（変更不可）")).toHaveAttribute("readonly", "");
 
@@ -552,6 +623,7 @@ test("未登録ユーザーを記録し通知を重複送信しない", async ({
   await expect(
     page.getByText("このアカウントはワークフローアプリに登録されていません。"),
   ).toBeVisible();
+  await expectNoWorkspaceChrome(page);
 
   await expect.poll(searchNotificationCount).toBe(1);
 
@@ -567,6 +639,7 @@ test("未登録ユーザーを記録し通知を重複送信しない", async ({
 
   await page.goto("/unavailable");
   await expect(page.getByText("このアカウントではワークフローアプリを利用できません")).toBeVisible();
+  await expectNoWorkspaceChrome(page);
   await expect(page.locator("body")).not.toContainText(
     /accessToken|refreshToken|idToken|Bearer|backend:8080|Exception|stack/,
   );

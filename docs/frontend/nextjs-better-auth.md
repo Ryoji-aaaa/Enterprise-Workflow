@@ -71,13 +71,25 @@ last nameを設定し、初回ログイン時のプロフィール補完画面�
 と表示する。このURLでは残存sessionがあっても`/top`へ自動redirectせず、期限切れ時の
 redirect loopを防ぐ。
 
-`/top`はServer ComponentでBetter Auth sessionを検証する。sessionがない場合は
-`/login`へ戻す。利用者情報はBetter Authのprofileを直接表示せず、BFFが取得した
-Spring Bootの`GET /api/me`結果を表示する。レスポンスは`no-store`であり、logout後の
-ブラウザ戻る操作でも認証済み画面をcacheから再利用しない。
+ログイン後の業務画面は`app/(workspace)/layout.tsx`でBetter Auth sessionを共通検証する。
+sessionがない場合は`/login`へ戻す。Route Groupを使用するためURLは従来どおり
+`/top`、`/expenses`、`/approvals`、`/organization-chart`、`/admin/...`のままである。
+`/top`は固有のモックダッシュボード本文だけを返し、認証確認、ヘッダー、サイドメニューは
+ワークスペース共通処理へ分離する。
 
-未登録403では`/unregistered`、その他の利用不可403では`/unavailable`へ遷移する。
-どちらの画面にもJWT、token、内部URL、例外、stack traceを表示しない。
+利用者情報はBetter Authのprofileを直接表示せず、`WorkspaceGate`がBFFの
+`/api/backend/me`からSpring Bootの`GET /api/me`結果を一度取得し、`CurrentUserContext`へ
+保持する。正常時は`CurrentUserProvider`、共通アプリケーションシェル、各ページ本文の順に表示する。
+認証済み画面間のClient-side navigationでは共通シェルが維持され、各ページが利用者権限だけを
+目的として`/api/backend/me`を重複取得しない。
+
+`(workspace)`配下のレスポンスは`no-store`であり、logout後のブラウザ戻る操作でも認証済み画面を
+cacheから再利用しない。
+
+`WorkspaceGate`での未登録403では`/unregistered`、その他の利用不可403では`/unavailable`へ
+遷移する。`/login`、`/unregistered`、`/unavailable`、`/api/**`、`/`はワークスペース外であり、
+共通ヘッダー、モバイルナビゲーション、サイドメニューを表示しない。どちらの画面にもJWT、token、
+内部URL、例外、stack traceを表示しない。
 
 ## ログアウト
 
@@ -108,8 +120,9 @@ session不在、provider account不在、token取得・更新失敗、またはS
 
 Client ComponentからBFFへの通信は共通clientを使用する。共通clientは401の場合だけ
 `/login?reason=session-expired`へ一度だけ`location.replace`し、呼び出し元の処理を中断する。
-更新・送信操作を再ログイン後に自動再送しない。403、404、409、5xx、接続失敗は各画面の
-既存処理へ渡す。
+`WorkspaceGate`の利用者情報取得も同じclientを使用するため、session期限切れ時の既存処理を
+変更しない。更新・送信操作を再ログイン後に自動再送しない。403、404、409、5xx、接続失敗は
+各画面の既存処理へ渡す。
 
 token更新時にBetter Authが返すSet-CookieはRoute Handlerからブラウザへ引き継ぐ。
 access token、refresh token、ID tokenをClient Component、localStorage、

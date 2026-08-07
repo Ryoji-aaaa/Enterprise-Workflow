@@ -7,11 +7,13 @@
 3. Keycloakが利用者を認証し、Authorization CodeをNext.js callbackへ返す。
 4. Next.jsサーバーが内部URLでcodeをtokenへ交換する。
 5. Better AuthがOAuth state、session、provider accountを暗号化したHTTP-only Cookieへ保存する。
-6. Next.jsがサーバー側でaccess tokenを取得し、Spring Bootの`GET /api/me`へ送る。
+6. ログイン後の業務画面ではNext.jsの`(workspace)/layout.tsx`がBetter Auth sessionを確認し、
+   `WorkspaceGate`がBFF経由でSpring Bootの`GET /api/me`へ送る。
 7. Spring BootがJWTを検証し、`issuer + subject`から外部ID対応と業務ユーザーを解決する。
 8. Spring Bootがアカウント状態・有効期間とDB上の業務権限を確認し、`employmentType`、
    `permissions`、環境名を含まない機能可否`features`を含む業務ユーザー情報を返す。
-9. Next.jsが業務情報を`/top`へ表示する。
+9. Next.jsが業務情報を`CurrentUserContext`へ保持し、共通アプリケーションシェルと
+   業務画面本文を表示する。
 
 access token、refresh token、ID tokenはブラウザJavaScript、localStorage、
 sessionStorage、画面レスポンスへ公開しません。
