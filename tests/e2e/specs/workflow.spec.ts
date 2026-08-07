@@ -292,6 +292,15 @@ test("Document Analysis UI Shellはモバイルナビゲーションから到達
   await mobileNavigation.getByRole("link", { name: "Content Understanding" }).click();
   await expect(page).toHaveURL(/\/content-understanding$/);
   await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+
+  await page.locator("#document-analysis-file-mobile").setInputFiles({
+    name: "too-large.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.alloc(10 * 1024 * 1024 + 1),
+  });
+  await expect(
+    page.getByRole("alert").filter({ hasText: "ファイルサイズは10 MiB以下にしてください。" }),
+  ).toBeVisible();
 });
 
 test("token更新不能時はtopとの往復をせず期限切れログインへ戻る", async ({ page }) => {

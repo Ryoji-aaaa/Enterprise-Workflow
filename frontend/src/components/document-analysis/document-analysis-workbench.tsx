@@ -122,6 +122,7 @@ export function DocumentAnalysisWorkbench({
             onSelectFiles={selectFiles}
             recentAnalyses={recentAnalyses}
             selectedFile={state.selectedFile}
+            selectionError={state.status === "failed" ? state.error : null}
           />
           <div className="min-h-0 min-w-0">
             <DocumentPreview file={state.selectedFile} objectUrl={objectUrl} />
@@ -166,6 +167,7 @@ export function DocumentAnalysisWorkbench({
                 onSelectFiles={selectFiles}
                 recentAnalyses={recentAnalyses}
                 selectedFile={state.selectedFile}
+                selectionError={state.status === "failed" ? state.error : null}
               />
             )}
             {activePane === "preview" && <DocumentPreview file={state.selectedFile} objectUrl={objectUrl} />}

@@ -14,6 +14,7 @@ export function DocumentUploadPanel({
   inputRef,
   inputId,
   selectedFile,
+  selectionError,
   recentAnalyses,
   onSelectFiles,
   onClear,
@@ -21,6 +22,7 @@ export function DocumentUploadPanel({
   inputRef: RefObject<HTMLInputElement | null>;
   inputId: string;
   selectedFile: AnalyzableFile | null;
+  selectionError: string | null;
   recentAnalyses: string[];
   onSelectFiles: (files: FileList) => void;
   onClear: () => void;
@@ -91,6 +93,11 @@ export function DocumentUploadPanel({
             </p>
           </div>
         </div>
+        {selectionError && (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+            {selectionError}
+          </p>
+        )}
         {selectedFile && (
           <div className="rounded-md border bg-background p-3 text-sm">
             <p className="break-all font-medium">{selectedFile.name}</p>
