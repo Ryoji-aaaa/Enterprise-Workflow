@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -91,6 +92,76 @@ class DocumentAnalysisJobTest {
                 1, null, AUDIT_USER_ID));
     }
 
+    @Test
+    void queuedJobCanBeClaimed() {
+        DocumentAnalysisJob job = validJob();
+        Instant now = Instant.parse("2026-08-01T00:00:00Z");
+
+        job.claim(now, Duration.ofMinutes(30));
+
+        assertThat(job.getStatus()).isEqualTo(DocumentAnalysisStatus.RUNNING);
+        assertThat(job.getAttemptCount()).isEqualTo(1);
+        assertThat(job.getStartedAt()).isEqualTo(now);
+        assertThat(job.getLeaseExpiresAt()).isEqualTo(now.plus(Duration.ofMinutes(30)));
+    }
+
+    @Test
+    void runningJobCanSucceedAndClearsLease() {
+        DocumentAnalysisJob job = runningJob();
+        Instant completedAt = Instant.parse("2026-08-01T00:01:00Z");
+
+        job.succeed("result/%s/raw.json".formatted(JOB_ID),
+                "result/%s/view-v1.json".formatted(JOB_ID), "fake:" + JOB_ID, completedAt);
+
+        assertThat(job.getStatus()).isEqualTo(DocumentAnalysisStatus.SUCCEEDED);
+        assertThat(job.getRawResultObjectName()).endsWith("/raw.json");
+        assertThat(job.getNormalizedResultObjectName()).endsWith("/view-v1.json");
+        assertThat(job.getProviderOperationId()).isEqualTo("fake:" + JOB_ID);
+        assertThat(job.getCompletedAt()).isEqualTo(completedAt);
+        assertThat(job.getLeaseExpiresAt()).isNull();
+        assertThat(job.getErrorCode()).isNull();
+    }
+
+    @Test
+    void runningJobCanFailAndClearsLease() {
+        DocumentAnalysisJob job = runningJob();
+        Instant completedAt = Instant.parse("2026-08-01T00:01:00Z");
+
+        job.fail("DOCUMENT_ANALYSIS_INPUT_UNAVAILABLE", "safe message", completedAt);
+
+        assertThat(job.getStatus()).isEqualTo(DocumentAnalysisStatus.FAILED);
+        assertThat(job.getLeaseExpiresAt()).isNull();
+        assertThat(job.getErrorCode()).isEqualTo("DOCUMENT_ANALYSIS_INPUT_UNAVAILABLE");
+        assertThat(job.getErrorMessage()).isEqualTo("safe message");
+        assertThat(job.getCompletedAt()).isEqualTo(completedAt);
+    }
+
+    @Test
+    void runningJobCanRequireRecoveryAndClearsLease() {
+        DocumentAnalysisJob job = runningJob();
+        Instant completedAt = Instant.parse("2026-08-01T00:01:00Z");
+
+        job.recoveryRequired("DOCUMENT_ANALYSIS_RESULT_STORAGE_FAILED",
+                "safe message", "fake:" + JOB_ID, completedAt);
+
+        assertThat(job.getStatus()).isEqualTo(DocumentAnalysisStatus.FAILED_RECOVERY_REQUIRED);
+        assertThat(job.getLeaseExpiresAt()).isNull();
+        assertThat(job.getProviderOperationId()).isEqualTo("fake:" + JOB_ID);
+    }
+
+    @Test
+    void nonQueuedJobCannotBeClaimedAndTerminalStateCannotTransition() {
+        DocumentAnalysisJob running = runningJob();
+        assertThatThrownBy(() -> running.claim(Instant.now(), Duration.ofMinutes(30)))
+                .isInstanceOf(IllegalStateException.class);
+
+        running.succeed("result/%s/raw.json".formatted(JOB_ID),
+                "result/%s/view-v1.json".formatted(JOB_ID), null, Instant.now());
+
+        assertThatThrownBy(() -> running.fail("CODE", "message", Instant.now()))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     private static DocumentAnalysisJob validJob() {
         return new DocumentAnalysisJob(
                 JOB_ID,
@@ -106,6 +177,12 @@ class DocumentAnalysisJobTest {
                 1,
                 Instant.now().plusSeconds(60),
                 AUDIT_USER_ID);
+    }
+
+    private static DocumentAnalysisJob runningJob() {
+        DocumentAnalysisJob job = validJob();
+        job.claim(Instant.parse("2026-08-01T00:00:00Z"), Duration.ofMinutes(30));
+        return job;
     }
 
     private static void assertInvalid(Runnable action) {

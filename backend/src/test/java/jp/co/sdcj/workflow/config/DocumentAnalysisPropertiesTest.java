@@ -21,9 +21,21 @@ class DocumentAnalysisPropertiesTest {
                     ValidationAutoConfiguration.class))
             .withUserConfiguration(TestConfig.class)
             .withPropertyValues(
+                    "workflow.document-analysis.execution-mode=disabled",
                     "workflow.document-analysis.max-file-size=10MB",
                     "workflow.document-analysis.max-original-file-name-length=255",
                     "workflow.document-analysis.retention=7d",
+                    "workflow.document-analysis.batch-size=2",
+                    "workflow.document-analysis.dispatch-interval=2s",
+                    "workflow.document-analysis.processing-timeout=30m",
+                    "workflow.document-analysis.max-active-jobs-per-user=2",
+                    "workflow.document-analysis.max-requests-per-user-per-hour=20",
+                    "workflow.document-analysis.document-intelligence.enabled=false",
+                    "workflow.document-analysis.document-intelligence.model-id=prebuilt-layout",
+                    "workflow.document-analysis.document-intelligence.api-version=2024-11-30",
+                    "workflow.document-analysis.content-understanding.enabled=false",
+                    "workflow.document-analysis.content-understanding.model-id=prebuilt-layout",
+                    "workflow.document-analysis.content-understanding.api-version=2025-11-01",
                     "workflow.document-analysis.storage.input-container-name=document-analysis-input",
                     "workflow.document-analysis.storage.result-container-name=document-analysis-result");
 

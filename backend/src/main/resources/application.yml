@@ -74,9 +74,23 @@ workflow:
       create-container: ${ATTACHMENT_STORAGE_CREATE_CONTAINER:false}
   document-analysis:
     enabled: ${WORKFLOW_DOCUMENT_ANALYSIS_ENABLED:false}
+    execution-mode: ${WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE:disabled}
     max-file-size: 10MB
     max-original-file-name-length: 255
     retention: 7d
+    batch-size: ${WORKFLOW_DOCUMENT_ANALYSIS_BATCH_SIZE:2}
+    dispatch-interval: ${WORKFLOW_DOCUMENT_ANALYSIS_DISPATCH_INTERVAL:2s}
+    processing-timeout: ${WORKFLOW_DOCUMENT_ANALYSIS_PROCESSING_TIMEOUT:30m}
+    max-active-jobs-per-user: ${WORKFLOW_DOCUMENT_ANALYSIS_MAX_ACTIVE_JOBS_PER_USER:2}
+    max-requests-per-user-per-hour: ${WORKFLOW_DOCUMENT_ANALYSIS_MAX_REQUESTS_PER_USER_PER_HOUR:20}
+    document-intelligence:
+      enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:false}
+      model-id: ${DOCUMENT_INTELLIGENCE_MODEL_ID:prebuilt-layout}
+      api-version: ${DOCUMENT_INTELLIGENCE_API_VERSION:2024-11-30}
+    content-understanding:
+      enabled: ${CONTENT_UNDERSTANDING_ENABLED:false}
+      model-id: ${CONTENT_UNDERSTANDING_ANALYZER_ID:prebuilt-layout}
+      api-version: ${CONTENT_UNDERSTANDING_API_VERSION:2025-11-01}
     storage:
       endpoint: ${DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT:}
       connection-string: ${DOCUMENT_ANALYSIS_STORAGE_CONNECTION_STRING:${AZURE_STORAGE_CONNECTION_STRING:}}

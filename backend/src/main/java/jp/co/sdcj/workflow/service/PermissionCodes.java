@@ -20,6 +20,9 @@ public final class PermissionCodes {
     public static final String EXPENSE_APPLICATION_READ_OWN = "EXPENSE_APPLICATION_READ_OWN";
     public static final String EXPENSE_APPLICATION_APPROVE = "EXPENSE_APPLICATION_APPROVE";
     public static final String MAIL_NOTIFICATION_READ = "MAIL_NOTIFICATION_READ";
+    public static final String DOCUMENT_ANALYSIS_READ_OWN = "DOCUMENT_ANALYSIS_READ_OWN";
+    public static final String DOCUMENT_INTELLIGENCE_ANALYZE = "DOCUMENT_INTELLIGENCE_ANALYZE";
+    public static final String CONTENT_UNDERSTANDING_ANALYZE = "CONTENT_UNDERSTANDING_ANALYZE";
 
     private PermissionCodes() {
     }

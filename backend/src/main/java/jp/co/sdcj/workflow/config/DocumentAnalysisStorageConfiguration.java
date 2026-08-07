@@ -8,11 +8,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import jp.co.sdcj.workflow.storage.AzureBlobDocumentAnalysisStorage;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisStorage;
 
 @Configuration
+@EnableScheduling
 @Profile("!manual-seed")
 @ConditionalOnProperty(prefix = "workflow.document-analysis", name = "enabled", havingValue = "true")
 public class DocumentAnalysisStorageConfiguration {

@@ -19,6 +19,9 @@ public record MeResponse(
     public record DepartmentResponse(String name) {
     }
 
-    public record FeaturesResponse(boolean mailNotificationHistory) {
+    public record FeaturesResponse(
+            boolean mailNotificationHistory,
+            boolean documentIntelligence,
+            boolean contentUnderstanding) {
     }
 }

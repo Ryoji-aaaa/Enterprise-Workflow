@@ -29,6 +29,8 @@ import jakarta.persistence.UniqueConstraint;
 public class DocumentAnalysisJob extends AuditedEntity {
 
     private static final Pattern SHA256_PATTERN = Pattern.compile("^[0-9a-f]{64}$");
+    private static final int ERROR_CODE_MAX_LENGTH = 100;
+    private static final int ERROR_MESSAGE_MAX_LENGTH = 500;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
@@ -147,6 +149,99 @@ public class DocumentAnalysisJob extends AuditedEntity {
             throw new IllegalArgumentException("sha256 must be 64 lowercase hexadecimal characters");
         }
         return requiredValue;
+    }
+
+    public void claim(Instant now, java.time.Duration processingTimeout) {
+        requireStatus(DocumentAnalysisStatus.QUEUED, "Only queued jobs can be claimed");
+        Objects.requireNonNull(now, "now");
+        Objects.requireNonNull(processingTimeout, "processingTimeout");
+        if (processingTimeout.isZero() || processingTimeout.isNegative()) {
+            throw new IllegalArgumentException("processingTimeout must be positive");
+        }
+        status = DocumentAnalysisStatus.RUNNING;
+        attemptCount++;
+        if (startedAt == null) {
+            startedAt = now;
+        }
+        leaseExpiresAt = now.plus(processingTimeout);
+        errorCode = null;
+        errorMessage = null;
+        markUpdatedBy(SystemUser.ID);
+    }
+
+    public void succeed(
+            String rawResultObjectName,
+            String normalizedResultObjectName,
+            String providerOperationId,
+            Instant completedAt) {
+        requireStatus(DocumentAnalysisStatus.RUNNING, "Only running jobs can succeed");
+        this.rawResultObjectName = required(rawResultObjectName, "rawResultObjectName");
+        this.normalizedResultObjectName = required(
+                normalizedResultObjectName, "normalizedResultObjectName");
+        this.providerOperationId = limited(providerOperationId, 500, "providerOperationId");
+        this.completedAt = Objects.requireNonNull(completedAt, "completedAt");
+        this.leaseExpiresAt = null;
+        this.errorCode = null;
+        this.errorMessage = null;
+        this.status = DocumentAnalysisStatus.SUCCEEDED;
+        markUpdatedBy(SystemUser.ID);
+    }
+
+    public void fail(String safeErrorCode, String safeErrorMessage, Instant completedAt) {
+        requireStatus(DocumentAnalysisStatus.RUNNING, "Only running jobs can fail");
+        completeAsFailed(
+                DocumentAnalysisStatus.FAILED,
+                safeErrorCode,
+                safeErrorMessage,
+                null,
+                completedAt);
+    }
+
+    public void recoveryRequired(
+            String safeErrorCode,
+            String safeErrorMessage,
+            String providerOperationId,
+            Instant completedAt) {
+        requireStatus(DocumentAnalysisStatus.RUNNING, "Only running jobs can require recovery");
+        completeAsFailed(
+                DocumentAnalysisStatus.FAILED_RECOVERY_REQUIRED,
+                safeErrorCode,
+                safeErrorMessage,
+                providerOperationId,
+                completedAt);
+    }
+
+    private void completeAsFailed(
+            DocumentAnalysisStatus terminalStatus,
+            String safeErrorCode,
+            String safeErrorMessage,
+            String providerOperationId,
+            Instant completedAt) {
+        this.status = terminalStatus;
+        this.errorCode = limited(required(safeErrorCode, "safeErrorCode"),
+                ERROR_CODE_MAX_LENGTH, "safeErrorCode");
+        this.errorMessage = limited(required(safeErrorMessage, "safeErrorMessage"),
+                ERROR_MESSAGE_MAX_LENGTH, "safeErrorMessage");
+        this.providerOperationId = limited(providerOperationId, 500, "providerOperationId");
+        this.completedAt = Objects.requireNonNull(completedAt, "completedAt");
+        this.leaseExpiresAt = null;
+        markUpdatedBy(SystemUser.ID);
+    }
+
+    private void requireStatus(DocumentAnalysisStatus expected, String message) {
+        if (status != expected) {
+            throw new IllegalStateException(message);
+        }
+    }
+
+    private static String limited(String value, int maxLength, String name) {
+        if (value == null) {
+            return null;
+        }
+        if (value.length() > maxLength) {
+            throw new IllegalArgumentException(name + " is too long");
+        }
+        return value;
     }
 
     public DocumentAnalysisProviderType getProvider() { return provider; }

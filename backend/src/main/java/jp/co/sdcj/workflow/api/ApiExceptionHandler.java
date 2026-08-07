@@ -69,6 +69,14 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> handleMaxUploadSizeExceeded(
             MaxUploadSizeExceededException exception,
             HttpServletRequest request) {
+        if (request.getRequestURI() != null
+                && request.getRequestURI().startsWith("/api/document-analyses")) {
+            recordManagementFailure(request, "DOCUMENT_ANALYSIS_TOO_LARGE");
+            return ResponseEntity.status(413)
+                    .body(new ApiError(
+                            "DOCUMENT_ANALYSIS_TOO_LARGE",
+                            "ファイルサイズが上限を超えています。"));
+        }
         recordManagementFailure(request, "EXPENSE_ATTACHMENT_TOO_LARGE");
         return ResponseEntity.status(413)
                 .body(new ApiError(

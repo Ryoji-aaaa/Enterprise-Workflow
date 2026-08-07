@@ -336,9 +336,9 @@ SELECT
       AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP));
 SQL
   )"
-  [[ "${development_organization_summary}" == "69:39:7:71:184" ]] || {
+  [[ "${development_organization_summary}" == "69:39:7:71:185" ]] || {
     fail_check "Development organization seed data does not match." \
-      "users:units:positions:assignments:roles = 69:39:7:71:184" \
+      "users:units:positions:assignments:roles = 69:39:7:71:185" \
       "${development_organization_summary}"
   }
 

@@ -39,11 +39,14 @@ production既定のrate limitを有効なままにする。
 `azurite`はBlob serviceだけをapplication network内で起動し、ホストへ10000番portを公開しない。
 Backendは開発用well-known accountのconnection stringで接続し、`expense-evidence`、
 `document-analysis-input`、`document-analysis-result` containerを`createIfNotExists`相当で
-初期化する。Document AnalysisはComposeのBackendだけ`workflow.document-analysis.enabled=true`
-とし、Compose外の既定値は`false`である。FrontendとBrowserへconnection stringやAzurite
-endpointを渡さない。Azure SDKがAzurite releaseより新しいservice versionを送る場合にもBlob
-互換動作を検証できるよう、emulatorだけ`--skipApiVersionCheck`を使用する。Azure側のservice
-versionや認証検証を無効化する設定ではない。E2Eも必ずBFFとBackendを経由し、Azuriteへ直接接続しない。
+初期化する。Document AnalysisはComposeのBackendだけ`workflow.document-analysis.enabled=true`、
+`workflow.document-analysis.execution-mode=fake`、Document IntelligenceとContent Understandingの
+Provider enabledを`true`にする。Fake Providerはローカル開発用で外部networkへ接続せず、
+Azure AI resourceやcredentialを要求しない。Compose外の既定値はDocument Analysis無効である。
+FrontendとBrowserへconnection stringやAzurite endpointを渡さない。Azure SDKがAzurite releaseより
+新しいservice versionを送る場合にもBlob互換動作を検証できるよう、emulatorだけ
+`--skipApiVersionCheck`を使用する。Azure側のservice versionや認証検証を無効化する設定ではない。
+E2Eも必ずBFFとBackendを経由し、Azuriteへ直接接続しない。
 
 ネットワークの許可・禁止経路は
 [ネットワーク境界](../architecture/network-boundaries.md)を正本とする。

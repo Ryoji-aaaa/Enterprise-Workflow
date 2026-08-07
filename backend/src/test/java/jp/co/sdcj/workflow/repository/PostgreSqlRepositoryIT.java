@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -24,6 +25,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import jp.co.sdcj.workflow.domain.AuditLog;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
 import jp.co.sdcj.workflow.domain.NotificationOutbox;
 
 /**
@@ -54,6 +56,9 @@ class PostgreSqlRepositoryIT {
 
     @Autowired
     private NotificationOutboxRepository notificationOutboxRepository;
+
+    @Autowired
+    private DocumentAnalysisJobRepository documentAnalysisJobRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -151,9 +156,62 @@ class PostgreSqlRepositoryIT {
         }
     }
 
+    @Test
+    void documentAnalysisClaimSkipsRowsLockedByAnotherDispatcher() throws Exception {
+        UUID analysisId = UUID.randomUUID();
+        insertDocumentAnalysisJob(analysisId, "QUEUED", null);
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var firstDispatcher = executor.submit(() -> transactions.execute(status -> {
+                List<DocumentAnalysisJob> claimed = documentAnalysisJobRepository
+                        .findQueuedForUpdateSkipLocked(10);
+                locked.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Timed out holding the document row lock");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                return claimed;
+            }));
+
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            List<DocumentAnalysisJob> secondClaim = transactions.execute(status ->
+                    documentAnalysisJobRepository.findQueuedForUpdateSkipLocked(10));
+            assertThat(secondClaim).isEmpty();
+            release.countDown();
+            assertThat(firstDispatcher.get(5, TimeUnit.SECONDS))
+                    .singleElement()
+                    .extracting(DocumentAnalysisJob::getId)
+                    .isEqualTo(analysisId);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void documentAnalysisStaleQueryUsesLeaseExpiry() {
+        UUID stale = UUID.randomUUID();
+        UUID fresh = UUID.randomUUID();
+        insertDocumentAnalysisJob(stale, "RUNNING", Instant.parse("2026-08-01T00:00:00Z"));
+        insertDocumentAnalysisJob(fresh, "RUNNING", Instant.parse("2026-08-01T00:10:00Z"));
+
+        List<DocumentAnalysisJob> jobs = new TransactionTemplate(transactionManager).execute(status ->
+                documentAnalysisJobRepository.findStaleRunningForUpdateSkipLocked(
+                        Instant.parse("2026-08-01T00:05:00Z")));
+
+        assertThat(jobs).extracting(DocumentAnalysisJob::getId).containsExactly(stale);
+    }
+
     @AfterEach
     void removeNotificationFixtures() {
         jdbcTemplate.update("delete from notification_outbox");
+        jdbcTemplate.update("delete from document_analysis_jobs");
     }
 
     private void insertNotification(UUID id, UUID sourceId, String deduplicationKey) {
@@ -167,6 +225,23 @@ class PostgreSqlRepositoryIT {
                           'admin@sdcj.co.jp', 'subject', 'body', ?,
                           'PENDING', 0, current_timestamp, current_timestamp, current_timestamp)
                 """, id, sourceId, deduplicationKey);
+    }
+
+    private void insertDocumentAnalysisJob(UUID id, String status, Instant leaseExpiresAt) {
+        jdbcTemplate.update("""
+                insert into document_analysis_jobs (
+                    id, provider, model_id, provider_api_version, normalized_schema_version,
+                    status, requested_by_user_id, original_file_name, content_type,
+                    file_size, sha256, input_object_name, attempt_count, lease_expires_at,
+                    expires_at, created_by, created_at, updated_by, updated_at, version
+                ) values (?, 'DOCUMENT_INTELLIGENCE', 'prebuilt-layout', '2024-11-30', 1,
+                          ?, ?, 'source.pdf', 'application/pdf',
+                          100, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                          ?, 0, ?, current_timestamp + interval '7 days',
+                          ?, current_timestamp, ?, current_timestamp, 0)
+                """, id, status, LEGACY_ADMIN_ID, "input/%s/source".formatted(id),
+                leaseExpiresAt == null ? null : Timestamp.from(leaseExpiresAt),
+                LEGACY_ADMIN_ID, LEGACY_ADMIN_ID);
     }
 
     private static String requiredEnvironment(String name) {

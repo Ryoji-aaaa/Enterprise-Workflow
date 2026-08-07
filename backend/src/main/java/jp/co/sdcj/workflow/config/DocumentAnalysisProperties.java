@@ -18,16 +18,27 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("workflow.document-analysis")
 public record DocumentAnalysisProperties(
         boolean enabled,
+        @NotNull ExecutionMode executionMode,
         @NotNull @DataSizeUnit(DataUnit.MEGABYTES) DataSize maxFileSize,
         @Min(1) int maxOriginalFileNameLength,
         @NotNull Duration retention,
+        @Min(1) int batchSize,
+        @NotNull Duration dispatchInterval,
+        @NotNull Duration processingTimeout,
+        @Min(1) int maxActiveJobsPerUser,
+        @Min(1) int maxRequestsPerUserPerHour,
+        @Valid @NotNull Provider documentIntelligence,
+        @Valid @NotNull Provider contentUnderstanding,
         @Valid @NotNull Storage storage) {
 
     @AssertTrue(message = "document analysis limits and storage configuration must be valid")
     public boolean isValid() {
         if (maxFileSize == null || maxFileSize.toBytes() <= 0
                 || retention == null || retention.isZero() || retention.isNegative()
-                || storage == null || sameContainerNames()) {
+                || dispatchInterval == null || dispatchInterval.isZero() || dispatchInterval.isNegative()
+                || processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()
+                || storage == null || documentIntelligence == null || contentUnderstanding == null
+                || sameContainerNames()) {
             return false;
         }
         if (!enabled) {
@@ -47,6 +58,18 @@ public record DocumentAnalysisProperties(
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    public enum ExecutionMode {
+        DISABLED,
+        FAKE,
+        AZURE
+    }
+
+    public record Provider(
+            boolean enabled,
+            @NotBlank String modelId,
+            @NotBlank String apiVersion) {
     }
 
     public record Storage(

@@ -68,9 +68,14 @@ CONTENT_UNDERSTANDING_ANALYZE
 
 `DOCUMENT_ANALYSIS_USER`はDocument Analysisの本人履歴参照、Document Intelligence分析要求、
 Content Understanding分析要求のPermissionを持つ。V014ではRoleとPermission、および
-`SYSTEM_ADMIN`と`DOCUMENT_ANALYSIS_USER`への権限割当だけを追加し、開発ユーザーや
-`APPLICATION_USER`へ自動付与しない。Document AnalysisのHTTP API、Worker、Azure AI Provider
-呼び出しは未実装である。
+`SYSTEM_ADMIN`と`DOCUMENT_ANALYSIS_USER`への権限割当だけを追加する。開発profileの
+`workflow.seed.user-email`には`DevelopmentUserInitializer`が`DOCUMENT_ANALYSIS_USER`を付与する。
+`APPLICATION_USER`自体へDocument Analysis Permissionは付与しない。
+
+Document AnalysisのHTTP APIは`DOCUMENT_ANALYSIS_READ_OWN`でowner scopeの参照を許可し、
+分析要求ではProviderごとに`DOCUMENT_INTELLIGENCE_ANALYZE`または
+`CONTENT_UNDERSTANDING_ANALYZE`をService層で再確認する。Plan3時点のProvider実装は
+ローカル開発用Fake Providerだけで、Azure AI Providerは未実装である。
 
 初期対応では`SYSTEM_ADMIN`に全権限、`APPLICATION_USER`に`WORKFLOW_SUBMIT`、
 `AUDITOR`に`AUDIT_LOG_READ`を付与する。その他の対応は明示的なseedまたは管理操作で追加する。

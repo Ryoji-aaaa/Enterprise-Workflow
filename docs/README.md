@@ -27,6 +27,7 @@
   [監査ログ](backend/audit-logging.md) /
   [経費精算申請](backend/expense-application.md) /
   [ローカルメール通知Outbox](backend/notification-outbox.md) /
+  [Document Analysis](backend/document-analysis.md) /
   [開発・staging用seedデータ](backend/development-seed-data.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
