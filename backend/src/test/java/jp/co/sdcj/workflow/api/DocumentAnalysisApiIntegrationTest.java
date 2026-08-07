@@ -1,5 +1,6 @@
 package jp.co.sdcj.workflow.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
@@ -52,6 +55,7 @@ import jp.co.sdcj.workflow.repository.RoleRepository;
 import jp.co.sdcj.workflow.repository.UserExternalIdentityRepository;
 import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
 import jp.co.sdcj.workflow.service.PermissionCodes;
+import jp.co.sdcj.workflow.storage.DocumentAnalysisObjectNames;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisStorage;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisStorageException;
 import jp.co.sdcj.workflow.storage.StoredDocumentAnalysisContent;
@@ -86,6 +90,8 @@ class DocumentAnalysisApiIntegrationTest {
     @MockitoBean DocumentAnalysisStorage storage;
 
     private final Map<String, StoredContent> stored = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<Boolean> inputLoadTransactions = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<Boolean> resultLoadTransactions = new CopyOnWriteArrayList<>();
 
     private AppUser diUser;
     private AppUser cuUser;
@@ -165,6 +171,8 @@ class DocumentAnalysisApiIntegrationTest {
         String id = JsonTestSupport.stringValue(created, "id");
 
         dispatcher.dispatchOnce();
+        inputLoadTransactions.clear();
+        resultLoadTransactions.clear();
 
         mockMvc.perform(get("/api/document-analyses/{id}", id)
                         .with(validJwt(diUser, "di-subject")))
@@ -198,6 +206,47 @@ class DocumentAnalysisApiIntegrationTest {
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(content().contentType(MediaType.APPLICATION_PDF))
                 .andExpect(content().bytes(pdfBytes()));
+
+        assertThat(inputLoadTransactions).containsExactly(false);
+        assertThat(resultLoadTransactions).containsExactly(false, false);
+        assertThat(accessAuditCount("DOCUMENT_ANALYSIS_SOURCE_ACCESSED")).isEqualTo(1);
+        assertThat(accessAuditCount("DOCUMENT_ANALYSIS_RESULT_ACCESSED")).isEqualTo(2);
+    }
+
+    @Test
+    void blobLoadFailureDoesNotRecordSuccessfulAccessAudit() throws Exception {
+        String created = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("DOCUMENT_INTELLIGENCE"))
+                        .file(pdf())
+                        .with(validJwt(diUser, "di-subject")))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        UUID analysisId = UUID.fromString(JsonTestSupport.stringValue(created, "id"));
+        dispatcher.dispatchOnce();
+        inputLoadTransactions.clear();
+        resultLoadTransactions.clear();
+
+        stored.remove(DocumentAnalysisObjectNames.input(analysisId));
+        stored.remove(DocumentAnalysisObjectNames.normalizedResult(analysisId));
+        stored.remove(DocumentAnalysisObjectNames.rawResult(analysisId));
+
+        mockMvc.perform(get("/api/document-analyses/{id}/source", analysisId)
+                        .with(validJwt(diUser, "di-subject")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE"));
+        mockMvc.perform(get("/api/document-analyses/{id}/view", analysisId)
+                        .with(validJwt(diUser, "di-subject")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE"));
+        mockMvc.perform(get("/api/document-analyses/{id}/raw-result", analysisId)
+                        .with(validJwt(diUser, "di-subject")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE"));
+
+        assertThat(inputLoadTransactions).containsExactly(false);
+        assertThat(resultLoadTransactions).containsExactly(false, false);
+        assertThat(accessAuditCount("DOCUMENT_ANALYSIS_SOURCE_ACCESSED")).isZero();
+        assertThat(accessAuditCount("DOCUMENT_ANALYSIS_RESULT_ACCESSED")).isZero();
     }
 
     @Test
@@ -252,6 +301,11 @@ class DocumentAnalysisApiIntegrationTest {
     }
 
     private StoredDocumentAnalysisContent load(String objectName) {
+        if (objectName.startsWith("input/")) {
+            inputLoadTransactions.add(TransactionSynchronizationManager.isActualTransactionActive());
+        } else {
+            resultLoadTransactions.add(TransactionSynchronizationManager.isActualTransactionActive());
+        }
         StoredContent content = stored.get(objectName);
         if (content == null) {
             throw new DocumentAnalysisStorageException(
@@ -261,6 +315,14 @@ class DocumentAnalysisApiIntegrationTest {
                 new ByteArrayInputStream(content.content()),
                 content.content().length,
                 content.contentType());
+    }
+
+    private int accessAuditCount(String actionType) {
+        return jdbcTemplate.queryForObject("""
+                select count(*)
+                from audit_logs
+                where action_type = ?
+                """, Integer.class, actionType);
     }
 
     private AppUser user(String email, String name, String subject, Instant now) {

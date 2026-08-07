@@ -147,28 +147,19 @@ public class DocumentAnalysisService {
 
     public OpenedDocumentAnalysisContent openSource(UUID analysisId, AppUser user) {
         try {
-            OpenedDocumentAnalysisContent opened = transactionTemplate.execute(status -> {
-                DocumentAnalysisJob job = ownUnexpired(analysisId, user);
-                StoredDocumentAnalysisContent content = storage.loadInput(job.getInputObjectName());
-                if (content.length() != job.getFileSize()) {
-                    closeQuietly(content);
-                    throw new DocumentAnalysisStorageException(
-                            new IllegalStateException("Stored source length mismatch"));
-                }
-                auditLogService.recordSuccess(
-                        AuditActor.user(user),
-                        "DOCUMENT_ANALYSIS_SOURCE_ACCESSED",
-                        TARGET_TYPE,
-                        analysisId.toString(),
-                        null,
-                        auditData(job),
-                        null);
-                return new OpenedDocumentAnalysisContent(job.getOriginalFileName(), content);
-            });
-            if (opened == null) {
-                throw new IllegalStateException("Document analysis source transaction returned no result");
+            DocumentAnalysisReadMetadata metadata = sourceMetadata(analysisId, user);
+            StoredDocumentAnalysisContent content = storage.loadInput(metadata.objectName());
+            if (content.length() != metadata.fileSize()) {
+                closeQuietly(content);
+                throw new DocumentAnalysisStorageException(
+                        new IllegalStateException("Stored source length mismatch"));
             }
-            return opened;
+            recordAccessAudit(
+                    user,
+                    "DOCUMENT_ANALYSIS_SOURCE_ACCESSED",
+                    analysisId,
+                    metadata.auditData());
+            return new OpenedDocumentAnalysisContent(metadata.originalFileName(), content);
         } catch (DocumentAnalysisStorageException exception) {
             throw storageUnavailable();
         }
@@ -188,39 +179,55 @@ public class DocumentAnalysisService {
             String resultKind,
             java.util.function.Function<DocumentAnalysisJob, String> objectName) {
         try {
-            OpenedDocumentAnalysisContent opened = transactionTemplate.execute(status -> {
-                DocumentAnalysisJob job = ownUnexpired(analysisId, user);
-                if (job.getStatus() != DocumentAnalysisStatus.SUCCEEDED) {
-                    throw new ApiException(
-                            HttpStatus.CONFLICT,
-                            "DOCUMENT_ANALYSIS_RESULT_NOT_READY",
-                            "分析結果はまだ利用できません。");
-                }
-                StoredDocumentAnalysisContent content = storage.loadResult(objectName.apply(job));
-                if (!JSON_CONTENT_TYPE.equalsIgnoreCase(content.contentType())) {
-                    closeQuietly(content);
-                    throw new DocumentAnalysisStorageException(
-                            new IllegalStateException("Stored result content type mismatch"));
-                }
-                Map<String, Object> afterData = auditData(job);
-                afterData.put("resultKind", resultKind);
-                auditLogService.recordSuccess(
-                        AuditActor.user(user),
-                        "DOCUMENT_ANALYSIS_RESULT_ACCESSED",
-                        TARGET_TYPE,
-                        analysisId.toString(),
-                        null,
-                        afterData,
-                        null);
-                return new OpenedDocumentAnalysisContent(null, content);
-            });
-            if (opened == null) {
-                throw new IllegalStateException("Document analysis result transaction returned no result");
+            DocumentAnalysisReadMetadata metadata = resultMetadata(
+                    analysisId, user, resultKind, objectName);
+            StoredDocumentAnalysisContent content = storage.loadResult(metadata.objectName());
+            if (!JSON_CONTENT_TYPE.equalsIgnoreCase(content.contentType())) {
+                closeQuietly(content);
+                throw new DocumentAnalysisStorageException(
+                        new IllegalStateException("Stored result content type mismatch"));
             }
-            return opened;
+            recordAccessAudit(
+                    user,
+                    "DOCUMENT_ANALYSIS_RESULT_ACCESSED",
+                    analysisId,
+                    metadata.auditData());
+            return new OpenedDocumentAnalysisContent(null, content);
         } catch (DocumentAnalysisStorageException exception) {
             throw storageUnavailable();
         }
+    }
+
+    private DocumentAnalysisReadMetadata sourceMetadata(UUID analysisId, AppUser user) {
+        DocumentAnalysisReadMetadata metadata = transactionTemplate.execute(status -> {
+            DocumentAnalysisJob job = ownUnexpired(analysisId, user);
+            return DocumentAnalysisReadMetadata.source(job);
+        });
+        if (metadata == null) {
+            throw new IllegalStateException("Document analysis source metadata transaction returned no result");
+        }
+        return metadata;
+    }
+
+    private DocumentAnalysisReadMetadata resultMetadata(
+            UUID analysisId,
+            AppUser user,
+            String resultKind,
+            java.util.function.Function<DocumentAnalysisJob, String> objectName) {
+        DocumentAnalysisReadMetadata metadata = transactionTemplate.execute(status -> {
+            DocumentAnalysisJob job = ownUnexpired(analysisId, user);
+            if (job.getStatus() != DocumentAnalysisStatus.SUCCEEDED) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "DOCUMENT_ANALYSIS_RESULT_NOT_READY",
+                        "分析結果はまだ利用できません。");
+            }
+            return DocumentAnalysisReadMetadata.result(job, objectName.apply(job), resultKind);
+        });
+        if (metadata == null) {
+            throw new IllegalStateException("Document analysis result metadata transaction returned no result");
+        }
+        return metadata;
     }
 
     private DocumentAnalysisJob ownUnexpired(UUID analysisId, AppUser user) {
@@ -234,6 +241,21 @@ public class DocumentAnalysisService {
                     "分析ファイルと結果の保持期限が切れています。");
         }
         return job;
+    }
+
+    private void recordAccessAudit(
+            AppUser user,
+            String actionType,
+            UUID analysisId,
+            Map<String, Object> auditData) {
+        transactionTemplate.executeWithoutResult(status -> auditLogService.recordSuccess(
+                AuditActor.user(user),
+                actionType,
+                TARGET_TYPE,
+                analysisId.toString(),
+                null,
+                auditData,
+                null));
     }
 
     private void requireProvider(DocumentAnalysisProviderType provider, AppUser user) {
@@ -331,6 +353,57 @@ public class DocumentAnalysisService {
             content.stream().close();
         } catch (IOException ignored) {
             // The storage validation failure is the primary failure.
+        }
+    }
+
+    private record DocumentAnalysisReadMetadata(
+            UUID analysisId,
+            DocumentAnalysisProviderType provider,
+            String originalFileName,
+            String contentType,
+            long fileSize,
+            String sha256,
+            String objectName,
+            String resultKind) {
+
+        static DocumentAnalysisReadMetadata source(DocumentAnalysisJob job) {
+            return new DocumentAnalysisReadMetadata(
+                    job.getId(),
+                    job.getProvider(),
+                    job.getOriginalFileName(),
+                    job.getContentType(),
+                    job.getFileSize(),
+                    job.getSha256(),
+                    job.getInputObjectName(),
+                    null);
+        }
+
+        static DocumentAnalysisReadMetadata result(
+                DocumentAnalysisJob job,
+                String objectName,
+                String resultKind) {
+            return new DocumentAnalysisReadMetadata(
+                    job.getId(),
+                    job.getProvider(),
+                    null,
+                    job.getContentType(),
+                    job.getFileSize(),
+                    job.getSha256(),
+                    objectName,
+                    resultKind);
+        }
+
+        Map<String, Object> auditData() {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("analysisId", analysisId);
+            data.put("provider", provider);
+            data.put("contentType", contentType);
+            data.put("fileSize", fileSize);
+            data.put("sha256", sha256);
+            if (resultKind != null) {
+                data.put("resultKind", resultKind);
+            }
+            return data;
         }
     }
 }

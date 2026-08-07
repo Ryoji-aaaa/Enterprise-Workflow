@@ -77,19 +77,22 @@ public class DocumentAnalysisDispatcher {
                     claim,
                     "DOCUMENT_ANALYSIS_INPUT_UNAVAILABLE",
                     INPUT_UNAVAILABLE_MESSAGE,
-                    exception);
+                    exception,
+                    started);
         } catch (RuntimeException exception) {
             markFailed(
                     claim,
                     "DOCUMENT_ANALYSIS_PROVIDER_FAILED",
                     "Document analysis provider failed.",
-                    exception);
+                    exception,
+                    started);
         } catch (java.io.IOException exception) {
             markFailed(
                     claim,
                     "DOCUMENT_ANALYSIS_INPUT_UNAVAILABLE",
                     INPUT_UNAVAILABLE_MESSAGE,
-                    exception);
+                    exception,
+                    started);
         }
     }
 
@@ -171,14 +174,15 @@ public class DocumentAnalysisDispatcher {
             DocumentAnalysisClaim claim,
             String safeErrorCode,
             String safeErrorMessage,
-            Exception exception) {
+            Exception exception,
+            Instant started) {
         transactions.markFailed(
                 claim.analysisId(),
                 claim.attemptNumber(),
                 safeErrorCode,
                 safeErrorMessage,
                 Instant.now());
-        logFailure(claim, safeErrorCode, exception, Instant.now());
+        logFailure(claim, safeErrorCode, exception, started);
     }
 
     private void cleanupResult(String rawObjectName, String normalizedObjectName) {

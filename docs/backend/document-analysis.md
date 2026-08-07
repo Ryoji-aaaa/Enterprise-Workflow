@@ -45,12 +45,17 @@ Provider別の権限はService層で再確認する。
 自分の保持期限内Jobの入力文書を返す。`Content-Type`は検証済みのDB値、`Content-Disposition`
 は`inline`、`Cache-Control`は`no-store, private`、`X-Content-Type-Options`は`nosniff`である。
 BlobのlengthがDBの`fileSize`と一致しない場合は`503 DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE`にする。
+Job metadataのownerと保持期限判定をDB transaction内で完了し、Blob読込とlength検証は
+transaction終了後に行う。Blob読込成功後だけ、別transactionで参照監査を記録する。
 
 ### `GET /api/document-analyses/{analysisId}/view`
 
 `SUCCEEDED`かつ保持期限内のJobだけ、`result/{analysisId}/view-v1.json`を
 `application/json`で返す。未完了の場合は`409 DOCUMENT_ANALYSIS_RESULT_NOT_READY`、
 保持期限切れは`410 DOCUMENT_ANALYSIS_EXPIRED`である。
+Job metadataのowner、保持期限、status判定をDB transaction内で完了し、Blob読込と
+`application/json`検証はtransaction終了後に行う。Blob読込成功後だけ、別transactionで
+結果参照監査を記録する。
 
 ### `GET /api/document-analyses/{analysisId}/raw-result`
 
