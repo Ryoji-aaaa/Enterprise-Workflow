@@ -72,6 +72,18 @@ workflow:
       endpoint: ${AZURE_STORAGE_BLOB_ENDPOINT:}
       connection-string: ${AZURE_STORAGE_CONNECTION_STRING:}
       create-container: ${ATTACHMENT_STORAGE_CREATE_CONTAINER:false}
+  document-analysis:
+    enabled: ${WORKFLOW_DOCUMENT_ANALYSIS_ENABLED:false}
+    max-file-size: 10MB
+    max-original-file-name-length: 255
+    retention: 7d
+    storage:
+      endpoint: ${DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT:}
+      connection-string: ${DOCUMENT_ANALYSIS_STORAGE_CONNECTION_STRING:${AZURE_STORAGE_CONNECTION_STRING:}}
+      managed-identity-client-id: ${DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID:}
+      input-container-name: ${DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME:document-analysis-input}
+      result-container-name: ${DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME:document-analysis-result}
+      create-containers: ${DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS:false}
   seed:
     enabled: true
     automatic: ${WORKFLOW_SEED_AUTOMATIC:true}
