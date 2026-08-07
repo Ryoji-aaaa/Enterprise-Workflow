@@ -7,6 +7,7 @@ import {
   getActiveWorkspaceNavigationItem,
   getVisibleWorkspaceNavigationItems,
   isWorkspaceNavigationItemActive,
+  workspaceMockNavigationItems,
   workspaceNavigationItems,
 } from "./workspace-navigation.ts";
 
@@ -34,7 +35,13 @@ function item(href: string) {
 test("権限に応じたワークスペースメニューだけを表示する", () => {
   const labels = getVisibleWorkspaceNavigationItems(currentUser).map((value) => value.label);
 
-  assert.deepEqual(labels, ["トップ", "経費申請", "組織図"]);
+  assert.deepEqual(labels, [
+    "トップ",
+    "経費申請",
+    "組織図",
+    "Document Intelligence",
+    "Content Understanding",
+  ]);
 });
 
 test("承認待ちとユーザー管理は対応権限がある場合だけ表示する", () => {
@@ -47,7 +54,24 @@ test("承認待ちとユーザー管理は対応権限がある場合だけ表�
     ],
   }).map((value) => value.label);
 
-  assert.deepEqual(labels, ["トップ", "経費申請", "承認待ち", "組織図", "ユーザー管理"]);
+  assert.deepEqual(labels, [
+    "トップ",
+    "経費申請",
+    "承認待ち",
+    "組織図",
+    "ユーザー管理",
+    "Document Intelligence",
+    "Content Understanding",
+  ]);
+});
+
+test("Document Analysisの2ルートを実メニューとして表示する", () => {
+  const labels = getVisibleWorkspaceNavigationItems(currentUser).map((value) => value.label);
+
+  assert.equal(labels.includes("Document Intelligence"), true);
+  assert.equal(labels.includes("Content Understanding"), true);
+  assert.equal(item("/document-intelligence").label, "Document Intelligence");
+  assert.equal(item("/content-understanding").label, "Content Understanding");
 });
 
 test("組織図はDB権限と許可された雇用区分の両方を満たす場合だけ表示する", () => {
@@ -89,6 +113,10 @@ test("詳細画面と編集画面では親メニューをアクティブにす�
   assert.equal(isWorkspaceNavigationItemActive("/expenses/123/edit", item("/expenses")), true);
   assert.equal(isWorkspaceNavigationItemActive("/approvals/123", item("/approvals")), true);
   assert.equal(isWorkspaceNavigationItemActive("/admin/users/123/edit", item("/admin/users")), true);
+  assert.equal(isWorkspaceNavigationItemActive("/document-intelligence", item("/document-intelligence")), true);
+  assert.equal(isWorkspaceNavigationItemActive("/document-intelligence/runs/1", item("/document-intelligence")), true);
+  assert.equal(isWorkspaceNavigationItemActive("/content-understanding", item("/content-understanding")), true);
+  assert.equal(isWorkspaceNavigationItemActive("/content-understanding/runs/1", item("/content-understanding")), true);
 });
 
 test("/top は完全一致のときだけアクティブにする", () => {
@@ -103,4 +131,13 @@ test("表示可能なメニューから現在パスのアクティブ項目を�
 
   assert.equal(active?.href, "/expenses");
   assert.equal(getActiveWorkspaceNavigationItem("/admin/users/123/edit", currentUser), undefined);
+});
+
+test("置換対象の先頭モック2件は残さず、残り4件を維持する", () => {
+  assert.deepEqual(workspaceMockNavigationItems.map((value) => value.label), [
+    "モック文字３",
+    "モック文字４",
+    "モック文字５",
+    "モック文字６",
+  ]);
 });

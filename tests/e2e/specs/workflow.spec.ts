@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { expect, request as playwrightRequest, test, type Browser, type Page } from "@playwright/test";
 
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
@@ -239,6 +241,59 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await page.unroute("**/api/backend/me");
 });
 
+test("一般ユーザーがDocument Analysis UI Shellでfixture結果を確認できる", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+
+  let backendRequests = 0;
+  await page.route("**/api/backend/**", async (route) => {
+    backendRequests += 1;
+    await route.continue();
+  });
+
+  await page.getByRole("link", { name: "Document Intelligence", exact: true }).click();
+  await expect(page).toHaveURL(/\/document-intelligence$/);
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "Document Intelligence");
+  const runButton = page.getByRole("button", { name: "Run Analysis", exact: true });
+  await expect(runButton).toBeDisabled();
+
+  await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
+  await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
+  await expect(page.getByText("Frontend fixture result", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/PO-2026-0807/).first()).toBeVisible();
+
+  await page.getByRole("tab", { name: "Paragraphs", exact: true }).first().click();
+  await expect(page.getByText("発注番号: PO-2026-0807", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Tables", exact: true }).first().click();
+  await expect(page.getByRole("cell", { name: "ワークフロー利用ライセンス", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Result", exact: true }).first().click();
+  await expect(page.getByText(/"source": "frontend-fixture"/).first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Content Understanding", exact: true }).click();
+  await expect(page).toHaveURL(/\/content-understanding$/);
+  await expectActiveSidebarLink(page, "Content Understanding");
+  await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+
+  expect(backendRequests).toBe(0);
+  await page.unroute("**/api/backend/**");
+});
+
+test("Document Analysis UI Shellはモバイルナビゲーションから到達できる", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const mobileNavigation = page.getByRole("navigation", { name: "モバイルナビゲーション" });
+  await expect(mobileNavigation.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
+  await expect(mobileNavigation.getByRole("link", { name: "Content Understanding" })).toBeVisible();
+  await mobileNavigation.getByRole("link", { name: "Content Understanding" }).click();
+  await expect(page).toHaveURL(/\/content-understanding$/);
+  await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+});
+
 test("token更新不能時はtopとの往復をせず期限切れログインへ戻る", async ({ page }) => {
   await login(page, userEmail, userPassword);
   await expect(page).toHaveURL(/\/top$/);
@@ -471,6 +526,8 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   await expect(mobileNavigation.getByRole("link", { name: "トップ" })).toBeVisible();
   await expect(mobileNavigation.getByRole("link", { name: "組織図" })).toBeVisible();
   await expect(mobileNavigation.getByRole("link", { name: "ユーザー管理" })).toBeVisible();
+  await expect(mobileNavigation.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
+  await expect(mobileNavigation.getByRole("link", { name: "Content Understanding" })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
   const meResponse = await page.request.get("/api/backend/me");

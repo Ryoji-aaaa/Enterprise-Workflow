@@ -1,10 +1,11 @@
 import {
-  BarChart3,
   ClipboardList,
   FileChartColumn,
+  FileSearch,
   FileText,
   LayoutDashboard,
   MailCheck,
+  ScanLine,
   Shapes,
   Users,
   type LucideIcon,
@@ -69,11 +70,21 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
     icon: MailCheck,
     isVisible: canViewMailNotificationHistory,
   },
+  {
+    href: "/document-intelligence",
+    label: "Document Intelligence",
+    icon: FileSearch,
+    isVisible: () => true,
+  },
+  {
+    href: "/content-understanding",
+    label: "Content Understanding",
+    icon: ScanLine,
+    isVisible: () => true,
+  },
 ];
 
 export const workspaceMockNavigationItems: readonly WorkspaceMockNavigationItem[] = [
-  { label: "モック文字１", icon: LayoutDashboard },
-  { label: "モック文字２", icon: BarChart3 },
   { label: "モック文字３", icon: FileChartColumn },
   { label: "モック文字４", icon: ClipboardList },
   { label: "モック文字５", icon: Users },
