@@ -10,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import jp.co.sdcj.workflow.config.DocumentAnalysisProperties;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisObjectNames;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisStorage;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisStorageException;
@@ -18,8 +19,8 @@ import jp.co.sdcj.workflow.storage.StoredDocumentAnalysisContent;
 @Service
 @ConditionalOnProperty(
         prefix = "workflow.document-analysis",
-        name = "execution-mode",
-        havingValue = "fake")
+        name = "enabled",
+        havingValue = "true")
 public class DocumentAnalysisDispatcher {
 
     private static final Logger logger = LoggerFactory.getLogger(
@@ -32,20 +33,26 @@ public class DocumentAnalysisDispatcher {
     private final DocumentAnalysisTransactions transactions;
     private final DocumentAnalysisStorage storage;
     private final DocumentAnalysisProviderRegistry providerRegistry;
+    private final DocumentAnalysisProperties properties;
 
     public DocumentAnalysisDispatcher(
             DocumentAnalysisTransactions transactions,
             DocumentAnalysisStorage storage,
-            DocumentAnalysisProviderRegistry providerRegistry) {
+            DocumentAnalysisProviderRegistry providerRegistry,
+            DocumentAnalysisProperties properties) {
         this.transactions = transactions;
         this.storage = storage;
         this.providerRegistry = providerRegistry;
+        this.properties = properties;
     }
 
     @Scheduled(
             initialDelayString = "${workflow.document-analysis.dispatch-interval:2s}",
             fixedDelayString = "${workflow.document-analysis.dispatch-interval:2s}")
     public void dispatchOnce() {
+        if (properties.executionMode() == DocumentAnalysisProperties.ExecutionMode.DISABLED) {
+            return;
+        }
         Instant now = Instant.now();
         int recovered = transactions.recoverStale(now);
         if (recovered > 0) {

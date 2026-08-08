@@ -50,6 +50,7 @@ public class DocumentAnalysisService {
     private final AppUserRepository appUserRepository;
     private final DocumentAnalysisStorage storage;
     private final DocumentAnalysisProperties properties;
+    private final DocumentAnalysisProviderRegistry providerRegistry;
     private final PermissionService permissionService;
     private final AuditLogService auditLogService;
     private final TransactionTemplate transactionTemplate;
@@ -60,6 +61,7 @@ public class DocumentAnalysisService {
             AppUserRepository appUserRepository,
             DocumentAnalysisStorage storage,
             DocumentAnalysisProperties properties,
+            DocumentAnalysisProviderRegistry providerRegistry,
             PermissionService permissionService,
             AuditLogService auditLogService,
             PlatformTransactionManager transactionManager) {
@@ -68,6 +70,7 @@ public class DocumentAnalysisService {
         this.appUserRepository = appUserRepository;
         this.storage = storage;
         this.properties = properties;
+        this.providerRegistry = providerRegistry;
         this.permissionService = permissionService;
         this.auditLogService = auditLogService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -265,7 +268,7 @@ public class DocumentAnalysisService {
                     "DOCUMENT_ANALYSIS_PROVIDER_REQUIRED",
                     "分析Providerを指定してください。");
         }
-        if (!providerConfig(provider).enabled()) {
+        if (!providerConfig(provider).enabled() || !providerRegistry.isAvailable(provider)) {
             throw new ApiException(
                     HttpStatus.FORBIDDEN,
                     "DOCUMENT_ANALYSIS_PROVIDER_DISABLED",

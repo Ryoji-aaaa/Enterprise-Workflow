@@ -27,9 +27,12 @@ public record DocumentAnalysisProperties(
         @NotNull Duration processingTimeout,
         @Min(1) int maxActiveJobsPerUser,
         @Min(1) int maxRequestsPerUserPerHour,
+        @Valid @NotNull Azure azure,
         @Valid @NotNull Provider documentIntelligence,
         @Valid @NotNull Provider contentUnderstanding,
         @Valid @NotNull Storage storage) {
+
+    public static final String DOCUMENT_INTELLIGENCE_API_VERSION = "2024-11-30";
 
     @AssertTrue(message = "document analysis limits and storage configuration must be valid")
     public boolean isValid() {
@@ -37,17 +40,34 @@ public record DocumentAnalysisProperties(
                 || retention == null || retention.isZero() || retention.isNegative()
                 || dispatchInterval == null || dispatchInterval.isZero() || dispatchInterval.isNegative()
                 || processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()
-                || storage == null || documentIntelligence == null || contentUnderstanding == null
+                || storage == null || azure == null
+                || documentIntelligence == null || contentUnderstanding == null
                 || sameContainerNames()) {
+            return false;
+        }
+        if (!validProvider(documentIntelligence) || !validProvider(contentUnderstanding)) {
             return false;
         }
         if (!enabled) {
             return true;
         }
+        if (executionMode == ExecutionMode.AZURE && documentIntelligence.enabled()) {
+            if (!hasText(documentIntelligence.endpoint())
+                    || !DOCUMENT_INTELLIGENCE_API_VERSION.equals(documentIntelligence.apiVersion())
+                    || !documentIntelligence.analysisTimeout().minus(processingTimeout).isNegative()) {
+                return false;
+            }
+        }
         boolean connectionString = hasText(storage.connectionString());
         boolean managedIdentity = hasText(storage.endpoint())
                 && hasText(storage.managedIdentityClientId());
         return connectionString ^ managedIdentity;
+    }
+
+    private boolean validProvider(Provider provider) {
+        return provider.analysisTimeout() != null
+                && !provider.analysisTimeout().isZero()
+                && !provider.analysisTimeout().isNegative();
     }
 
     private boolean sameContainerNames() {
@@ -66,10 +86,16 @@ public record DocumentAnalysisProperties(
         AZURE
     }
 
+    public record Azure(
+            String managedIdentityClientId) {
+    }
+
     public record Provider(
             boolean enabled,
+            String endpoint,
             @NotBlank String modelId,
-            @NotBlank String apiVersion) {
+            @NotBlank String apiVersion,
+            @NotNull Duration analysisTimeout) {
     }
 
     public record Storage(

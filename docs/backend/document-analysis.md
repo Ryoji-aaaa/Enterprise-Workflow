@@ -4,7 +4,9 @@
 
 Document Analysisは、Backend APIから文書ファイルを受け付け、Provider-neutralなJobとして
 PostgreSQLへ保存し、Backend内WorkerがBlob Storage上の入力文書を分析して結果JSONを保存する。
-現時点ではAzure AIへ接続せず、ローカル開発用のFake Providerだけを実行する。
+ローカル開発ではFake Providerを使い、`execution-mode=azure`ではAzure AI Document
+Intelligence Adapterを使える。ただしAzure resource、Managed Identity、RBAC、Private
+Endpointの作成は後続工程の対象であり、staging/productionでは有効化しない。
 
 BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。FrontendはNext.js BFFの
 `/api/backend/document-analyses...`だけを呼び、BFFがSpring Bootの
@@ -85,7 +87,10 @@ multipartの全体サイズ超過は、Document Analysis pathでは
 Job metadataは`document_analysis_jobs`に保存する。文書本体、Raw JSON、Markdown、
 Normalized JSONはPostgreSQLへ保存しない。
 
-Workerは`workflow.document-analysis.execution-mode=fake`の場合に起動する。
+Workerは`workflow.document-analysis.enabled=true`の場合に登録される。
+`workflow.document-analysis.execution-mode=disabled`ではJobをclaimしない。
+`fake`ではFake Provider、`azure`では登録済みのAzure Provider AdapterへProviderRegistry経由で
+委譲する。
 定期実行では次を行う。
 
 1. staleな`RUNNING` Jobを`FAILED_RECOVERY_REQUIRED`へ変更する。
@@ -111,6 +116,51 @@ Raw resultは`source=backend-fake-provider`を含むJSONである。Normalized r
 schema version 1のJSONで、発注書のMarkdown、paragraphs、tables、fields、metricsを含む。
 このV1 contractは後続のAzure Provider normalizerでも出力先になる。
 
+## Azure AI Document Intelligence Adapter
+
+`execution-mode=azure`かつ`document-intelligence.enabled=true`の場合だけ、
+Azure AI Document Intelligence Adapterを登録する。Content Understanding Adapterは未実装であるため、
+Azure modeでは`content-understanding.enabled=true`にしてもProviderRegistry上で利用不可となり、
+`/api/me.features`の`contentUnderstanding`は`false`になる。APIの`POST`でも実Adapterが無い
+Providerは`403 DOCUMENT_ANALYSIS_PROVIDER_DISABLED`で拒否し、処理不能なJobをqueueへ積まない。
+
+Document Intelligence Adapterは`prebuilt-layout`を既定modelとし、Jobに保存された`modelId`を
+Azure SDK呼び出しへ渡す。Service API versionは`2024-11-30`だけを許可し、
+`DocumentIntelligenceServiceVersion.V2024_11_30`を明示する。SDKのlatest既定値へは依存しない。
+
+分析要求では入力Blobを`BinaryData.fromStream`で渡し、`outputContentFormat=markdown`、
+`stringIndexType=utf16CodeUnit`を指定する。locale、pages、query fields、追加課金featureは設定しない。
+Azure Layoutの`AnalyzeResult.content`をNormalized V1の`documents[0].markdown`へそのまま保存し、
+MarkdownをBackendで再構築したり、Markdownからtableを再parseしたりしない。
+
+Paragraphsは`AnalyzeResult.paragraphs`から順序、role、最初のbounding regionのpage numberとpolygon、
+最初のspanのUTF-16 offset/lengthを正規化する。Tablesは`AnalyzeResult.tables`からrow/column countと
+cellsを正規化し、`columnHeader`以外のcell kindはFrontend互換のため`content`へ丸める。
+Document Intelligence Layoutから直接得られないconfidenceは捏造せず、`null`または省略値のまま扱う。
+
+`raw.json`にはAzure SDKの`AnalyzeResult.toJsonBytes()`で生成したJSONを保存する。Raw JSONと
+Normalized JSONはBlob Storageへ保存し、PostgreSQLへ保存しない。Authorization header、token、
+credential、Azure response bodyはraw、監査、ログへ保存しない。
+
+認証はMicrosoft Entra IDの`DefaultAzureCredential`を使う。`AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`が
+設定されている場合だけUser Assigned Managed Identity client IDとして渡し、空の場合はローカルの
+developer credential chainを許容する。API Key、connection string、client secretはDocument
+Intelligence認証として使用しない。
+
+LROは同期Pollerで待機し、`document-intelligence.analysis-timeout`を有限timeoutとして使う。
+既定は25分で、`processing-timeout`より短い値だけを許可する。Azureが明示的にterminal failureを
+返した場合は`FAILED`へ遷移する。polling timeoutやpolling中のnetwork failureなど、Azureが要求を
+受理した後の最終状態が不明な場合は`FAILED_RECOVERY_REQUIRED`にし、同じJobから新しい
+`beginAnalyzeDocument`を自動実行しない。
+
+Provider errorは安全なerror codeへ分類する。400/415/422は
+`DOCUMENT_INTELLIGENCE_INVALID_DOCUMENT`、401/403は
+`DOCUMENT_INTELLIGENCE_AUTHENTICATION_FAILED`、404は
+`DOCUMENT_INTELLIGENCE_RESOURCE_NOT_FOUND`、429は`DOCUMENT_INTELLIGENCE_THROTTLED`、
+5xxは`DOCUMENT_INTELLIGENCE_UNAVAILABLE`、状態不明は
+`DOCUMENT_INTELLIGENCE_OPERATION_STATE_UNKNOWN`として扱う。Azure response bodyは
+`error_message`やログへ保存しない。
+
 ## 設定
 
 既定ではDocument Analysisは無効で、Providerも無効である。
@@ -125,6 +175,20 @@ workflow:
     processing-timeout: 30m
     max-active-jobs-per-user: 2
     max-requests-per-user-per-hour: 20
+    azure:
+      managed-identity-client-id: ""
+    document-intelligence:
+      enabled: false
+      endpoint: ""
+      model-id: prebuilt-layout
+      api-version: 2024-11-30
+      analysis-timeout: 25m
+    content-understanding:
+      enabled: false
+      endpoint: ""
+      model-id: prebuilt-layout
+      api-version: 2025-11-01
+      analysis-timeout: 25m
 ```
 
 ローカルComposeでは`enabled=true`、`execution-mode=fake`、両Provider enabled、

@@ -1,0 +1,171 @@
+{
+  "apiVersion": "2024-11-30",
+  "modelId": "prebuilt-layout",
+  "stringIndexType": "utf16CodeUnit",
+  "contentFormat": "markdown",
+  "content": "# 発注書\n\n## 発注明細\n\n| No. | 品名 | 数量 | 単価 | 金額 |\n|---|---|---:|---:|---:|\n| 1 | 業務端末 | 2 | 56000 | 112000 |",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "angle": 0,
+      "width": 595,
+      "height": 842,
+      "unit": "pixel"
+    },
+    {
+      "pageNumber": 2,
+      "angle": 0,
+      "width": 595,
+      "height": 842,
+      "unit": "pixel"
+    }
+  ],
+  "paragraphs": [
+    {
+      "role": "title",
+      "content": "発注書",
+      "boundingRegions": [
+        {
+          "pageNumber": 1,
+          "polygon": [10, 20, 110, 20, 110, 48, 10, 48]
+        }
+      ],
+      "spans": [
+        {
+          "offset": 0,
+          "length": 3
+        }
+      ]
+    },
+    {
+      "role": "sectionHeading",
+      "content": "発注明細",
+      "boundingRegions": [
+        {
+          "pageNumber": 1,
+          "polygon": [10, 70, 150, 70, 150, 92, 10, 92]
+        }
+      ],
+      "spans": [
+        {
+          "offset": 5,
+          "length": 4
+        }
+      ]
+    },
+    {
+      "content": "業務端末 2台",
+      "boundingRegions": [
+        {
+          "pageNumber": 2,
+          "polygon": [20, 120, 220, 120, 220, 146, 20, 146]
+        }
+      ],
+      "spans": [
+        {
+          "offset": 72,
+          "length": 7
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "rowCount": 3,
+      "columnCount": 5,
+      "cells": [
+        {
+          "kind": "columnHeader",
+          "rowIndex": 0,
+          "columnIndex": 0,
+          "content": "No.",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [10, 100, 40, 100, 40, 120, 10, 120]}],
+          "spans": [{"offset": 20, "length": 3}]
+        },
+        {
+          "kind": "columnHeader",
+          "rowIndex": 0,
+          "columnIndex": 1,
+          "content": "品名",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [40, 100, 180, 100, 180, 120, 40, 120]}],
+          "spans": [{"offset": 25, "length": 2}]
+        },
+        {
+          "kind": "columnHeader",
+          "rowIndex": 0,
+          "columnIndex": 2,
+          "content": "数量",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [180, 100, 240, 100, 240, 120, 180, 120]}],
+          "spans": [{"offset": 30, "length": 2}]
+        },
+        {
+          "kind": "columnHeader",
+          "rowIndex": 0,
+          "columnIndex": 3,
+          "content": "単価",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [240, 100, 320, 100, 320, 120, 240, 120]}],
+          "spans": [{"offset": 35, "length": 2}]
+        },
+        {
+          "kind": "columnHeader",
+          "rowIndex": 0,
+          "columnIndex": 4,
+          "content": "金額",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [320, 100, 420, 100, 420, 120, 320, 120]}],
+          "spans": [{"offset": 40, "length": 2}]
+        },
+        {
+          "rowIndex": 1,
+          "columnIndex": 0,
+          "rowSpan": 2,
+          "columnSpan": 1,
+          "content": "1",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [10, 120, 40, 120, 40, 160, 10, 160]}],
+          "spans": [{"offset": 45, "length": 1}]
+        },
+        {
+          "rowIndex": 1,
+          "columnIndex": 1,
+          "rowSpan": 1,
+          "columnSpan": 2,
+          "content": "業務端末",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [40, 120, 240, 120, 240, 140, 40, 140]}],
+          "spans": [{"offset": 48, "length": 4}]
+        },
+        {
+          "rowIndex": 1,
+          "columnIndex": 3,
+          "content": "56000",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [240, 120, 320, 120, 320, 140, 240, 140]}],
+          "spans": [{"offset": 55, "length": 5}]
+        },
+        {
+          "rowIndex": 1,
+          "columnIndex": 4,
+          "content": "112000",
+          "boundingRegions": [{"pageNumber": 1, "polygon": [320, 120, 420, 120, 420, 140, 320, 140]}],
+          "spans": [{"offset": 62, "length": 6}]
+        }
+      ],
+      "boundingRegions": [
+        {
+          "pageNumber": 1,
+          "polygon": [10, 100, 420, 100, 420, 160, 10, 160]
+        }
+      ],
+      "spans": [
+        {
+          "offset": 20,
+          "length": 48
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "code": "PageRangeAdjusted",
+      "message": "Not stored in normalized output.",
+      "target": "pages"
+    }
+  ]
+}

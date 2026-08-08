@@ -91,8 +91,13 @@ class DocumentAnalysisFileInspectorTest {
                 java.time.Duration.ofMinutes(30),
                 2,
                 20,
-                new DocumentAnalysisProperties.Provider(true, "prebuilt-layout", "2024-11-30"),
-                new DocumentAnalysisProperties.Provider(true, "prebuilt-layout", "2025-11-01"),
+                new DocumentAnalysisProperties.Azure(null),
+                new DocumentAnalysisProperties.Provider(
+                        true, null, "prebuilt-layout", "2024-11-30",
+                        java.time.Duration.ofMinutes(25)),
+                new DocumentAnalysisProperties.Provider(
+                        true, null, "prebuilt-layout", "2025-11-01",
+                        java.time.Duration.ofMinutes(25)),
                 new DocumentAnalysisProperties.Storage(
                         null,
                         "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;",

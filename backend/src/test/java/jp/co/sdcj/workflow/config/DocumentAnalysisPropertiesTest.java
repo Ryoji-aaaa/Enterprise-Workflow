@@ -30,19 +30,27 @@ class DocumentAnalysisPropertiesTest {
                     "workflow.document-analysis.processing-timeout=30m",
                     "workflow.document-analysis.max-active-jobs-per-user=2",
                     "workflow.document-analysis.max-requests-per-user-per-hour=20",
+                    "workflow.document-analysis.azure.managed-identity-client-id=",
                     "workflow.document-analysis.document-intelligence.enabled=false",
+                    "workflow.document-analysis.document-intelligence.endpoint=",
                     "workflow.document-analysis.document-intelligence.model-id=prebuilt-layout",
                     "workflow.document-analysis.document-intelligence.api-version=2024-11-30",
+                    "workflow.document-analysis.document-intelligence.analysis-timeout=25m",
                     "workflow.document-analysis.content-understanding.enabled=false",
+                    "workflow.document-analysis.content-understanding.endpoint=",
                     "workflow.document-analysis.content-understanding.model-id=prebuilt-layout",
                     "workflow.document-analysis.content-understanding.api-version=2025-11-01",
+                    "workflow.document-analysis.content-understanding.analysis-timeout=25m",
                     "workflow.document-analysis.storage.input-container-name=document-analysis-input",
                     "workflow.document-analysis.storage.result-container-name=document-analysis-result");
 
     @Test
     void disabledAllowsEmptyStorageCredentialsAndDoesNotCreateStorageBean() {
         contextRunner
-                .withPropertyValues("workflow.document-analysis.enabled=false")
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=false",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.document-intelligence.enabled=true")
                 .run(context -> {
                     assertThat(context).hasSingleBean(DocumentAnalysisProperties.class);
                     assertThat(context).doesNotHaveBean(DocumentAnalysisStorage.class);
@@ -81,6 +89,91 @@ class DocumentAnalysisPropertiesTest {
         contextRunner
                 .withPropertyValues("workflow.document-analysis.enabled=true")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void fakeModeAllowsDocumentIntelligenceWithoutAzureEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=fake",
+                        "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
+    }
+
+    @Test
+    void disabledExecutionAllowsDocumentIntelligenceWithoutAzureEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=disabled",
+                        "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
+    }
+
+    @Test
+    void azureDocumentIntelligenceRequiresEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureDocumentIntelligenceRejectsWrongApiVersion() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.document-intelligence.endpoint=https://di.example.test",
+                        "workflow.document-analysis.document-intelligence.api-version=2024-07-31-preview",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureDocumentIntelligenceRejectsInvalidAnalysisTimeout() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.document-intelligence.endpoint=https://di.example.test",
+                        "workflow.document-analysis.document-intelligence.analysis-timeout=30m",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureDocumentIntelligenceAcceptsValidEndpointAndOptionalIdentity() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.document-intelligence.endpoint=https://di.example.test",
+                        "workflow.document-analysis.azure.managed-identity-client-id="
+                                + "11111111-2222-3333-4444-555555555555",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
     }
 
     @Test

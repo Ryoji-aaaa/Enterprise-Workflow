@@ -41,6 +41,13 @@ BackendにはBlob専用User Assigned Managed Identityを追加し、container sc
 Blob RBACを付与しない。BackendにはBlob endpoint、container名、専用identityのclient IDだけを
 渡し、connection string、Storage key、SASは使用しない。
 
+Document AnalysisのBackend codeはAzure AI Document Intelligence Adapterに対応しているが、
+Document Intelligence resource、専用Managed Identity、RBAC、Private Endpoint、Private DNSは
+まだTerraformで作成しない。`execution-mode=azure`はコード上の実行modeとして存在するものの、
+staging/productionでは後続工程まで有効化しない。Document Intelligence認証はAPI Keyやclient
+secretではなくMicrosoft Entra IDの`DefaultAzureCredential`を使用し、将来有効化する場合は
+BackendへUser Assigned Managed Identity client IDだけを環境変数で渡す。
+
 全Container Appは共通の環境別User Assigned Managed Identityを持ち、Backendだけが前述のBlob専用
 identityも持つ。ACRからのpullには
 `AcrPull`、Key Vault secret参照には`Key Vault Secrets User`を使い、ACR admin userや

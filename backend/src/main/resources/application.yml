@@ -83,14 +83,20 @@ workflow:
     processing-timeout: ${WORKFLOW_DOCUMENT_ANALYSIS_PROCESSING_TIMEOUT:30m}
     max-active-jobs-per-user: ${WORKFLOW_DOCUMENT_ANALYSIS_MAX_ACTIVE_JOBS_PER_USER:2}
     max-requests-per-user-per-hour: ${WORKFLOW_DOCUMENT_ANALYSIS_MAX_REQUESTS_PER_USER_PER_HOUR:20}
+    azure:
+      managed-identity-client-id: ${AZURE_DOCUMENT_ANALYSIS_CLIENT_ID:}
     document-intelligence:
       enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:false}
+      endpoint: ${DOCUMENT_INTELLIGENCE_ENDPOINT:}
       model-id: ${DOCUMENT_INTELLIGENCE_MODEL_ID:prebuilt-layout}
       api-version: ${DOCUMENT_INTELLIGENCE_API_VERSION:2024-11-30}
+      analysis-timeout: ${DOCUMENT_INTELLIGENCE_ANALYSIS_TIMEOUT:25m}
     content-understanding:
       enabled: ${CONTENT_UNDERSTANDING_ENABLED:false}
+      endpoint: ${CONTENT_UNDERSTANDING_ENDPOINT:}
       model-id: ${CONTENT_UNDERSTANDING_ANALYZER_ID:prebuilt-layout}
       api-version: ${CONTENT_UNDERSTANDING_API_VERSION:2025-11-01}
+      analysis-timeout: ${CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT:25m}
     storage:
       endpoint: ${DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT:}
       connection-string: ${DOCUMENT_ANALYSIS_STORAGE_CONNECTION_STRING:${AZURE_STORAGE_CONNECTION_STRING:}}
