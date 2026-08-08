@@ -78,6 +78,8 @@ workflow:
     max-file-size: 10MB
     max-original-file-name-length: 255
     retention: 7d
+    retention-cleanup-interval: ${WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_INTERVAL:1h}
+    retention-cleanup-batch-size: ${WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_BATCH_SIZE:50}
     batch-size: ${WORKFLOW_DOCUMENT_ANALYSIS_BATCH_SIZE:2}
     dispatch-interval: ${WORKFLOW_DOCUMENT_ANALYSIS_DISPATCH_INTERVAL:2s}
     processing-timeout: ${WORKFLOW_DOCUMENT_ANALYSIS_PROCESSING_TIMEOUT:30m}

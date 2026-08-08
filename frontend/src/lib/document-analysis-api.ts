@@ -77,6 +77,14 @@ export type DocumentAnalysisViewV1 = {
   metrics?: Record<string, unknown>;
 };
 
+export const RAW_RESULT_PRETTY_PRINT_MAX_BYTES = 1 * 1024 * 1024;
+
+export type DocumentAnalysisRawResult = {
+  text: string;
+  byteLength: number;
+  formatted: boolean;
+};
+
 type ErrorBody = {
   code?: string;
   message?: string;
@@ -132,6 +140,27 @@ async function parseDocumentAnalysisResponse<T>(
     code,
     documentAnalysisSafeErrorMessage(response.status, code, body.message ?? fallbackMessage),
   );
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+export function formatDocumentAnalysisRawResult(text: string): DocumentAnalysisRawResult {
+  const byteLength = utf8ByteLength(text);
+  if (byteLength > RAW_RESULT_PRETTY_PRINT_MAX_BYTES) {
+    return { text, byteLength, formatted: false };
+  }
+
+  try {
+    return {
+      text: JSON.stringify(JSON.parse(text), null, 2),
+      byteLength,
+      formatted: true,
+    };
+  } catch {
+    return { text, byteLength, formatted: false };
+  }
 }
 
 export async function createDocumentAnalysis(
@@ -192,10 +221,19 @@ export async function getDocumentAnalysisView(
 export async function getDocumentAnalysisRawResult(
   id: string,
   signal?: AbortSignal,
-): Promise<Record<string, unknown>> {
-  return parseDocumentAnalysisResponse<Record<string, unknown>>(
-    await fetchBackend(`/api/backend/document-analyses/${encodeURIComponent(id)}/raw-result`, { signal }),
-    "Raw Resultを取得できませんでした。",
+): Promise<DocumentAnalysisRawResult> {
+  const response = await fetchBackend(
+    `/api/backend/document-analyses/${encodeURIComponent(id)}/raw-result`,
+    { signal },
+  );
+  if (response.ok) return formatDocumentAnalysisRawResult(await response.text());
+
+  const body = (await response.json().catch(() => ({}))) as ErrorBody;
+  const code = body.code ?? "DOCUMENT_ANALYSIS_REQUEST_FAILED";
+  throw new DocumentAnalysisApiError(
+    response.status,
+    code,
+    documentAnalysisSafeErrorMessage(response.status, code, body.message ?? "Raw Resultを取得できませんでした。"),
   );
 }
 

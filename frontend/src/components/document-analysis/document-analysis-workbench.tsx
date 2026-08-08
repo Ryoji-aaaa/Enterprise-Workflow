@@ -26,6 +26,7 @@ import {
   getDocumentAnalysisView,
   listDocumentAnalyses,
   type DocumentAnalysisJob,
+  type DocumentAnalysisRawResult,
 } from "@/lib/document-analysis-api";
 import { cn } from "@/lib/utils";
 
@@ -47,7 +48,7 @@ const mobilePanes: Array<{ id: WorkbenchPane; label: string; icon: typeof FileUp
 type RawResultState =
   | { status: "idle"; analysisId: string | null; value: null; error: null }
   | { status: "loading"; analysisId: string; value: null; error: null }
-  | { status: "success"; analysisId: string; value: Record<string, unknown>; error: null }
+  | { status: "success"; analysisId: string; value: DocumentAnalysisRawResult; error: null }
   | { status: "error"; analysisId: string; value: null; error: string };
 
 const initialRawResultState: RawResultState = {

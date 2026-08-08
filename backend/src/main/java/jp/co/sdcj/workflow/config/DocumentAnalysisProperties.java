@@ -22,6 +22,8 @@ public record DocumentAnalysisProperties(
         @NotNull @DataSizeUnit(DataUnit.MEGABYTES) DataSize maxFileSize,
         @Min(1) int maxOriginalFileNameLength,
         @NotNull Duration retention,
+        @NotNull Duration retentionCleanupInterval,
+        @Min(1) int retentionCleanupBatchSize,
         @Min(1) int batchSize,
         @NotNull Duration dispatchInterval,
         @NotNull Duration processingTimeout,
@@ -39,6 +41,9 @@ public record DocumentAnalysisProperties(
     public boolean isValid() {
         if (maxFileSize == null || maxFileSize.toBytes() <= 0
                 || retention == null || retention.isZero() || retention.isNegative()
+                || retentionCleanupInterval == null
+                || retentionCleanupInterval.isZero()
+                || retentionCleanupInterval.isNegative()
                 || dispatchInterval == null || dispatchInterval.isZero() || dispatchInterval.isNegative()
                 || processingTimeout == null || processingTimeout.isZero() || processingTimeout.isNegative()
                 || storage == null || azure == null

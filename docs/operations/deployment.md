@@ -84,6 +84,11 @@ image SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXE
 `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、`DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`、
 Document Intelligence/Content Understanding endpoint、Document Analysis Storage endpointとcontainer名が
 設定されていることを確認する。既存の`AZURE_CLIENT_ID`は経費証憑Blob専用identityのclient IDのままである。
+Content UnderstandingのendpointはTerraform outputだけで確定せず、現在のJava
+`ContentUnderstandingClient`で`prebuilt-layout`分析が成功することをstaging smokeで確認する。
+もしFoundry resourceの標準endpointがSDK contractと合わないことをlive smokeで確認した場合だけ、
+services.ai系などSDKが受け付けるendpointへTerraformを修正し、`make verify-infra`とplanを再実行する。
+public networkを一時的に有効化して回避しない。
 
 Private DNSはBackend Container App内部から確認する。`az containerapp exec`などでBackend revision内から
 Document Intelligence endpoint、Content Understanding endpoint、Storage blob endpointを名前解決し、
@@ -109,6 +114,8 @@ staging application smokeは既存Frontendから行う。`/document-intelligence
 確認する。`/content-understanding`でも同様に`CONTENT_UNDERSTANDING` providerとして成功し、API
 `2025-11-01`で処理されることを確認する。Content Understandingの`prebuilt-layout`ではFoundry model
 deploymentが0件でも分析できる。
+保持期限確認では期限切れJobのBlob cleanup後もPostgreSQLのJob metadataが`EXPIRED`で残ることを確認する。
+`RUNNING`はcleanup対象ではなく、lease expiry後に`FAILED_RECOVERY_REQUIRED`となってからcleanup対象になる。
 
 BrowserのNetwork logには`*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、
 `*.blob.core.windows.net`への直接requestが存在せず、従来どおり`/api/backend/...`だけを呼ぶことを確認する。

@@ -25,6 +25,8 @@ class DocumentIntelligenceConfigurationTest {
                     "workflow.document-analysis.max-file-size=10MB",
                     "workflow.document-analysis.max-original-file-name-length=255",
                     "workflow.document-analysis.retention=7d",
+                    "workflow.document-analysis.retention-cleanup-interval=1h",
+                    "workflow.document-analysis.retention-cleanup-batch-size=50",
                     "workflow.document-analysis.batch-size=2",
                     "workflow.document-analysis.dispatch-interval=2s",
                     "workflow.document-analysis.processing-timeout=30m",

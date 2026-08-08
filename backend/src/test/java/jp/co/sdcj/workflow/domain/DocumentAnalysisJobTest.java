@@ -150,6 +150,38 @@ class DocumentAnalysisJobTest {
     }
 
     @Test
+    void retentionEligibleStatusesCanExpireAndPreserveCompletionMetadata() {
+        DocumentAnalysisJob queued = validJob();
+        queued.expire(Instant.parse("2026-08-08T00:00:00Z"));
+        assertThat(queued.getStatus()).isEqualTo(DocumentAnalysisStatus.EXPIRED);
+        assertThat(queued.getLeaseExpiresAt()).isNull();
+        assertThat(queued.getCompletedAt()).isNull();
+
+        DocumentAnalysisJob succeeded = runningJob();
+        Instant completedAt = Instant.parse("2026-08-01T00:01:00Z");
+        succeeded.succeed("result/%s/raw.json".formatted(JOB_ID),
+                "result/%s/view-v1.json".formatted(JOB_ID), "fake:" + JOB_ID, completedAt);
+
+        succeeded.expire(Instant.parse("2026-08-08T00:00:00Z"));
+
+        assertThat(succeeded.getStatus()).isEqualTo(DocumentAnalysisStatus.EXPIRED);
+        assertThat(succeeded.getCompletedAt()).isEqualTo(completedAt);
+        assertThat(succeeded.getProviderOperationId()).isEqualTo("fake:" + JOB_ID);
+    }
+
+    @Test
+    void runningOrAlreadyExpiredJobCannotExpire() {
+        DocumentAnalysisJob running = runningJob();
+        assertThatThrownBy(() -> running.expire(Instant.parse("2026-08-08T00:00:00Z")))
+                .isInstanceOf(IllegalStateException.class);
+
+        DocumentAnalysisJob expired = validJob();
+        expired.expire(Instant.parse("2026-08-08T00:00:00Z"));
+        assertThatThrownBy(() -> expired.expire(Instant.parse("2026-08-08T00:00:01Z")))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void nonQueuedJobCannotBeClaimedAndTerminalStateCannotTransition() {
         DocumentAnalysisJob running = runningJob();
         assertThatThrownBy(() -> running.claim(Instant.now(), Duration.ofMinutes(30)))

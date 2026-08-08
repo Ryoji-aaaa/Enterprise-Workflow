@@ -211,6 +211,19 @@ public class DocumentAnalysisJob extends AuditedEntity {
                 completedAt);
     }
 
+    public void expire(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (status != DocumentAnalysisStatus.QUEUED
+                && status != DocumentAnalysisStatus.SUCCEEDED
+                && status != DocumentAnalysisStatus.FAILED
+                && status != DocumentAnalysisStatus.FAILED_RECOVERY_REQUIRED) {
+            throw new IllegalStateException("Only retention-eligible jobs can expire");
+        }
+        status = DocumentAnalysisStatus.EXPIRED;
+        leaseExpiresAt = null;
+        markUpdatedBy(SystemUser.ID);
+    }
+
     private void completeAsFailed(
             DocumentAnalysisStatus terminalStatus,
             String safeErrorCode,

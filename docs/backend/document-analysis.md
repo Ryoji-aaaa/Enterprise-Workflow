@@ -96,18 +96,66 @@ Workerは`workflow.document-analysis.enabled=true`の場合に登録される。
 定期実行では次を行う。
 
 1. staleな`RUNNING` Jobを`FAILED_RECOVERY_REQUIRED`へ変更する。
-2. `QUEUED` Jobを`FOR UPDATE SKIP LOCKED`でclaimする。
+2. 保持期限内の`QUEUED` Jobだけを`FOR UPDATE SKIP LOCKED`でclaimする。
 3. Jobを`RUNNING`へ変更し、attempt numberとleaseを保存してtransactionを終了する。
 4. Blob Storageからsourceをloadする。
 5. Providerを呼び出す。
-6. `raw.json`と`view-v1.json`をresult containerへ保存する。
-7. expected attempt numberが一致する場合だけJobを`SUCCEEDED`へ変更する。
+6. Provider-neutralなresult contractを検証する。
+7. `raw.json`と`view-v1.json`をresult containerへ保存する。
+8. expected attempt numberが一致する場合だけJobを`SUCCEEDED`へ変更する。
 
 Provider呼び出しとBlob I/O中にDB transactionは保持しない。古いWorkerが戻ってきた場合も、
 attempt numberが一致しない完了更新は無視する。
 
 現時点では自動retryを実装しない。lease期限切れの`RUNNING` Jobは
 `FAILED_RECOVERY_REQUIRED`になり、`QUEUED`へ戻さない。`FAILED`も自動再queueしない。
+Provider operation IDは結果または状態不明failureで保存するが、operation IDからの自動resume、
+manual retry API、repair APIは実装しない。Provider送信直後のdurable checkpointを完全には保証して
+いないため、不明状態は`FAILED_RECOVERY_REQUIRED`として人手確認の対象にする。
+
+Job statusは次の意味で扱う。
+
+| Status | 意味 |
+| --- | --- |
+| `QUEUED` | 受付済みで、保持期限内ならWorkerがclaimできる |
+| `RUNNING` | Workerがclaim済みでlease中 |
+| `SUCCEEDED` | Raw resultとNormalized viewをBlobへ保存済み |
+| `FAILED` | Providerが安全に失敗として分類できた |
+| `FAILED_RECOVERY_REQUIRED` | Provider状態または保存結果が不明で自動再送しない |
+| `EXPIRED` | 保持期限後にBlob cleanupを完了し、metadataだけを残す |
+
+## Result Contract検証
+
+Provider成功後、Blob保存前に`DocumentAnalysisResultValidator`がFake、Document Intelligence、
+Content Understandingの全Providerへ同じ検証を行う。検証対象はProvider固有のRaw shapeではなく、
+Provider-neutralな最低限のcontractである。
+
+- `rawJson`が非empty、valid JSON、root objectである
+- `normalizedJson`が非emptyで`DocumentAnalysisViewV1`へdeserializeできる
+- `schemaVersion`がJob claimのschema versionかつ`1`
+- `analysisId`、`provider`、`modelId`、`providerApiVersion`がclaimと一致する
+- `status`が`SUCCEEDED`
+- `documents`と`metrics`が存在する
+
+contract不整合は`DOCUMENT_ANALYSIS_RESULT_CONTRACT_INVALID`で
+`FAILED_RECOVERY_REQUIRED`へ遷移する。Raw JSON本文、文書内容、Azure response bodyはログへ出さない。
+
+## Retention Cleanup
+
+保持期限の既定は7日である。`expires_at <= now`になったJobのうち、`QUEUED`、`SUCCEEDED`、
+`FAILED`、`FAILED_RECOVERY_REQUIRED`だけをcleanup対象にする。`RUNNING`はactive leaseの有無にかかわらず
+cleanupせず、stale recoveryで`FAILED_RECOVERY_REQUIRED`になった後に次回cleanup対象になる。
+
+cleanupは次の順序で行う。
+
+1. DB transaction内で`expires_at ASC, id ASC`のcandidate snapshotをbatch取得する。
+2. transactionを終了し、input source、raw result、normalized viewを`deleteIfExists`で削除する。
+3. 全Blob削除が成功した場合だけ、短いtransactionでJobをlockし、期限とstatusを再確認する。
+4. `DocumentAnalysisJob.expire()`で`EXPIRED`へ遷移し、`lease_expires_at`をnullにする。
+
+Blob削除に失敗したJobは`EXPIRED`へ変更しない。次回cleanupで同じdeleteIfExistsを再実行するため、
+inputまたは片方のresultだけ削除済みでも再試行できる。PostgreSQLのJob rowは削除せず、
+metadataと監査証跡を残す。
 
 ## Fake Provider
 
@@ -220,6 +268,11 @@ workflow:
   document-analysis:
     enabled: false
     execution-mode: disabled
+    max-file-size: 10MB
+    max-original-file-name-length: 255
+    retention: 7d
+    retention-cleanup-interval: 1h
+    retention-cleanup-batch-size: 50
     batch-size: 2
     dispatch-interval: 2s
     processing-timeout: 30m
@@ -243,6 +296,10 @@ workflow:
 
 ローカルComposeでは`enabled=true`、`execution-mode=fake`、両Provider enabled、
 既存Azuriteの`document-analysis-input`と`document-analysis-result` containerを使用する。
+`retention-cleanup-interval`と`retention-cleanup-batch-size`は
+`WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_INTERVAL`、
+`WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_BATCH_SIZE`で上書きできる。Azure Terraformには個別値を
+渡さず、application既定値を使用する。
 
 ## 監査
 

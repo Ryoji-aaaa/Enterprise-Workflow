@@ -51,6 +51,8 @@ productionの`private_endpoint_subnet_prefixes`既定値は`["10.50.3.0/24"]`で
 有効化だけを制御する。Backendにはendpoint、container名、専用identity client IDだけを渡し、API Key、
 client secret、Storage key、connection string、SASはTerraform、Key Vault、Container App環境変数へ
 登録しない。
+Document Analysisのretention cleanup intervalとbatch sizeはapplication既定値を使うため、Terraform
+variableとして追加しない。
 
 環境rootは確認用にDocument Intelligence、Foundry、Document Analysis Storage、専用identityの名前、
 endpoint、client IDをoutputする。key、connection string、token、SASはoutputしない。

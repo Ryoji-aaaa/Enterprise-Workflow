@@ -56,6 +56,12 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 25. 差戻し後に証憑を削除・再登録し、再申請後は再び変更できないことを確認する
 26. ローカル管理者が送付済メール一覧と本文詳細を表示できることを確認する
 27. 一般ユーザーにメール履歴メニューを表示せず、直接APIとURLを403で拒否する
+28. 一般ユーザーがDocument IntelligenceとContent UnderstandingをFake Providerで実行し、PDF、JPEG、
+    PNGの受付、local/server preview、URL query復元、Recent analyses再選択、Markdown/Paragraphs/Tables、
+    Raw Result lazy loadingと同一analysis内cacheを確認する
+29. Document Analysisの10MiB超とunsupported fileはFrontendで拒否し、Backend POSTを送らないことを確認する
+30. Document Analysis操作中にBrowserからAzure AI、Foundry、Azure Blob Storageへ直接requestしないことを
+    確認する
 
 雇用区分のBackend境界は正社員・準社員を許可し、パート・嘱託を権限保持時も拒否するAPI
 統合テストで確認する。Frontend単体テストは`PART_TIME`、`CONTRACT_EMPLOYEE`、`SYSTEM`を

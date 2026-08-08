@@ -68,6 +68,9 @@ Markdownを再parseしてtableを作成しない。
 Raw Resultは`SUCCEEDED`直後には取得しない。Resultタブを初めて開いた時だけ
 `/raw-result`を取得し、同じanalysis IDではタブを切り替えても再取得しない。analysis IDが変わると
 Raw stateをresetする。
+Raw Resultの成功responseは`response.text()`で取得し、Frontendの業務objectとして保持しない。
+1MiB以下のRaw JSONだけ`JSON.parse`と`JSON.stringify(..., null, 2)`で整形し、1MiBを超える場合は
+parseせず全文をそのまま`<pre>`のtext nodeとして表示する。`dangerouslySetInnerHTML`は使用しない。
 
 ## Previewと復元
 

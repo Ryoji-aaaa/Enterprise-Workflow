@@ -25,6 +25,8 @@ class DocumentAnalysisPropertiesTest {
                     "workflow.document-analysis.max-file-size=10MB",
                     "workflow.document-analysis.max-original-file-name-length=255",
                     "workflow.document-analysis.retention=7d",
+                    "workflow.document-analysis.retention-cleanup-interval=1h",
+                    "workflow.document-analysis.retention-cleanup-batch-size=50",
                     "workflow.document-analysis.batch-size=2",
                     "workflow.document-analysis.dispatch-interval=2s",
                     "workflow.document-analysis.processing-timeout=30m",
@@ -295,6 +297,24 @@ class DocumentAnalysisPropertiesTest {
                 .withPropertyValues(
                         "workflow.document-analysis.enabled=false",
                         "workflow.document-analysis.storage.result-container-name=document-analysis-input")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void retentionCleanupIntervalMustBePositive() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=false",
+                        "workflow.document-analysis.retention-cleanup-interval=0s")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void retentionCleanupBatchSizeMustBePositive() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=false",
+                        "workflow.document-analysis.retention-cleanup-batch-size=0")
                 .run(context -> assertThat(context).hasFailed());
     }
 

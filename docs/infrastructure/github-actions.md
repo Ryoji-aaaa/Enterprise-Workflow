@@ -116,6 +116,8 @@ secretではない。`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INTELLIGEN
 `CONTENT_UNDERSTANDING_ENABLED`は未設定の場合workflowで`false`として扱うが、productionではPlan7導入時点で
 falseを維持する。stagingはまず3つともfalseのままfoundationをapplyし、Private Endpoint、Private DNS、
 RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再deployする。
+通常CIとPRのE2EはFake Providerだけを使い、Azure AI、Foundry、Storage private endpointへlive requestを
+送らない。Azure live validationはstaging resource作成後の運用確認として分離する。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の

@@ -34,6 +34,7 @@ public class DocumentAnalysisTransactions {
     @Transactional
     public List<DocumentAnalysisClaim> claim(Instant now) {
         List<DocumentAnalysisJob> jobs = repository.findQueuedForUpdateSkipLocked(
+                now,
                 properties.batchSize());
         jobs.forEach(job -> job.claim(now, properties.processingTimeout()));
         repository.flush();

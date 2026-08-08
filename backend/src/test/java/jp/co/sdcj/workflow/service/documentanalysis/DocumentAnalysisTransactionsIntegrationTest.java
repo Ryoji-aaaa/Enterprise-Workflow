@@ -113,7 +113,30 @@ class DocumentAnalysisTransactionsIntegrationTest {
         assertThat(transactions.claim(NOW.plusSeconds(1))).isEmpty();
     }
 
+    @Test
+    void expiredQueuedJobsAreNotClaimed() {
+        DocumentAnalysisJob expired = jobRepository.save(job(
+                owner.getId(), NOW.minus(1, ChronoUnit.SECONDS)));
+        DocumentAnalysisJob active = jobRepository.save(job(
+                owner.getId(), NOW.plus(1, ChronoUnit.DAYS)));
+
+        List<DocumentAnalysisClaim> claims = transactions.claim(NOW);
+
+        assertThat(claims).extracting(DocumentAnalysisClaim::analysisId)
+                .containsExactly(active.getId());
+        assertThat(jobRepository.findById(expired.getId())).get()
+                .extracting(DocumentAnalysisJob::getStatus)
+                .isEqualTo(DocumentAnalysisStatus.QUEUED);
+        assertThat(jobRepository.findById(active.getId())).get()
+                .extracting(DocumentAnalysisJob::getStatus)
+                .isEqualTo(DocumentAnalysisStatus.RUNNING);
+    }
+
     private DocumentAnalysisJob job(UUID ownerId) {
+        return job(ownerId, NOW.plus(7, ChronoUnit.DAYS));
+    }
+
+    private DocumentAnalysisJob job(UUID ownerId, Instant expiresAt) {
         UUID jobId = UUID.randomUUID();
         return new DocumentAnalysisJob(
                 jobId,
@@ -127,7 +150,7 @@ class DocumentAnalysisTransactionsIntegrationTest {
                 "prebuilt-layout",
                 "2024-11-30",
                 1,
-                NOW.plus(7, ChronoUnit.DAYS),
+                expiresAt,
                 SystemUser.ID);
     }
 

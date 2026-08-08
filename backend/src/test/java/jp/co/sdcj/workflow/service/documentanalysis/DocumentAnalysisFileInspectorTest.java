@@ -8,6 +8,7 @@ import java.util.HexFormat;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.unit.DataSize;
 
 import jp.co.sdcj.workflow.api.ApiException;
@@ -20,11 +21,14 @@ class DocumentAnalysisFileInspectorTest {
 
     @Test
     void acceptsPdfJpegAndPngAndCalculatesSha256() {
-        assertThat(inspector.inspect(file("order.pdf", MediaType.APPLICATION_PDF_VALUE,
-                        "%PDF-1.4\n".getBytes())).contentType())
+        assertThat(inspector.inspect(file("order.PDF", MediaType.APPLICATION_PDF_VALUE,
+                        bytes(0x25, 0x50, 0x44, 0x46, 0x2d))).contentType())
                 .isEqualTo(MediaType.APPLICATION_PDF_VALUE);
         assertThat(inspector.inspect(file("photo.jpg", MediaType.IMAGE_JPEG_VALUE,
-                        bytes(0xff, 0xd8, 0xff, 0x00))).contentType())
+                        bytes(0xff, 0xd8, 0xff))).contentType())
+                .isEqualTo(MediaType.IMAGE_JPEG_VALUE);
+        assertThat(inspector.inspect(file("photo.jpeg", MediaType.IMAGE_JPEG_VALUE,
+                        bytes(0xff, 0xd8, 0xff))).contentType())
                 .isEqualTo(MediaType.IMAGE_JPEG_VALUE);
         assertThat(inspector.inspect(file("image.png", MediaType.IMAGE_PNG_VALUE,
                         bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))).contentType())
@@ -46,20 +50,66 @@ class DocumentAnalysisFileInspectorTest {
                 "DOCUMENT_ANALYSIS_TOO_LARGE");
         assertCode(file("../bad.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-".getBytes()),
                 "DOCUMENT_ANALYSIS_INVALID_FILE_NAME");
+        assertCode(file("bad\\name.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-".getBytes()),
+                "DOCUMENT_ANALYSIS_INVALID_FILE_NAME");
+        assertCode(file("bad\rname.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-".getBytes()),
+                "DOCUMENT_ANALYSIS_INVALID_FILE_NAME");
+        assertCode(file("bad\u0000name.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-".getBytes()),
+                "DOCUMENT_ANALYSIS_INVALID_FILE_NAME");
         assertCode(file("order.txt", MediaType.TEXT_PLAIN_VALUE, "hello".getBytes()),
+                "DOCUMENT_ANALYSIS_UNSUPPORTED_EXTENSION");
+        assertCode(file("order.pdf.exe", MediaType.APPLICATION_PDF_VALUE, "%PDF-".getBytes()),
                 "DOCUMENT_ANALYSIS_UNSUPPORTED_EXTENSION");
         assertCode(file("order.pdf", MediaType.TEXT_PLAIN_VALUE, "%PDF-".getBytes()),
                 "DOCUMENT_ANALYSIS_UNSUPPORTED_MEDIA_TYPE");
+        assertCode(file("order.pdf", MediaType.APPLICATION_PDF_VALUE,
+                        bytes(0x25, 0x50, 0x44, 0x46)),
+                "DOCUMENT_ANALYSIS_MAGIC_NUMBER_MISMATCH");
+        assertCode(file("image.png", MediaType.IMAGE_PNG_VALUE,
+                        bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a)),
+                "DOCUMENT_ANALYSIS_MAGIC_NUMBER_MISMATCH");
+        assertCode(file("photo.jpg", MediaType.IMAGE_JPEG_VALUE,
+                        bytes(0xff, 0xd8)),
+                "DOCUMENT_ANALYSIS_MAGIC_NUMBER_MISMATCH");
         assertCode(file("order.pdf", MediaType.APPLICATION_PDF_VALUE, bytes(0xff, 0xd8, 0xff)),
                 "DOCUMENT_ANALYSIS_MAGIC_NUMBER_MISMATCH");
     }
 
-    private void assertCode(MockMultipartFile file, String code) {
+    @Test
+    void sizeLimitsCheckBothDeclaredSizeAndActualBytes() {
+        byte[] exactLimit = bytesWithPrefix(DOCUMENT_ANALYSIS_PDF_SIGNATURE, 10 * 1024 * 1024);
+        assertThat(inspector.inspect(file(
+                "exact.pdf", MediaType.APPLICATION_PDF_VALUE, exactLimit)).fileSize())
+                .isEqualTo(10 * 1024 * 1024);
+
+        assertCode(file(
+                        "too-large.pdf",
+                        MediaType.APPLICATION_PDF_VALUE,
+                        bytesWithPrefix(DOCUMENT_ANALYSIS_PDF_SIGNATURE, 10 * 1024 * 1024 + 1)),
+                "DOCUMENT_ANALYSIS_TOO_LARGE");
+        assertCode(sizedFile(
+                        "declared-too-large.pdf",
+                        MediaType.APPLICATION_PDF_VALUE,
+                        "%PDF-1.4\n".getBytes(),
+                        10 * 1024 * 1024 + 1L),
+                "DOCUMENT_ANALYSIS_TOO_LARGE");
+        assertCode(sizedFile(
+                        "actual-too-large.pdf",
+                        MediaType.APPLICATION_PDF_VALUE,
+                        bytesWithPrefix(DOCUMENT_ANALYSIS_PDF_SIGNATURE, 10 * 1024 * 1024 + 1),
+                        10),
+                "DOCUMENT_ANALYSIS_TOO_LARGE");
+    }
+
+    private static final byte[] DOCUMENT_ANALYSIS_PDF_SIGNATURE =
+            bytes(0x25, 0x50, 0x44, 0x46, 0x2d);
+
+    private void assertCode(MultipartFile file, String code) {
         assertCode(file, properties(DataSize.ofMegabytes(10), 255), code);
     }
 
     private void assertCode(
-            MockMultipartFile file,
+            MultipartFile file,
             DocumentAnalysisProperties properties,
             String code) {
         assertThatThrownBy(() -> new DocumentAnalysisFileInspector(properties).inspect(file))
@@ -79,6 +129,25 @@ class DocumentAnalysisFileInspectorTest {
         return result;
     }
 
+    private static byte[] bytesWithPrefix(byte[] prefix, int size) {
+        byte[] content = new byte[size];
+        System.arraycopy(prefix, 0, content, 0, prefix.length);
+        return content;
+    }
+
+    private static MultipartFile sizedFile(
+            String name,
+            String contentType,
+            byte[] content,
+            long size) {
+        return new MockMultipartFile("file", name, contentType, content) {
+            @Override
+            public long getSize() {
+                return size;
+            }
+        };
+    }
+
     private static DocumentAnalysisProperties properties(DataSize maxFileSize, int maxNameLength) {
         return new DocumentAnalysisProperties(
                 true,
@@ -86,6 +155,8 @@ class DocumentAnalysisFileInspectorTest {
                 maxFileSize,
                 maxNameLength,
                 java.time.Duration.ofDays(7),
+                java.time.Duration.ofHours(1),
+                50,
                 2,
                 java.time.Duration.ofSeconds(2),
                 java.time.Duration.ofMinutes(30),

@@ -34,16 +34,19 @@ public class DocumentAnalysisDispatcher {
     private final DocumentAnalysisStorage storage;
     private final DocumentAnalysisProviderRegistry providerRegistry;
     private final DocumentAnalysisProperties properties;
+    private final DocumentAnalysisResultValidator resultValidator;
 
     public DocumentAnalysisDispatcher(
             DocumentAnalysisTransactions transactions,
             DocumentAnalysisStorage storage,
             DocumentAnalysisProviderRegistry providerRegistry,
-            DocumentAnalysisProperties properties) {
+            DocumentAnalysisProperties properties,
+            DocumentAnalysisResultValidator resultValidator) {
         this.transactions = transactions;
         this.storage = storage;
         this.providerRegistry = providerRegistry;
         this.properties = properties;
+        this.resultValidator = resultValidator;
     }
 
     @Scheduled(
@@ -76,6 +79,7 @@ public class DocumentAnalysisDispatcher {
                             source,
                             claim.fileSize(),
                             claim.contentType()));
+            resultValidator.validate(claim, result);
             storeAndMarkSucceeded(claim, result, started);
         } catch (DocumentAnalysisProviderException exception) {
             markProviderFailure(claim, exception, started);

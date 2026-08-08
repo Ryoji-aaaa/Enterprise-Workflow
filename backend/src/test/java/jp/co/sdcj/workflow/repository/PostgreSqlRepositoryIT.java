@@ -167,7 +167,7 @@ class PostgreSqlRepositoryIT {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var firstDispatcher = executor.submit(() -> transactions.execute(status -> {
                 List<DocumentAnalysisJob> claimed = documentAnalysisJobRepository
-                        .findQueuedForUpdateSkipLocked(10);
+                        .findQueuedForUpdateSkipLocked(Instant.now(), 10);
                 locked.countDown();
                 try {
                     if (!release.await(5, TimeUnit.SECONDS)) {
@@ -182,7 +182,7 @@ class PostgreSqlRepositoryIT {
 
             assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
             List<DocumentAnalysisJob> secondClaim = transactions.execute(status ->
-                    documentAnalysisJobRepository.findQueuedForUpdateSkipLocked(10));
+                    documentAnalysisJobRepository.findQueuedForUpdateSkipLocked(Instant.now(), 10));
             assertThat(secondClaim).isEmpty();
             release.countDown();
             assertThat(firstDispatcher.get(5, TimeUnit.SECONDS))
@@ -192,6 +192,20 @@ class PostgreSqlRepositoryIT {
         } finally {
             release.countDown();
         }
+    }
+
+    @Test
+    void documentAnalysisClaimSkipsExpiredQueuedRows() {
+        UUID expired = UUID.randomUUID();
+        UUID active = UUID.randomUUID();
+        Instant now = Instant.parse("2026-08-08T00:00:00Z");
+        insertDocumentAnalysisJob(expired, "QUEUED", null, now.minusSeconds(1));
+        insertDocumentAnalysisJob(active, "QUEUED", null, now.plusSeconds(1));
+
+        List<DocumentAnalysisJob> jobs = new TransactionTemplate(transactionManager).execute(status ->
+                documentAnalysisJobRepository.findQueuedForUpdateSkipLocked(now, 10));
+
+        assertThat(jobs).extracting(DocumentAnalysisJob::getId).containsExactly(active);
     }
 
     @Test
@@ -228,6 +242,14 @@ class PostgreSqlRepositoryIT {
     }
 
     private void insertDocumentAnalysisJob(UUID id, String status, Instant leaseExpiresAt) {
+        insertDocumentAnalysisJob(id, status, leaseExpiresAt, null);
+    }
+
+    private void insertDocumentAnalysisJob(
+            UUID id,
+            String status,
+            Instant leaseExpiresAt,
+            Instant expiresAt) {
         jdbcTemplate.update("""
                 insert into document_analysis_jobs (
                     id, provider, model_id, provider_api_version, normalized_schema_version,
@@ -237,10 +259,11 @@ class PostgreSqlRepositoryIT {
                 ) values (?, 'DOCUMENT_INTELLIGENCE', 'prebuilt-layout', '2024-11-30', 1,
                           ?, ?, 'source.pdf', 'application/pdf',
                           100, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-                          ?, 0, ?, current_timestamp + interval '7 days',
+                          ?, 0, ?, coalesce(?, current_timestamp + interval '7 days'),
                           ?, current_timestamp, ?, current_timestamp, 0)
                 """, id, status, LEGACY_ADMIN_ID, "input/%s/source".formatted(id),
                 leaseExpiresAt == null ? null : Timestamp.from(leaseExpiresAt),
+                expiresAt == null ? null : Timestamp.from(expiresAt),
                 LEGACY_ADMIN_ID, LEGACY_ADMIN_ID);
     }
 

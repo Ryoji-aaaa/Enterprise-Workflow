@@ -5,6 +5,8 @@ import {
   documentAnalysisSafeErrorMessage,
   DocumentAnalysisApiError,
   documentAnalysisSourceUrl,
+  formatDocumentAnalysisRawResult,
+  RAW_RESULT_PRETTY_PRINT_MAX_BYTES,
 } from "./document-analysis-api.ts";
 
 const ANALYSIS_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -49,4 +51,22 @@ test("Document Analysis API error messageは利用者向けの文言に正規化
     documentAnalysisSafeErrorMessage(503, "BACKEND_UNAVAILABLE", "internal"),
     "現在、分析サービスを利用できません。",
   );
+});
+
+test("Raw Resultは小さいJSONだけpretty printする", () => {
+  const raw = formatDocumentAnalysisRawResult("{\"source\":\"backend-fake-provider\",\"value\":1}");
+
+  assert.equal(raw.formatted, true);
+  assert.equal(raw.byteLength, 44);
+  assert.equal(raw.text, "{\n  \"source\": \"backend-fake-provider\",\n  \"value\": 1\n}");
+});
+
+test("Raw Resultは大きいJSONをparseせず全文を保持する", () => {
+  const largeText = `{"payload":"${"x".repeat(RAW_RESULT_PRETTY_PRINT_MAX_BYTES)}"}`;
+  const raw = formatDocumentAnalysisRawResult(largeText);
+
+  assert.equal(raw.formatted, false);
+  assert.equal(raw.text, largeText);
+  assert.equal(raw.text.length, largeText.length);
+  assert.ok(raw.byteLength > RAW_RESULT_PRETTY_PRINT_MAX_BYTES);
 });

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
 import jp.co.sdcj.workflow.domain.SystemUser;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisObjectNames;
 
@@ -71,6 +73,53 @@ class DocumentAnalysisJobRepositoryIntegrationTest {
                 .containsExactly(newer.getId());
     }
 
+    @Test
+    void retentionCleanupCandidatesAreExpiredEligibleStatusesOrdered() {
+        AppUser owner = saveUser("document.cleanup@sdcj.co.jp");
+        DocumentAnalysisJob older = repository.save(newJob(
+                owner.getId(),
+                DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                NOW.minus(2, ChronoUnit.DAYS)));
+        DocumentAnalysisJob newer = repository.save(newJob(
+                owner.getId(),
+                DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                NOW.minus(1, ChronoUnit.DAYS)));
+        newer.claim(NOW.minus(12, ChronoUnit.HOURS), java.time.Duration.ofMinutes(30));
+        newer.fail("DOCUMENT_ANALYSIS_INPUT_UNAVAILABLE", "safe message", NOW.minus(12, ChronoUnit.HOURS));
+
+        DocumentAnalysisJob running = repository.save(newJob(
+                owner.getId(),
+                DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                NOW.minus(3, ChronoUnit.DAYS)));
+        running.claim(NOW.minus(12, ChronoUnit.HOURS), java.time.Duration.ofMinutes(30));
+
+        DocumentAnalysisJob expired = repository.save(newJob(
+                owner.getId(),
+                DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                NOW.minus(4, ChronoUnit.DAYS)));
+        expired.expire(NOW.minus(1, ChronoUnit.HOURS));
+
+        DocumentAnalysisJob future = repository.save(newJob(
+                owner.getId(),
+                DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                NOW.plus(1, ChronoUnit.DAYS)));
+        repository.flush();
+
+        List<DocumentAnalysisJob> candidates = repository.findRetentionCleanupCandidates(
+                NOW,
+                List.of(
+                        DocumentAnalysisStatus.QUEUED,
+                        DocumentAnalysisStatus.SUCCEEDED,
+                        DocumentAnalysisStatus.FAILED,
+                        DocumentAnalysisStatus.FAILED_RECOVERY_REQUIRED),
+                PageRequest.of(0, 10));
+
+        assertThat(candidates).extracting(DocumentAnalysisJob::getId)
+                .containsExactly(older.getId(), newer.getId());
+        assertThat(candidates).extracting(DocumentAnalysisJob::getId)
+                .doesNotContain(running.getId(), expired.getId(), future.getId());
+    }
+
     private AppUser saveUser(String email) {
         return appUserRepository.save(new AppUser(
                 null,
@@ -85,6 +134,13 @@ class DocumentAnalysisJobRepositoryIntegrationTest {
     private DocumentAnalysisJob newJob(
             UUID ownerId,
             DocumentAnalysisProviderType provider) {
+        return newJob(ownerId, provider, NOW.plus(7, ChronoUnit.DAYS));
+    }
+
+    private DocumentAnalysisJob newJob(
+            UUID ownerId,
+            DocumentAnalysisProviderType provider,
+            Instant expiresAt) {
         UUID jobId = UUID.randomUUID();
         return new DocumentAnalysisJob(
                 jobId,
@@ -98,7 +154,7 @@ class DocumentAnalysisJobRepositoryIntegrationTest {
                 "prebuilt-layout",
                 "2024-11-30",
                 1,
-                NOW.plus(7, ChronoUnit.DAYS),
+                expiresAt,
                 SystemUser.ID);
     }
 }

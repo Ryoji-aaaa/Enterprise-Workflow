@@ -297,6 +297,8 @@ class AzureContentUnderstandingProviderTest {
                 org.springframework.util.unit.DataSize.ofMegabytes(10),
                 255,
                 Duration.ofDays(7),
+                Duration.ofHours(1),
+                50,
                 2,
                 Duration.ofSeconds(2),
                 Duration.ofMinutes(30),

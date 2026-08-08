@@ -76,6 +76,9 @@ Document Analysis runtimeは`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INT
 `CONTENT_UNDERSTANDING_ENABLED`で有効化する。productionではPlan7導入だけでruntimeを有効化せず、
 stagingのDocument Intelligence、Content Understanding、Private DNS、RBAC、cost、retention確認後に
 明示的に切り替える。
+application retention cleanupはBackendの既定値で1時間ごと、最大50件ずつ実行し、期限切れJobの
+input/result Blobだけを削除してPostgreSQL metadataを`EXPIRED`として残す。Azure Storageの7日soft
+deleteは誤削除復旧windowであり、application retentionの代替ではない。
 
 全Container Appは共通の環境別User Assigned Managed Identityを持ち、Backendだけが前述のBlob専用
 identityも持つ。ACRからのpullには

@@ -5,7 +5,7 @@ import { Braces, FileCode2, Pilcrow, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { DocumentAnalysisResult } from "@/lib/document-analysis";
-import type { DocumentAnalysisJob } from "@/lib/document-analysis-api";
+import type { DocumentAnalysisJob, DocumentAnalysisRawResult } from "@/lib/document-analysis-api";
 import { cn } from "@/lib/utils";
 
 import { MarkdownResult } from "./markdown-result";
@@ -25,7 +25,7 @@ const tabs: Array<{ id: ResultTab; label: string; icon: typeof FileCode2 }> = [
 type RawState =
   | { status: "idle"; analysisId: string | null; value: null; error: null }
   | { status: "loading"; analysisId: string; value: null; error: null }
-  | { status: "success"; analysisId: string; value: Record<string, unknown>; error: null }
+  | { status: "success"; analysisId: string; value: DocumentAnalysisRawResult; error: null }
   | { status: "error"; analysisId: string; value: null; error: string };
 
 export function AnalysisResultTabs({
