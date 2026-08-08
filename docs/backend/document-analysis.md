@@ -5,9 +5,10 @@
 Document Analysisは、Backend APIから文書ファイルを受け付け、Provider-neutralなJobとして
 PostgreSQLへ保存し、Backend内WorkerがBlob Storage上の入力文書を分析して結果JSONを保存する。
 ローカル開発ではFake Providerを使い、`execution-mode=azure`ではAzure AI Document
-Intelligence AdapterとAzure AI Content Understanding Adapterを使える。ただしAzure resource、
-Managed Identity、RBAC、Private Endpointの作成は後続工程の対象であり、
-staging/productionでは有効化しない。
+Intelligence AdapterとAzure AI Content Understanding Adapterを使える。Azure resource、Managed
+Identity、RBAC、Private Endpoint、Private DNSはTerraformで環境ごとに作成するが、
+staging/productionのruntime有効化はfeature flagで別管理する。productionではstaging smokeと運用確認が
+完了するまで有効化しない。
 
 BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。FrontendはNext.js BFFの
 `/api/backend/document-analyses...`だけを呼び、BFFがSpring Bootの

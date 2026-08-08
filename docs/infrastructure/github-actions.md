@@ -33,7 +33,7 @@ GitHub Environmentは実デプロイ用の`staging`、`production`と、PR plan�
 | `staging` | `staging-plan` | PRでのstaging plan |
 | `production` | `production-plan` | PRでのproduction plan |
 
-4 Environmentそれぞれに次の24 variablesを登録する。
+4 Environmentそれぞれに次の30 variablesを登録する。
 
 ```text
 AZURE_CLIENT_ID
@@ -52,10 +52,16 @@ AZURE_GITHUB_IDENTITY_PRINCIPAL_ID
 AZURE_KEY_VAULT_NAME
 AZURE_POSTGRES_SERVER_NAME
 AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME
+AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME
+AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME
+AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME
 ALLOWED_EMAIL_DOMAIN
 MAIL_FROM
 PROVISION_WORKLOADS
 CONTRACT_LEGACY_USER_COLUMNS
+WORKFLOW_DOCUMENT_ANALYSIS_ENABLED
+DOCUMENT_INTELLIGENCE_ENABLED
+CONTENT_UNDERSTANDING_ENABLED
 TF_STATE_RESOURCE_GROUP
 TF_STATE_STORAGE_ACCOUNT
 TF_STATE_CONTAINER
@@ -102,6 +108,14 @@ scopeが異なるため、両方を維持する。Shared Keyは再有効化し�
 `AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`は環境ごとにglobal uniqueな値を登録し、
 `staging-plan`と`production-plan`では対応する環境の値を個別に設定する。workflow内へ固定値や
 別環境のfallbackを持たせない。
+
+Document Analysis Azure mode用に`AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME`、
+`AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME`、
+`AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME`も4 Environmentすべてへ登録する。これらはresource名であり
+secretではない。`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INTELLIGENCE_ENABLED`、
+`CONTENT_UNDERSTANDING_ENABLED`は未設定の場合workflowで`false`として扱うが、productionではPlan7導入時点で
+falseを維持する。stagingはまず3つともfalseのままfoundationをapplyし、Private Endpoint、Private DNS、
+RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再deployする。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の

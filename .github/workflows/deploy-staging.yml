@@ -32,9 +32,15 @@ jobs:
       TF_VAR_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
       TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
       TF_VAR_attachment_storage_account_name: ${{ vars.AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME }}
+      TF_VAR_document_intelligence_account_name: ${{ vars.AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME }}
+      TF_VAR_content_understanding_account_name: ${{ vars.AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME }}
+      TF_VAR_document_analysis_storage_account_name: ${{ vars.AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME }}
       TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
       TF_VAR_provision_workloads: ${{ vars.PROVISION_WORKLOADS || 'false' }}
       TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
+      TF_VAR_document_analysis_enabled: ${{ vars.WORKFLOW_DOCUMENT_ANALYSIS_ENABLED || 'false' }}
+      TF_VAR_document_intelligence_enabled: ${{ vars.DOCUMENT_INTELLIGENCE_ENABLED || 'false' }}
+      TF_VAR_content_understanding_enabled: ${{ vars.CONTENT_UNDERSTANDING_ENABLED || 'false' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -73,6 +79,9 @@ jobs:
             TF_VAR_keycloak_container_app_name TF_VAR_key_vault_name \
             TF_VAR_postgres_server_name \
             TF_VAR_attachment_storage_account_name \
+            TF_VAR_document_intelligence_account_name \
+            TF_VAR_content_understanding_account_name \
+            TF_VAR_document_analysis_storage_account_name \
             TF_VAR_allowed_email_domain; do
             [[ -n "${!name}" ]] || ready=false
           done
