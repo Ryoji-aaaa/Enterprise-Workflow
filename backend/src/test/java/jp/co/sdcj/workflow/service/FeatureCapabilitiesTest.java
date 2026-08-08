@@ -63,6 +63,30 @@ class FeatureCapabilitiesTest {
         assertThat(capabilities.contentUnderstanding()).isFalse();
     }
 
+    @Test
+    void azureModeReportsBothFeaturesWhenBothAdaptersAreAvailable() {
+        FeatureCapabilities capabilities = new FeatureCapabilities(
+                notification(NotificationDeliveryMode.LOCAL_MAILPIT),
+                documentAnalysis(true, true, true, DocumentAnalysisProperties.ExecutionMode.AZURE),
+                registry(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                        DocumentAnalysisProviderType.CONTENT_UNDERSTANDING));
+
+        assertThat(capabilities.documentIntelligence()).isTrue();
+        assertThat(capabilities.contentUnderstanding()).isTrue();
+    }
+
+    @Test
+    void azureModeKeepsContentUnderstandingFalseWhenDisabled() {
+        FeatureCapabilities capabilities = new FeatureCapabilities(
+                notification(NotificationDeliveryMode.LOCAL_MAILPIT),
+                documentAnalysis(true, true, false, DocumentAnalysisProperties.ExecutionMode.AZURE),
+                registry(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                        DocumentAnalysisProviderType.CONTENT_UNDERSTANDING));
+
+        assertThat(capabilities.documentIntelligence()).isTrue();
+        assertThat(capabilities.contentUnderstanding()).isFalse();
+    }
+
     private static NotificationProperties notification(NotificationDeliveryMode mode) {
         return new NotificationProperties(
                 mode,

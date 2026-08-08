@@ -5,8 +5,9 @@
 Document Analysisは、Backend APIから文書ファイルを受け付け、Provider-neutralなJobとして
 PostgreSQLへ保存し、Backend内WorkerがBlob Storage上の入力文書を分析して結果JSONを保存する。
 ローカル開発ではFake Providerを使い、`execution-mode=azure`ではAzure AI Document
-Intelligence Adapterを使える。ただしAzure resource、Managed Identity、RBAC、Private
-Endpointの作成は後続工程の対象であり、staging/productionでは有効化しない。
+Intelligence AdapterとAzure AI Content Understanding Adapterを使える。ただしAzure resource、
+Managed Identity、RBAC、Private Endpointの作成は後続工程の対象であり、
+staging/productionでは有効化しない。
 
 BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。FrontendはNext.js BFFの
 `/api/backend/document-analyses...`だけを呼び、BFFがSpring Bootの
@@ -119,10 +120,8 @@ schema version 1のJSONで、発注書のMarkdown、paragraphs、tables、fields
 ## Azure AI Document Intelligence Adapter
 
 `execution-mode=azure`かつ`document-intelligence.enabled=true`の場合だけ、
-Azure AI Document Intelligence Adapterを登録する。Content Understanding Adapterは未実装であるため、
-Azure modeでは`content-understanding.enabled=true`にしてもProviderRegistry上で利用不可となり、
-`/api/me.features`の`contentUnderstanding`は`false`になる。APIの`POST`でも実Adapterが無い
-Providerは`403 DOCUMENT_ANALYSIS_PROVIDER_DISABLED`で拒否し、処理不能なJobをqueueへ積まない。
+Azure AI Document Intelligence Adapterを登録する。APIの`POST`では実Adapterが無いProviderを
+`403 DOCUMENT_ANALYSIS_PROVIDER_DISABLED`で拒否し、処理不能なJobをqueueへ積まない。
 
 Document Intelligence Adapterは`prebuilt-layout`を既定modelとし、Jobに保存された`modelId`を
 Azure SDK呼び出しへ渡す。Service API versionは`2024-11-30`だけを許可し、
@@ -159,6 +158,56 @@ Provider errorは安全なerror codeへ分類する。400/415/422は
 `DOCUMENT_INTELLIGENCE_RESOURCE_NOT_FOUND`、429は`DOCUMENT_INTELLIGENCE_THROTTLED`、
 5xxは`DOCUMENT_INTELLIGENCE_UNAVAILABLE`、状態不明は
 `DOCUMENT_INTELLIGENCE_OPERATION_STATE_UNKNOWN`として扱う。Azure response bodyは
+`error_message`やログへ保存しない。
+
+## Azure AI Content Understanding Adapter
+
+`execution-mode=azure`かつ`content-understanding.enabled=true`の場合だけ、
+Azure AI Content Understanding Adapterを登録する。`ContentUnderstandingClient`はSpring singleton
+beanとして生成し、Jobごとにclientを作らない。Service API versionは`2025-11-01`だけを許可し、
+`ContentUnderstandingServiceVersion.V2025_11_01`を明示する。SDKのlatest既定値やpreview APIへは
+fallbackしない。
+
+Analyzerは`prebuilt-layout`を既定とし、Browserからanalyzer IDを受け取らない。Job作成時に
+Backend設定から保存した`modelId`をProvider Requestとして使う。Custom Analyzer作成・更新、
+`updateDefaults`、GPT/embedding deployment設定は実装しない。
+
+認証はDocument Intelligenceと同じくMicrosoft Entra IDの`DefaultAzureCredential`を使う。
+`AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`が設定されている場合だけUser Assigned Managed Identity client
+IDとして渡し、空の場合はローカルのdeveloper credential chainを許容する。API Key、client
+secret、AzureKeyCredentialはContent Understanding認証として使用しない。
+
+分析要求では入力Blobを`BinaryData.fromStream`で渡し、typed
+`beginAnalyzeBinary(modelId, binaryData, null, contentType, ProcessingLocation.GEOGRAPHY)`を使う。
+`contentType`は検証済みの`application/pdf`、`image/jpeg`、`image/png`をそのまま渡す。
+`ProcessingLocation.GEOGRAPHY`を明示し、service defaultのGLOBALへ依存しない。DATA_ZONEやGLOBALを
+UI/APIへ露出しない。LROは同期Pollerで待機し、`content-understanding.analysis-timeout`を有限timeout
+として使う。既定は25分で、`processing-timeout`より短い値だけを許可する。
+
+成功時は`AnalysisResult.contents`の各`DocumentContent`をNormalized V1の`documents[]`へ変換する。
+`DocumentContent.markdown`をそのまま`documents[n].markdown`へ保存し、BackendでMarkdownを再構築せず、
+Markdownからtableを再parseしない。ParagraphsとTablesはstructured resultから生成する。
+Paragraphの`role`はAzureの`SemanticRole`値を使い、nullの場合は`content`にする。spanはUTF-16の
+offset/lengthとして扱う。`DocumentSource.parse`でsource文字列を解釈し、最初のsegmentのpage numberと
+polygonをNormalized V1へ写す。独自正規表現でsourceをparseしない。Table cellは
+`COLUMN_HEADER`だけ`columnHeader`へ変換し、それ以外はV1互換の`content`へ丸める。confidenceは
+捏造せず`null`にする。prebuilt-layout専用のため`fields`は空objectとする。
+
+Warningsは`AnalysisResult.getWarnings()`から安全な`code`だけをNormalized V1へ入れ、Azure warning
+message本文を複製しない。Metricsの`pageCount`は返却された`DocumentContent.pages`数の合計、
+`durationMilliseconds`はProvider分析開始からresult validationとnormalization完了までの時間である。
+Raw JSONはContent Understanding SDKの`AnalysisResult.toJsonBytes()`で生成し、PostgreSQLへ保存しない。
+
+Provider errorは安全なerror codeへ分類する。400/413/415/422は
+`CONTENT_UNDERSTANDING_INVALID_DOCUMENT`、401/403は
+`CONTENT_UNDERSTANDING_AUTHENTICATION_FAILED`、404は
+`CONTENT_UNDERSTANDING_RESOURCE_NOT_FOUND`、429は`CONTENT_UNDERSTANDING_THROTTLED`、5xxは
+`CONTENT_UNDERSTANDING_UNAVAILABLE`として扱う。Azureが明示的にterminal failureまたはcancelを返した場合は
+`CONTENT_UNDERSTANDING_ANALYSIS_FAILED`で`FAILED`へ遷移する。polling timeoutやpolling中のnetwork
+failureなど、Azureが要求を受理した後の最終状態が不明な場合は
+`CONTENT_UNDERSTANDING_OPERATION_STATE_UNKNOWN`で`FAILED_RECOVERY_REQUIRED`にし、同じJobから新しい
+`beginAnalyzeBinary`を自動実行しない。成功operationの結果が不整合な場合は
+`CONTENT_UNDERSTANDING_RESULT_INVALID`で`FAILED_RECOVERY_REQUIRED`にする。Azure response bodyは
 `error_message`やログへ保存しない。
 
 ## 設定

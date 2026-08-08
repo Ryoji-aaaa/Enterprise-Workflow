@@ -33,6 +33,7 @@ public record DocumentAnalysisProperties(
         @Valid @NotNull Storage storage) {
 
     public static final String DOCUMENT_INTELLIGENCE_API_VERSION = "2024-11-30";
+    public static final String CONTENT_UNDERSTANDING_API_VERSION = "2025-11-01";
 
     @AssertTrue(message = "document analysis limits and storage configuration must be valid")
     public boolean isValid() {
@@ -55,6 +56,13 @@ public record DocumentAnalysisProperties(
             if (!hasText(documentIntelligence.endpoint())
                     || !DOCUMENT_INTELLIGENCE_API_VERSION.equals(documentIntelligence.apiVersion())
                     || !documentIntelligence.analysisTimeout().minus(processingTimeout).isNegative()) {
+                return false;
+            }
+        }
+        if (executionMode == ExecutionMode.AZURE && contentUnderstanding.enabled()) {
+            if (!hasText(contentUnderstanding.endpoint())
+                    || !CONTENT_UNDERSTANDING_API_VERSION.equals(contentUnderstanding.apiVersion())
+                    || !contentUnderstanding.analysisTimeout().minus(processingTimeout).isNegative()) {
                 return false;
             }
         }

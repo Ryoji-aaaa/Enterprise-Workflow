@@ -105,12 +105,51 @@ class DocumentAnalysisPropertiesTest {
     }
 
     @Test
+    void fakeModeAllowsContentUnderstandingWithoutAzureEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=fake",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
+    }
+
+    @Test
     void disabledExecutionAllowsDocumentIntelligenceWithoutAzureEndpoint() {
         contextRunner
                 .withPropertyValues(
                         "workflow.document-analysis.enabled=true",
                         "workflow.document-analysis.execution-mode=disabled",
                         "workflow.document-analysis.document-intelligence.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
+    }
+
+    @Test
+    void disabledExecutionAllowsContentUnderstandingWithoutAzureEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=disabled",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
+    }
+
+    @Test
+    void azureContentUnderstandingDisabledAllowsEmptyEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.content-understanding.enabled=false",
                         "workflow.document-analysis.storage.connection-string="
                                 + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
                                 + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
@@ -168,6 +207,80 @@ class DocumentAnalysisPropertiesTest {
                         "workflow.document-analysis.execution-mode=azure",
                         "workflow.document-analysis.document-intelligence.enabled=true",
                         "workflow.document-analysis.document-intelligence.endpoint=https://di.example.test",
+                        "workflow.document-analysis.azure.managed-identity-client-id="
+                                + "11111111-2222-3333-4444-555555555555",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasSingleBean(DocumentAnalysisProperties.class));
+    }
+
+    @Test
+    void azureContentUnderstandingRequiresEndpoint() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureContentUnderstandingRejectsWrongApiVersion() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.content-understanding.endpoint=https://cu.example.test",
+                        "workflow.document-analysis.content-understanding.api-version=2025-05-01-preview",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureContentUnderstandingRejectsNonPositiveAnalysisTimeout() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.content-understanding.endpoint=https://cu.example.test",
+                        "workflow.document-analysis.content-understanding.analysis-timeout=0s",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureContentUnderstandingRejectsAnalysisTimeoutAtProcessingTimeout() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.content-understanding.endpoint=https://cu.example.test",
+                        "workflow.document-analysis.content-understanding.analysis-timeout=30m",
+                        "workflow.document-analysis.storage.connection-string="
+                                + "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void azureContentUnderstandingAcceptsValidEndpointAndOptionalIdentity() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=true",
+                        "workflow.document-analysis.execution-mode=azure",
+                        "workflow.document-analysis.content-understanding.enabled=true",
+                        "workflow.document-analysis.content-understanding.endpoint=https://cu.example.test",
                         "workflow.document-analysis.azure.managed-identity-client-id="
                                 + "11111111-2222-3333-4444-555555555555",
                         "workflow.document-analysis.storage.connection-string="

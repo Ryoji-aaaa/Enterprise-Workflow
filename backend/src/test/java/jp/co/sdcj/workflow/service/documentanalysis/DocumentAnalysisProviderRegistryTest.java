@@ -25,7 +25,7 @@ class DocumentAnalysisProviderRegistryTest {
     }
 
     @Test
-    void azurePlanFiveWithoutContentUnderstandingAdapterKeepsContentUnderstandingUnavailable() {
+    void azureModeWithOnlyDocumentIntelligenceAdapterKeepsContentUnderstandingUnavailable() {
         DocumentAnalysisProviderRegistry registry = new DocumentAnalysisProviderRegistry(
                 List.of(provider(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE)));
 
@@ -33,6 +33,19 @@ class DocumentAnalysisProviderRegistryTest {
                 .isTrue();
         assertThat(registry.isAvailable(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING))
                 .isFalse();
+    }
+
+    @Test
+    void azurePlanSixCanExposeBothSeparateAdapters() {
+        DocumentAnalysisProviderRegistry registry = new DocumentAnalysisProviderRegistry(
+                List.of(
+                        provider(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE),
+                        provider(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING)));
+
+        assertThat(registry.isAvailable(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE))
+                .isTrue();
+        assertThat(registry.isAvailable(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING))
+                .isTrue();
     }
 
     @Test
@@ -44,6 +57,20 @@ class DocumentAnalysisProviderRegistryTest {
 
         assertThatThrownBy(() -> registry.isAvailable(
                 DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(registry::validateProviderUniqueness)
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void duplicateContentUnderstandingProviderFailsClosed() {
+        DocumentAnalysisProviderRegistry registry = new DocumentAnalysisProviderRegistry(
+                List.of(
+                        provider(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING),
+                        provider(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING)));
+
+        assertThatThrownBy(() -> registry.isAvailable(
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING))
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(registry::validateProviderUniqueness)
                 .isInstanceOf(IllegalStateException.class);
