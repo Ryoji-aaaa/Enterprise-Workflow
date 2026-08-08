@@ -8,6 +8,7 @@ import {
   DOCUMENT_ANALYSIS_ACCEPT,
   type AnalyzableFile,
 } from "@/lib/document-analysis";
+import type { DocumentAnalysisJob } from "@/lib/document-analysis-api";
 import { cn } from "@/lib/utils";
 
 export function DocumentUploadPanel({
@@ -16,15 +17,19 @@ export function DocumentUploadPanel({
   selectedFile,
   selectionError,
   recentAnalyses,
+  recentLoading,
   onSelectFiles,
+  onSelectRecentAnalysis,
   onClear,
 }: {
   inputRef: RefObject<HTMLInputElement | null>;
   inputId: string;
   selectedFile: AnalyzableFile | null;
   selectionError: string | null;
-  recentAnalyses: string[];
+  recentAnalyses: DocumentAnalysisJob[];
+  recentLoading: boolean;
   onSelectFiles: (files: FileList) => void;
+  onSelectRecentAnalysis: (job: DocumentAnalysisJob) => void;
   onClear: () => void;
 }) {
   function browse() {
@@ -114,15 +119,29 @@ export function DocumentUploadPanel({
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Recent analyses</h2>
-        {recentAnalyses.length === 0 ? (
+        {recentLoading ? (
+          <p className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
+            分析履歴を読み込んでいます…
+          </p>
+        ) : recentAnalyses.length === 0 ? (
           <p className="rounded-md border bg-background p-3 text-xs text-muted-foreground">
             分析履歴はありません。
           </p>
         ) : (
           <ul className="space-y-2">
-            {recentAnalyses.map((name) => (
-              <li className="rounded-md border bg-background p-3 text-xs" key={name}>
-                <span className="break-all">{name}</span>
+            {recentAnalyses.map((job) => (
+              <li key={job.id}>
+                <button
+                  className="w-full rounded-md border bg-background p-3 text-left text-xs transition-colors hover:bg-muted/50 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                  onClick={() => onSelectRecentAnalysis(job)}
+                  type="button"
+                >
+                  <span className="block break-all font-medium">{job.originalFileName}</span>
+                  <span className="mt-1 block text-muted-foreground">{job.status}</span>
+                  <span className="mt-1 block text-muted-foreground">
+                    {new Date(job.createdAt).toLocaleString("ja-JP")}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>

@@ -1,10 +1,11 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Braces, FileCode2, Pilcrow, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { DocumentAnalysisResult } from "@/lib/document-analysis";
+import type { DocumentAnalysisJob } from "@/lib/document-analysis-api";
 import { cn } from "@/lib/utils";
 
 import { MarkdownResult } from "./markdown-result";
@@ -21,16 +22,40 @@ const tabs: Array<{ id: ResultTab; label: string; icon: typeof FileCode2 }> = [
   { id: "result", label: "Result", icon: Braces },
 ];
 
-export function AnalysisResultTabs({ result }: { result: DocumentAnalysisResult | null }) {
+type RawState =
+  | { status: "idle"; analysisId: string | null; value: null; error: null }
+  | { status: "loading"; analysisId: string; value: null; error: null }
+  | { status: "success"; analysisId: string; value: Record<string, unknown>; error: null }
+  | { status: "error"; analysisId: string; value: null; error: string };
+
+export function AnalysisResultTabs({
+  job,
+  result,
+  rawState,
+  onLoadRawResult,
+}: {
+  job: DocumentAnalysisJob | null;
+  result: DocumentAnalysisResult | null;
+  rawState: RawState;
+  onLoadRawResult: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<ResultTab>("markdown");
   const baseId = useId();
+
+  useEffect(() => {
+    if (activeTab === "result" && result && rawState.status === "idle") {
+      onLoadRawResult();
+    }
+  }, [activeTab, onLoadRawResult, rawState.status, result]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col">
       <div className="border-b px-4 py-3">
         <h2 className="text-sm font-medium">Result</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          {result ? "Frontend fixture result" : "Run Analysis後に表示します。"}
+          {result && job
+            ? `${job.modelId} / ${job.providerApiVersion}`
+            : "Run Analysis後に表示します。"}
         </p>
       </div>
       <div className="flex min-h-0 flex-1 flex-col p-4">
@@ -71,10 +96,21 @@ export function AnalysisResultTabs({ result }: { result: DocumentAnalysisResult 
           {result && activeTab === "markdown" && <MarkdownResult markdown={result.markdown} />}
           {result && activeTab === "paragraphs" && <ParagraphsResult paragraphs={result.paragraphs} />}
           {result && activeTab === "tables" && <TablesResult tables={result.tables} />}
-          {result && activeTab === "result" && <RawResult value={result.rawResult} />}
+          {result && activeTab === "result" && rawState.status === "loading" && (
+            <p className="rounded-md border bg-background p-4 text-sm text-muted-foreground">
+              Raw Resultを読み込んでいます…
+            </p>
+          )}
+          {result && activeTab === "result" && rawState.status === "error" && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+              {rawState.error}
+            </p>
+          )}
+          {result && activeTab === "result" && rawState.status === "success" && (
+            <RawResult value={rawState.value} />
+          )}
         </div>
       </div>
     </section>
   );
 }
-

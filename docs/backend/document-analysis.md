@@ -4,9 +4,12 @@
 
 Document Analysisは、Backend APIから文書ファイルを受け付け、Provider-neutralなJobとして
 PostgreSQLへ保存し、Backend内WorkerがBlob Storage上の入力文書を分析して結果JSONを保存する。
-Plan3時点ではAzure AIへ接続せず、ローカル開発用のFake Providerだけを実行する。
+現時点ではAzure AIへ接続せず、ローカル開発用のFake Providerだけを実行する。
 
-BrowserはSpring Bootへ直接接続しない。Frontend/BFF接続は後続工程で行う。
+BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。FrontendはNext.js BFFの
+`/api/backend/document-analyses...`だけを呼び、BFFがSpring Bootの
+`/api/document-analyses...`へ転送する。画面側の仕様は
+[Frontend Document Analysis](../frontend/document-analysis.md)を参照する。
 
 ## API
 
@@ -96,7 +99,7 @@ Workerは`workflow.document-analysis.execution-mode=fake`の場合に起動す�
 Provider呼び出しとBlob I/O中にDB transactionは保持しない。古いWorkerが戻ってきた場合も、
 attempt numberが一致しない完了更新は無視する。
 
-Plan3では自動retryを実装しない。lease期限切れの`RUNNING` Jobは
+現時点では自動retryを実装しない。lease期限切れの`RUNNING` Jobは
 `FAILED_RECOVERY_REQUIRED`になり、`QUEUED`へ戻さない。`FAILED`も自動再queueしない。
 
 ## Fake Provider

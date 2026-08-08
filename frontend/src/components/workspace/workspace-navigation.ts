@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 
 import {
+  canUseContentUnderstanding,
+  canUseDocumentIntelligence,
   canViewMailNotificationHistory,
   canViewOrganizationChart,
   type CurrentUser,
@@ -74,13 +76,13 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
     href: "/document-intelligence",
     label: "Document Intelligence",
     icon: FileSearch,
-    isVisible: () => true,
+    isVisible: canUseDocumentIntelligence,
   },
   {
     href: "/content-understanding",
     label: "Content Understanding",
     icon: ScanLine,
-    isVisible: () => true,
+    isVisible: canUseContentUnderstanding,
   },
 ];
 

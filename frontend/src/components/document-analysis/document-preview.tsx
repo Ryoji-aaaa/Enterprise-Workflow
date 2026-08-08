@@ -7,10 +7,14 @@ import type { AnalyzableFile } from "@/lib/document-analysis";
 export function DocumentPreview({
   file,
   objectUrl,
+  serverUrl,
 }: {
   file: AnalyzableFile | null;
   objectUrl: string | null;
+  serverUrl: string | null;
 }) {
+  const previewUrl = objectUrl ?? serverUrl;
+
   return (
     <section className="flex min-h-0 min-w-0 flex-col">
       <div className="border-b px-4 py-3">
@@ -24,7 +28,7 @@ export function DocumentPreview({
         className="grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-muted/20 p-4"
         role="region"
       >
-        {!file || !objectUrl ? (
+        {!file || !previewUrl ? (
           <div className="text-center text-muted-foreground">
             <FileSearch className="mx-auto mb-3 size-10" />
             <p className="text-sm">ファイルを選択するとプレビューを表示します。</p>
@@ -32,7 +36,7 @@ export function DocumentPreview({
         ) : file.type === "application/pdf" ? (
           <iframe
             className="h-full min-h-[34rem] w-full rounded-md border bg-background"
-            src={objectUrl}
+            src={previewUrl}
             title={`${file.name}のPDFプレビュー`}
           />
         ) : (
@@ -40,7 +44,7 @@ export function DocumentPreview({
           <img
             alt={`${file.name}のプレビュー`}
             className="max-h-full max-w-full object-contain"
-            src={objectUrl}
+            src={previewUrl}
           />
         )}
       </div>

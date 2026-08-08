@@ -241,13 +241,15 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await page.unroute("**/api/backend/me");
 });
 
-test("一般ユーザーがDocument Analysis UI Shellでfixture結果を確認できる", async ({ page }) => {
+test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実行できる", async ({ page }) => {
+  test.setTimeout(180_000);
+
   await login(page, userEmail, userPassword);
   await expect(page).toHaveURL(/\/top$/);
 
-  let backendRequests = 0;
-  await page.route("**/api/backend/**", async (route) => {
-    backendRequests += 1;
+  let rawRequests = 0;
+  await page.route("**/api/backend/document-analyses/*/raw-result", async (route) => {
+    rawRequests += 1;
     await route.continue();
   });
 
@@ -261,24 +263,64 @@ test("一般ユーザーがDocument Analysis UI Shellでfixture結果を確認�
   await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
   await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
   await expect(runButton).toBeEnabled();
+  const createResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+    && response.request().method() === "POST",
+  );
   await runButton.click();
-  await expect(page.getByText("Frontend fixture result", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/PO-2026-0807/).first()).toBeVisible();
+  expect((await createResponse).status()).toBe(202);
+  await expect(page).toHaveURL(/\/document-intelligence\?analysis=[0-9a-f-]{36}$/);
+  const analysisId = new URL(page.url()).searchParams.get("analysis");
+  expect(analysisId).toMatch(/^[0-9a-f-]{36}$/);
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Paragraphs", exact: true }).first().click();
-  await expect(page.getByText("発注番号: PO-2026-0807", { exact: true })).toBeVisible();
+  await expect(page.getByText("発注番号: PO-2026-0001", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Tables", exact: true }).first().click();
-  await expect(page.getByRole("cell", { name: "ワークフロー利用ライセンス", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "業務端末", exact: true })).toBeVisible();
+  expect(rawRequests).toBe(0);
   await page.getByRole("tab", { name: "Result", exact: true }).first().click();
-  await expect(page.getByText(/"source": "frontend-fixture"/).first()).toBeVisible();
+  await expect(page.getByText(/"source": "backend-fake-provider"/).first()).toBeVisible();
+  expect(rawRequests).toBe(1);
+  await page.getByRole("tab", { name: "Markdown", exact: true }).first().click();
+  await page.getByRole("tab", { name: "Result", exact: true }).first().click();
+  expect(rawRequests).toBe(1);
+
+  await page.reload();
+  await expect(page).toHaveURL(new RegExp(`/document-intelligence\\?analysis=${analysisId}$`));
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
+  await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
+  await page.getByRole("button", { name: /receipt\.pdf/ }).first().click();
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
 
   await page.getByRole("link", { name: "Content Understanding", exact: true }).click();
   await expect(page).toHaveURL(/\/content-understanding$/);
   await expectActiveSidebarLink(page, "Content Understanding");
   await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+  await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
+  const contentRunButton = page.getByRole("button", { name: "Run Analysis", exact: true });
+  await expect(contentRunButton).toBeEnabled();
+  const contentCreateResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+    && response.request().method() === "POST",
+  );
+  await contentRunButton.click();
+  expect(((await (await contentCreateResponse).json()) as { provider: string }).provider)
+    .toBe("CONTENT_UNDERSTANDING");
+  await expect(page).toHaveURL(/\/content-understanding\?analysis=[0-9a-f-]{36}$/);
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
 
-  expect(backendRequests).toBe(0);
-  await page.unroute("**/api/backend/**");
+  await page.unroute("**/api/backend/document-analyses/*/raw-result");
 });
 
 test("Document Analysis UI Shellはモバイルナビゲーションから到達できる", async ({ page }) => {
@@ -535,8 +577,6 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   await expect(mobileNavigation.getByRole("link", { name: "トップ" })).toBeVisible();
   await expect(mobileNavigation.getByRole("link", { name: "組織図" })).toBeVisible();
   await expect(mobileNavigation.getByRole("link", { name: "ユーザー管理" })).toBeVisible();
-  await expect(mobileNavigation.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
-  await expect(mobileNavigation.getByRole("link", { name: "Content Understanding" })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
   const meResponse = await page.request.get("/api/backend/me");

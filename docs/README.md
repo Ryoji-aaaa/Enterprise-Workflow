@@ -17,7 +17,8 @@
   [組織図](frontend/organization-chart.md) /
   [ユーザー管理](frontend/user-management.md) /
   [経費精算申請](frontend/expense-application.md) /
-  [メール通知履歴](frontend/mail-notification-history.md)
+  [メール通知履歴](frontend/mail-notification-history.md) /
+  [Document Analysis](frontend/document-analysis.md)
 - Backend:
   [Spring Boot](backend/spring-boot.md) /
   [Flyway](backend/flyway.md) /

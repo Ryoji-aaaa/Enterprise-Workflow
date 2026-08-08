@@ -83,11 +83,16 @@ export type BackendProxyResult = {
   setCookies: string[];
 };
 
+type BackendProxyRequestInit = RequestInit & {
+  timeoutMilliseconds?: number;
+};
+
 export async function proxyBackendRequest(
   requestHeaders: Headers,
   path: string,
-  init: RequestInit = {},
+  init: BackendProxyRequestInit = {},
 ): Promise<BackendProxyResult> {
+  const { timeoutMilliseconds = BACKEND_TIMEOUT_MILLISECONDS, ...requestInit } = init;
   const sessionResponse = await auth.api.getSession({
     headers: requestHeaders,
     asResponse: true,
@@ -128,10 +133,10 @@ export async function proxyBackendRequest(
     headers.set("Authorization", `Bearer ${token.accessToken}`);
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
     const response = await fetch(`${serverEnvironment.backendInternalUrl}${path}`, {
-      ...init,
+      ...requestInit,
       cache: "no-store",
       headers,
-      signal: AbortSignal.timeout(BACKEND_TIMEOUT_MILLISECONDS),
+      signal: AbortSignal.timeout(timeoutMilliseconds),
     });
     return { response, setCookies };
   } catch {

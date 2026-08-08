@@ -6,16 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DocumentAnalysisProviderConfig, DocumentAnalysisStatus } from "@/lib/document-analysis";
 import { isDocumentAnalysisProcessing } from "@/lib/document-analysis";
+import type { DocumentAnalysisJob } from "@/lib/document-analysis-api";
 
 export function DocumentAnalysisToolbar({
   config,
   status,
   hasValidFile,
+  job,
   onRun,
 }: {
   config: DocumentAnalysisProviderConfig;
   status: DocumentAnalysisStatus;
   hasValidFile: boolean;
+  job: DocumentAnalysisJob | null;
   onRun: () => void;
 }) {
   const processing = isDocumentAnalysisProcessing(status);
@@ -27,6 +30,8 @@ export function DocumentAnalysisToolbar({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="truncate text-xl font-semibold">{config.title}</h1>
           <Badge variant="secondary">Layout</Badge>
+          {job ? <Badge variant="outline">Model: {job.modelId}</Badge> : null}
+          {job ? <Badge variant="outline">API: {job.providerApiVersion}</Badge> : null}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{config.description}</p>
       </div>
@@ -42,4 +47,3 @@ export function DocumentAnalysisToolbar({
     </div>
   );
 }
-

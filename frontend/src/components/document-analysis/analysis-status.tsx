@@ -23,12 +23,23 @@ const statusFlow: DocumentAnalysisStatus[] = [
   "succeeded",
 ];
 
-export function AnalysisStatus({ state }: { state: DocumentAnalysisState }) {
+export function AnalysisStatus({
+  state,
+  viewLoading = false,
+}: {
+  state: DocumentAnalysisState;
+  viewLoading?: boolean;
+}) {
   return (
     <section aria-label="分析状態" className="space-y-3">
       <div>
         <h2 className="text-sm font-medium">Status</h2>
-        <p className="text-xs text-muted-foreground">{statusLabels[state.status]}</p>
+        <p aria-label="現在の分析状態" className="text-xs text-muted-foreground">
+          {statusLabels[state.status]}
+        </p>
+        {viewLoading ? (
+          <p className="mt-1 text-xs text-muted-foreground">分析結果を読み込んでいます…</p>
+        ) : null}
       </div>
       {state.status === "failed" && (
         <p className="flex items-start gap-2 text-sm text-destructive" role="alert">
@@ -58,4 +69,3 @@ export function AnalysisStatus({ state }: { state: DocumentAnalysisState }) {
     </section>
   );
 }
-

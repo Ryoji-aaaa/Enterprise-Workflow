@@ -5,8 +5,9 @@ import { proxyBackendRequest } from "@/lib/backend-client";
 import {
   backendProxyRequestHeaders,
   backendProxyResponseHeaders,
+  getBackendProxyPolicy,
   hasOversizedBackendProxyBody,
-  isAllowedBackendProxyRequest,
+  isOversizedBackendProxyBody,
 } from "@/lib/backend-proxy-policy";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,8 @@ async function proxy(
 ) {
   const { path } = await context.params;
   const backendPath = `/${path.join("/")}`;
-  if (!isAllowedBackendProxyRequest(request.method, backendPath)) {
+  const policy = getBackendProxyPolicy(request.method, backendPath);
+  if (!policy) {
     return NextResponse.json(
       {
         code: "BACKEND_ROUTE_NOT_ALLOWED",
@@ -26,23 +28,32 @@ async function proxy(
       { status: 404 },
     );
   }
-  if (hasOversizedBackendProxyBody(
-    request.method,
-    backendPath,
-    request.headers.get("content-length"),
-  )) {
+  const oversizedErrorCode = policy.oversizedErrorCode ?? "BACKEND_REQUEST_TOO_LARGE";
+
+  function oversizedResponse() {
     return NextResponse.json(
       {
-        code: "EXPENSE_ATTACHMENT_TOO_LARGE",
+        code: oversizedErrorCode,
         message: "ファイルサイズが上限を超えています。",
       },
       { status: 413 },
     );
   }
+
+  if (hasOversizedBackendProxyBody(
+    request.method,
+    backendPath,
+    request.headers.get("content-length"),
+  )) {
+    return oversizedResponse();
+  }
   const query = new URL(request.url).search;
   const body = request.method === "GET" || request.method === "HEAD"
     ? undefined
     : await request.arrayBuffer();
+  if (body && isOversizedBackendProxyBody(policy, body.byteLength)) {
+    return oversizedResponse();
+  }
   const result = await proxyBackendRequest(
     request.headers,
     `/api${backendPath.split("/").map(encodeURIComponent).join("/")}${query}`,
@@ -50,6 +61,7 @@ async function proxy(
       method: request.method,
       body,
       headers: backendProxyRequestHeaders(request.headers, request.method, backendPath),
+      timeoutMilliseconds: policy.timeoutMilliseconds,
     },
   );
   const response = new NextResponse(result.response.body, {

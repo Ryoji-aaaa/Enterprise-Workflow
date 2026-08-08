@@ -4,9 +4,12 @@ import test from "node:test";
 import {
   backendProxyRequestHeaders,
   backendProxyResponseHeaders,
+  getBackendProxyPolicy,
   hasOversizedBackendProxyBody,
+  isOversizedBackendProxyBody,
   isAllowedBackendProxyRequest,
   MAX_ATTACHMENT_PROXY_BODY_BYTES,
+  MAX_DOCUMENT_ANALYSIS_PROXY_BODY_BYTES,
 } from "./backend-proxy-policy.ts";
 
 const USER_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -88,6 +91,65 @@ test("multipart boundaryを維持し添付Content-Length上限を事前検査す
     false,
   );
   assert.equal(hasOversizedBackendProxyBody("POST", path, null), false);
+});
+
+test("Document Analysisはcollection/detail/source/view/rawのGETまたはPOSTだけを許可する", () => {
+  const collection = "/document-analyses";
+  const item = `/document-analyses/${USER_ID}`;
+  assert.equal(isAllowedBackendProxyRequest("GET", collection), true);
+  assert.equal(isAllowedBackendProxyRequest("POST", collection), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", item), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${item}/source`), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${item}/view`), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${item}/raw-result`), true);
+
+  assert.equal(isAllowedBackendProxyRequest("DELETE", collection), false);
+  assert.equal(isAllowedBackendProxyRequest("POST", item), false);
+  assert.equal(isAllowedBackendProxyRequest("GET", "/document-analyses/not-a-uuid"), false);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${item}/retry`), false);
+});
+
+test("Document Analysisはrouteごとのtimeoutとbody上限を持つ", () => {
+  const collectionGet = getBackendProxyPolicy("GET", "/document-analyses");
+  const collectionPost = getBackendProxyPolicy("POST", "/document-analyses");
+  const source = getBackendProxyPolicy("GET", `/document-analyses/${USER_ID}/source`);
+  const view = getBackendProxyPolicy("GET", `/document-analyses/${USER_ID}/view`);
+  const raw = getBackendProxyPolicy("GET", `/document-analyses/${USER_ID}/raw-result`);
+
+  assert.equal(collectionGet?.timeoutMilliseconds, 5_000);
+  assert.equal(collectionPost?.timeoutMilliseconds, 30_000);
+  assert.equal(collectionPost?.maxBodyBytes, MAX_DOCUMENT_ANALYSIS_PROXY_BODY_BYTES);
+  assert.equal(collectionPost?.oversizedErrorCode, "DOCUMENT_ANALYSIS_TOO_LARGE");
+  assert.equal(source?.timeoutMilliseconds, 30_000);
+  assert.equal(view?.timeoutMilliseconds, 15_000);
+  assert.equal(raw?.timeoutMilliseconds, 15_000);
+  assert.equal(
+    hasOversizedBackendProxyBody(
+      "POST",
+      "/document-analyses",
+      String(MAX_DOCUMENT_ANALYSIS_PROXY_BODY_BYTES + 1),
+    ),
+    true,
+  );
+  assert.equal(isOversizedBackendProxyBody(collectionPost!, MAX_DOCUMENT_ANALYSIS_PROXY_BODY_BYTES), false);
+  assert.equal(isOversizedBackendProxyBody(collectionPost!, MAX_DOCUMENT_ANALYSIS_PROXY_BODY_BYTES + 1), true);
+});
+
+test("Document Analysis multipart boundaryとsource Acceptを維持する", () => {
+  const uploadHeaders = backendProxyRequestHeaders(
+    new Headers({ "Content-Type": "multipart/form-data; boundary=----browser-boundary" }),
+    "POST",
+    "/document-analyses",
+  );
+  assert.equal(uploadHeaders.get("content-type"), "multipart/form-data; boundary=----browser-boundary");
+  assert.equal(uploadHeaders.get("accept"), "application/json");
+
+  const sourceHeaders = backendProxyRequestHeaders(
+    new Headers({ Accept: "application/pdf" }),
+    "GET",
+    `/document-analyses/${USER_ID}/source`,
+  );
+  assert.equal(sourceHeaders.get("accept"), "application/pdf");
 });
 
 test("添付コンテンツのAcceptと安全なレスポンスヘッダーだけを転送する", () => {
