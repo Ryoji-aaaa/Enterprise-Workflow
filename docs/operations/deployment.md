@@ -132,7 +132,7 @@ Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。dep
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV013）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV014）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
