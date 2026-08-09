@@ -98,10 +98,29 @@ client IDだけを設定し、FrontendとKeycloakにはidentity・RBAC・接続�
 [`docs/infrastructure/expense-attachment-storage.md`](../docs/infrastructure/expense-attachment-storage.md)を
 参照する。
 
+Document Analysis Azure mode用resourceはfoundationとして作成する。環境ごとに
+Document Intelligence `FormRecognizer`、Foundry `AIServices`、Document Analysis専用Storage Account、
+`document-analysis-input`/`document-analysis-result` container、AI専用UAMI、Storage専用UAMI、Private
+Endpoint subnet、Private Endpoint、Private DNS zone、VNet link、最小RBACをTerraformで管理する。
+resource名は`document_intelligence_account_name`、`content_understanding_account_name`、
+`document_analysis_storage_account_name`で渡し、コードへ固定しない。
+
+Backend Container Appには既存runtime identity、既存Backend Blob identity、Document Analysis AI
+identity、Document Analysis Storage identityをattachする。既存の`AZURE_CLIENT_ID`は経費証憑Blob用の
+client IDのまま維持し、Document Analysis AIには`AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、Storageには
+`DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`を渡す。API Key、client secret、Storage key、
+connection string、SASは作成しない。`document_analysis_enabled`、
+`document_intelligence_enabled`、`content_understanding_enabled`の既定値はfalseであり、resource作成ではなく
+Backend runtime activationだけを制御する。productionではPlan7導入時点でfalseを維持する。
+
 GitHub Actionsの環境別planでは、GitHub Environment variable
 `AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`を`TF_VAR_attachment_storage_account_name`へ渡す。
 `staging-plan`と`production-plan`には各環境のglobal uniqueなStorage Account名を個別に登録し、
 未設定または空の場合はAzure loginとplanをskipする。workflow内に環境別の固定値を置かない。
+Document Analysis用に`AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME`、
+`AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME`、`AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME`も同様に
+環境ごとに登録し、`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INTELLIGENCE_ENABLED`、
+`CONTENT_UNDERSTANDING_ENABLED`は未設定時falseとして扱う。
 
 `terraform.tfvars`、plan、stateはGitへ追加しない。リポジトリrootからの静的検証は資格情報なしで
 実行でき、Terraform以外のインフラ不変条件も同時に確認する。

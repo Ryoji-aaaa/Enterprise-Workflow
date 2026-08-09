@@ -36,7 +36,7 @@ export function WorkspaceHeader() {
 
       <nav
         aria-label="モバイルナビゲーション"
-        className="ml-2 flex items-center gap-1 md:hidden"
+        className="ml-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden"
       >
         {navigationItems.map((item) => {
           const Icon = item.icon;
@@ -71,7 +71,7 @@ export function WorkspaceHeader() {
         />
       </label>
 
-      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         <Button
           aria-label="サンプル操作２"
           className="text-muted-foreground"

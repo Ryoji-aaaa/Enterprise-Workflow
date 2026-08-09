@@ -1,0 +1,179 @@
+{
+  "analyzerId": "prebuilt-layout",
+  "apiVersion": "2025-11-01",
+  "stringEncoding": "utf16",
+  "contents": [
+    {
+      "kind": "document",
+      "mimeType": "application/pdf",
+      "markdown": "# 発注書\n\n発注番号: PO-2026-0001\n\n| No. | 品名 | 数量 | 単価 | 金額 |\n|---|---|---:|---:|---:|\n| 1 | 業務端末 | 2 | 56000 | 112000 |",
+      "startPageNumber": 1,
+      "endPageNumber": 1,
+      "pages": [
+        {
+          "pageNumber": 1,
+          "width": 595,
+          "height": 842,
+          "angle": 0,
+          "spans": [
+            {
+              "offset": 0,
+              "length": 95
+            }
+          ]
+        }
+      ],
+      "paragraphs": [
+        {
+          "role": "title",
+          "content": "発注書",
+          "source": "D(1,10,20,110,20,110,48,10,48)",
+          "span": {
+            "offset": 0,
+            "length": 3
+          }
+        },
+        {
+          "role": "sectionHeading",
+          "content": "発注番号: PO-2026-0001",
+          "source": "D(1,10,70,210,70,210,92,10,92)",
+          "span": {
+            "offset": 5,
+            "length": 18
+          }
+        },
+        {
+          "content": "業務端末 2台",
+          "span": {
+            "offset": 72,
+            "length": 7
+          }
+        }
+      ],
+      "tables": [
+        {
+          "rowCount": 3,
+          "columnCount": 5,
+          "source": "D(1,10,100,420,100,420,160,10,160)",
+          "span": {
+            "offset": 30,
+            "length": 60
+          },
+          "cells": [
+            {
+              "kind": "columnHeader",
+              "rowIndex": 0,
+              "columnIndex": 0,
+              "content": "No.",
+              "source": "D(1,10,100,40,100,40,120,10,120)",
+              "span": {
+                "offset": 30,
+                "length": 3
+              }
+            },
+            {
+              "kind": "columnHeader",
+              "rowIndex": 0,
+              "columnIndex": 1,
+              "content": "品名",
+              "source": "D(1,40,100,180,100,180,120,40,120)",
+              "span": {
+                "offset": 35,
+                "length": 2
+              }
+            },
+            {
+              "kind": "columnHeader",
+              "rowIndex": 0,
+              "columnIndex": 2,
+              "content": "数量",
+              "source": "D(1,180,100,240,100,240,120,180,120)",
+              "span": {
+                "offset": 39,
+                "length": 2
+              }
+            },
+            {
+              "kind": "columnHeader",
+              "rowIndex": 0,
+              "columnIndex": 3,
+              "content": "単価",
+              "source": "D(1,240,100,320,100,320,120,240,120)",
+              "span": {
+                "offset": 43,
+                "length": 2
+              }
+            },
+            {
+              "kind": "columnHeader",
+              "rowIndex": 0,
+              "columnIndex": 4,
+              "content": "金額",
+              "source": "D(1,320,100,420,100,420,120,320,120)",
+              "span": {
+                "offset": 47,
+                "length": 2
+              }
+            },
+            {
+              "rowIndex": 1,
+              "columnIndex": 0,
+              "rowSpan": 2,
+              "columnSpan": 1,
+              "content": "1",
+              "source": "D(1,10,120,40,120,40,160,10,160)",
+              "span": {
+                "offset": 52,
+                "length": 1
+              }
+            },
+            {
+              "rowIndex": 1,
+              "columnIndex": 1,
+              "rowSpan": 1,
+              "columnSpan": 2,
+              "content": "業務端末",
+              "source": "D(1,40,120,240,120,240,140,40,140)",
+              "span": {
+                "offset": 55,
+                "length": 4
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "document",
+      "mimeType": "application/pdf",
+      "markdown": "備考: 分割納品",
+      "startPageNumber": 2,
+      "endPageNumber": 2,
+      "pages": [
+        {
+          "pageNumber": 2,
+          "width": 595,
+          "height": 842,
+          "angle": 0
+        }
+      ],
+      "paragraphs": [
+        {
+          "content": "備考: 分割納品",
+          "source": "D(2,20,30,220,30,220,56,20,56)",
+          "span": {
+            "offset": 96,
+            "length": 8
+          }
+        }
+      ],
+      "tables": []
+    }
+  ],
+  "warnings": [
+    {
+      "code": "PageRangeAdjusted",
+      "message": "Not stored in normalized output."
+    }
+  ]
+}

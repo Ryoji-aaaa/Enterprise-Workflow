@@ -11,6 +11,7 @@ public final class RoleCodes {
     public static final String ORGANIZATION_CHART_VIEWER = "ORGANIZATION_CHART_VIEWER";
     public static final String USER_INFORMATION_MANAGER = "USER_INFORMATION_MANAGER";
     public static final String WORKFLOW_APPROVER = "WORKFLOW_APPROVER";
+    public static final String DOCUMENT_ANALYSIS_USER = "DOCUMENT_ANALYSIS_USER";
 
     private RoleCodes() {
     }

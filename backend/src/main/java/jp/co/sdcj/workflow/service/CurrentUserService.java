@@ -100,6 +100,9 @@ public class CurrentUserService {
                 department,
                 roles,
                 permissions,
-                new FeaturesResponse(featureCapabilities.mailNotificationHistory()));
+                new FeaturesResponse(
+                        featureCapabilities.mailNotificationHistory(),
+                        featureCapabilities.documentIntelligence(),
+                        featureCapabilities.contentUnderstanding()));
     }
 }

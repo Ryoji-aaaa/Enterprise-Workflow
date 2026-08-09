@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { expect, request as playwrightRequest, test, type Browser, type Page } from "@playwright/test";
 
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
@@ -237,6 +239,174 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await expectActiveSidebarLink(page, "組織図");
   expect(meRequestsAfterTop).toBe(0);
   await page.unroute("**/api/backend/me");
+});
+
+test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実行できる", async ({ page }) => {
+  test.setTimeout(180_000);
+
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+
+  let rawRequests = 0;
+  let documentAnalysisPostRequests = 0;
+  const externalDocumentAnalysisRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/backend/document-analyses"
+        && request.method() === "POST") {
+      documentAnalysisPostRequests += 1;
+    }
+    if (/\.(?:cognitiveservices|services\.ai|openai)\.azure\.com$/.test(url.hostname)
+        || /\.blob\.core\.windows\.net$/.test(url.hostname)) {
+      externalDocumentAnalysisRequests.push(url.href);
+    }
+  });
+  await page.route("**/api/backend/document-analyses/*/raw-result", async (route) => {
+    rawRequests += 1;
+    await route.continue();
+  });
+
+  await page.getByRole("link", { name: "Document Intelligence", exact: true }).click();
+  await expect(page).toHaveURL(/\/document-intelligence$/);
+  await expectWorkspaceChrome(page);
+  await expectActiveSidebarLink(page, "Document Intelligence");
+  const runButton = page.getByRole("button", { name: "Run Analysis", exact: true });
+  await expect(runButton).toBeDisabled();
+
+  await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
+  await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
+  await expect(runButton).toBeEnabled();
+  const createResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+    && response.request().method() === "POST",
+  );
+  await runButton.click();
+  expect((await createResponse).status()).toBe(202);
+  expect(documentAnalysisPostRequests).toBe(1);
+  await expect(page).toHaveURL(/\/document-intelligence\?analysis=[0-9a-f-]{36}$/);
+  const analysisId = new URL(page.url()).searchParams.get("analysis");
+  expect(analysisId).toMatch(/^[0-9a-f-]{36}$/);
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
+
+  await page.getByRole("tab", { name: "Paragraphs", exact: true }).first().click();
+  await expect(page.getByText("発注番号: PO-2026-0001", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Tables", exact: true }).first().click();
+  await expect(page.getByRole("cell", { name: "業務端末", exact: true })).toBeVisible();
+  expect(rawRequests).toBe(0);
+  await page.getByRole("tab", { name: "Result", exact: true }).first().click();
+  await expect(page.getByText(/"source": "backend-fake-provider"/).first()).toBeVisible();
+  expect(rawRequests).toBe(1);
+  await page.getByRole("tab", { name: "Markdown", exact: true }).first().click();
+  await page.getByRole("tab", { name: "Result", exact: true }).first().click();
+  expect(rawRequests).toBe(1);
+
+  await page.reload();
+  await expect(page).toHaveURL(new RegExp(`/document-intelligence\\?analysis=${analysisId}$`));
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+  await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
+  await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
+  await page.getByRole("button", { name: /receipt\.pdf/ }).first().click();
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  await page.getByRole("link", { name: "Content Understanding", exact: true }).click();
+  await expect(page).toHaveURL(/\/content-understanding$/);
+  await expectActiveSidebarLink(page, "Content Understanding");
+  await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+  await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
+  const contentRunButton = page.getByRole("button", { name: "Run Analysis", exact: true });
+  await expect(contentRunButton).toBeEnabled();
+  const contentCreateResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+    && response.request().method() === "POST",
+  );
+  await contentRunButton.click();
+  expect(((await (await contentCreateResponse).json()) as { provider: string }).provider)
+    .toBe("CONTENT_UNDERSTANDING");
+  expect(documentAnalysisPostRequests).toBe(2);
+  await expect(page).toHaveURL(/\/content-understanding\?analysis=[0-9a-f-]{36}$/);
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  await page.getByRole("link", { name: "Document Intelligence", exact: true }).click();
+  await expect(page).toHaveURL(/\/document-intelligence$/);
+  await expect(page.getByRole("heading", { name: "Document Intelligence", exact: true })).toBeVisible();
+  await page.locator("#document-analysis-file-desktop").setInputFiles({
+    name: "tiny.png",
+    mimeType: "image/png",
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  });
+  await expect(page.getByText("tiny.png", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Run Analysis", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Run Analysis", exact: true }).click();
+  expect(documentAnalysisPostRequests).toBe(3);
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  await page.locator("#document-analysis-file-desktop").setInputFiles({
+    name: "tiny.jpeg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from([0xff, 0xd8, 0xff]),
+  });
+  await expect(page.getByText("tiny.jpeg", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Run Analysis", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Run Analysis", exact: true }).click();
+  expect(documentAnalysisPostRequests).toBe(4);
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  await page.locator("#document-analysis-file-desktop").setInputFiles({
+    name: "unsupported.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("hello"),
+  });
+  await expect(
+    page.getByRole("alert").filter({ hasText: "対応形式はPDF、JPEG、PNGです。" }).first(),
+  ).toBeVisible();
+  expect(documentAnalysisPostRequests).toBe(4);
+  expect(externalDocumentAnalysisRequests).toEqual([]);
+
+  await page.unroute("**/api/backend/document-analyses/*/raw-result");
+});
+
+test("Document Analysis UI Shellはモバイルナビゲーションから到達できる", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  let documentAnalysisPostRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/backend/document-analyses"
+        && request.method() === "POST") {
+      documentAnalysisPostRequests += 1;
+    }
+  });
+
+  const mobileNavigation = page.getByRole("navigation", { name: "モバイルナビゲーション" });
+  await expect(mobileNavigation.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
+  await expect(mobileNavigation.getByRole("link", { name: "Content Understanding" })).toBeVisible();
+  await mobileNavigation.getByRole("link", { name: "Content Understanding" }).click();
+  await expect(page).toHaveURL(/\/content-understanding$/);
+  await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+
+  await page.locator("#document-analysis-file-mobile").setInputFiles({
+    name: "too-large.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.alloc(10 * 1024 * 1024 + 1),
+  });
+  await expect(
+    page.getByRole("alert").filter({ hasText: "ファイルサイズは10 MiB以下にしてください。" }),
+  ).toBeVisible();
+  expect(documentAnalysisPostRequests).toBe(0);
 });
 
 test("token更新不能時はtopとの往復をせず期限切れログインへ戻る", async ({ page }) => {
@@ -583,6 +753,10 @@ test("パートは組織図メニューがなく直接アクセスも403にな�
 
   await expect(page).toHaveURL(/\/top$/);
   await expect(page.getByRole("link", { name: "組織図" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Document Intelligence" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Content Understanding" })).toHaveCount(0);
+  await page.goto("/document-intelligence");
+  await expect(page.getByText("この機能は現在利用できません。")).toBeVisible();
   await page.goto("/organization-chart");
   await expect(page.getByText("このアカウントでは組織図を閲覧できません（403）。"))
     .toBeVisible();

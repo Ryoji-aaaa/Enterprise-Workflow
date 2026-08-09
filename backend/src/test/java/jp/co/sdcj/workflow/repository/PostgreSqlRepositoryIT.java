@@ -3,7 +3,9 @@ package jp.co.sdcj.workflow.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -18,13 +20,36 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import jp.co.sdcj.workflow.api.ApiException;
+import jp.co.sdcj.workflow.config.DocumentAnalysisProperties;
+import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.AuditLog;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
 import jp.co.sdcj.workflow.domain.NotificationOutbox;
+import jp.co.sdcj.workflow.service.AuditLogService;
+import jp.co.sdcj.workflow.service.PermissionCodes;
+import jp.co.sdcj.workflow.service.PermissionService;
+import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisFileInspector;
+import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProvider;
+import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRegistry;
+import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisService;
+import jp.co.sdcj.workflow.storage.DocumentAnalysisStorage;
 
 /**
  * PostgreSQL-only repository checks for parameter types that H2 cannot model
@@ -54,6 +79,12 @@ class PostgreSqlRepositoryIT {
 
     @Autowired
     private NotificationOutboxRepository notificationOutboxRepository;
+
+    @Autowired
+    private DocumentAnalysisJobRepository documentAnalysisJobRepository;
+
+    @Autowired
+    private AppUserRepository appUserRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -151,9 +182,155 @@ class PostgreSqlRepositoryIT {
         }
     }
 
+    @Test
+    void documentAnalysisClaimSkipsRowsLockedByAnotherDispatcher() throws Exception {
+        UUID analysisId = UUID.randomUUID();
+        insertDocumentAnalysisJob(analysisId, "QUEUED", null);
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var firstDispatcher = executor.submit(() -> transactions.execute(status -> {
+                List<DocumentAnalysisJob> claimed = documentAnalysisJobRepository
+                        .findQueuedForUpdateSkipLocked(Instant.now(), 10);
+                locked.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Timed out holding the document row lock");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                return claimed;
+            }));
+
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            List<DocumentAnalysisJob> secondClaim = transactions.execute(status ->
+                    documentAnalysisJobRepository.findQueuedForUpdateSkipLocked(Instant.now(), 10));
+            assertThat(secondClaim).isEmpty();
+            release.countDown();
+            assertThat(firstDispatcher.get(5, TimeUnit.SECONDS))
+                    .singleElement()
+                    .extracting(DocumentAnalysisJob::getId)
+                    .isEqualTo(analysisId);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void documentAnalysisClaimSkipsExpiredQueuedRows() {
+        UUID expired = UUID.randomUUID();
+        UUID active = UUID.randomUUID();
+        Instant now = Instant.parse("2026-08-08T00:00:00Z");
+        insertDocumentAnalysisJob(expired, "QUEUED", null, now.minusSeconds(1));
+        insertDocumentAnalysisJob(active, "QUEUED", null, now.plusSeconds(1));
+
+        List<DocumentAnalysisJob> jobs = new TransactionTemplate(transactionManager).execute(status ->
+                documentAnalysisJobRepository.findQueuedForUpdateSkipLocked(now, 10));
+
+        assertThat(jobs).extracting(DocumentAnalysisJob::getId).containsExactly(active);
+    }
+
+    @Test
+    void documentAnalysisStaleQueryUsesLeaseExpiry() {
+        UUID stale = UUID.randomUUID();
+        UUID fresh = UUID.randomUUID();
+        insertDocumentAnalysisJob(stale, "RUNNING", Instant.parse("2026-08-01T00:00:00Z"));
+        insertDocumentAnalysisJob(fresh, "RUNNING", Instant.parse("2026-08-01T00:10:00Z"));
+
+        List<DocumentAnalysisJob> jobs = new TransactionTemplate(transactionManager).execute(status ->
+                documentAnalysisJobRepository.findStaleRunningForUpdateSkipLocked(
+                        Instant.parse("2026-08-01T00:05:00Z")));
+
+        assertThat(jobs).extracting(DocumentAnalysisJob::getId).containsExactly(stale);
+    }
+
+    @Test
+    void documentAnalysisCreateSerializesActiveJobLimitWithAppUserPessimisticWrite()
+            throws Exception {
+        AppUser owner = appUserRepository.findById(LEGACY_ADMIN_ID).orElseThrow();
+        DocumentAnalysisStorage storage = mock(DocumentAnalysisStorage.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        AuditLogService auditLogService = mock(AuditLogService.class);
+        CountDownLatch inputsStored = new CountDownLatch(2);
+        CountDownLatch releaseCreateTransactions = new CountDownLatch(1);
+        CountDownLatch firstTransactionAtAudit = new CountDownLatch(1);
+        CountDownLatch releaseFirstTransaction = new CountDownLatch(1);
+
+        doAnswer(invocation -> {
+            inputsStored.countDown();
+            if (!releaseCreateTransactions.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to start concurrent requests");
+            }
+            return null;
+        }).when(storage).storeInput(anyString(), any(byte[].class), anyString());
+        doAnswer(invocation -> {
+            firstTransactionAtAudit.countDown();
+            if (!releaseFirstTransaction.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out while holding AppUser row lock");
+            }
+            return null;
+        }).when(auditLogService).recordSuccess(
+                any(), eq("DOCUMENT_ANALYSIS_REQUESTED"), eq("DOCUMENT_ANALYSIS"),
+                anyString(), any(), any(), any());
+        when(permissionService.hasPermission(
+                owner.getId(), PermissionCodes.DOCUMENT_INTELLIGENCE_ANALYZE)).thenReturn(true);
+
+        DocumentAnalysisService service = new DocumentAnalysisService(
+                new DocumentAnalysisFileInspector(properties(1)),
+                documentAnalysisJobRepository,
+                appUserRepository,
+                storage,
+                properties(1),
+                new DocumentAnalysisProviderRegistry(List.of(availableProvider())),
+                permissionService,
+                auditLogService,
+                transactionManager);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> create(service, owner, "first.pdf"));
+            var second = executor.submit(() -> create(service, owner, "second.pdf"));
+
+            assertThat(inputsStored.await(5, TimeUnit.SECONDS)).isTrue();
+            releaseCreateTransactions.countDown();
+            assertThat(firstTransactionAtAudit.await(5, TimeUnit.SECONDS)).isTrue();
+
+            // The first request still owns the AppUser PESSIMISTIC_WRITE lock, so the
+            // competing active-job check cannot complete until that transaction commits.
+            assertThat(first.isDone()).isFalse();
+            assertThat(second.isDone()).isFalse();
+
+            releaseFirstTransaction.countDown();
+            List<CreateOutcome> outcomes = List.of(
+                    first.get(5, TimeUnit.SECONDS),
+                    second.get(5, TimeUnit.SECONDS));
+
+            List<ApiException> failures = outcomes.stream()
+                    .map(CreateOutcome::failure)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            assertThat(outcomes).filteredOn(CreateOutcome::succeeded).hasSize(1);
+            assertThat(failures).singleElement().satisfies(failure -> {
+                assertThat(failure.getStatus()).isEqualTo(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS);
+                assertThat(failure.getCode()).isEqualTo("DOCUMENT_ANALYSIS_CONCURRENCY_LIMIT");
+            });
+        } finally {
+            releaseCreateTransactions.countDown();
+            releaseFirstTransaction.countDown();
+        }
+
+        assertThat(documentAnalysisJobRepository.countByRequestedByUserIdAndStatusIn(
+                owner.getId(), List.of(DocumentAnalysisStatus.QUEUED, DocumentAnalysisStatus.RUNNING)))
+                .isEqualTo(1);
+    }
+
     @AfterEach
     void removeNotificationFixtures() {
         jdbcTemplate.update("delete from notification_outbox");
+        jdbcTemplate.update("delete from document_analysis_jobs");
     }
 
     private void insertNotification(UUID id, UUID sourceId, String deduplicationKey) {
@@ -169,11 +346,109 @@ class PostgreSqlRepositoryIT {
                 """, id, sourceId, deduplicationKey);
     }
 
+    private void insertDocumentAnalysisJob(UUID id, String status, Instant leaseExpiresAt) {
+        insertDocumentAnalysisJob(id, status, leaseExpiresAt, null);
+    }
+
+    private void insertDocumentAnalysisJob(
+            UUID id,
+            String status,
+            Instant leaseExpiresAt,
+            Instant expiresAt) {
+        jdbcTemplate.update("""
+                insert into document_analysis_jobs (
+                    id, provider, model_id, provider_api_version, normalized_schema_version,
+                    status, requested_by_user_id, original_file_name, content_type,
+                    file_size, sha256, input_object_name, attempt_count, lease_expires_at,
+                    expires_at, created_by, created_at, updated_by, updated_at, version
+                ) values (?, 'DOCUMENT_INTELLIGENCE', 'prebuilt-layout', '2024-11-30', 1,
+                          ?, ?, 'source.pdf', 'application/pdf',
+                          100, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                          ?, 0, ?, coalesce(?, current_timestamp + interval '7 days'),
+                          ?, current_timestamp, ?, current_timestamp, 0)
+                """, id, status, LEGACY_ADMIN_ID, "input/%s/source".formatted(id),
+                leaseExpiresAt == null ? null : Timestamp.from(leaseExpiresAt),
+                expiresAt == null ? null : Timestamp.from(expiresAt),
+                LEGACY_ADMIN_ID, LEGACY_ADMIN_ID);
+    }
+
     private static String requiredEnvironment(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
             throw new IllegalStateException(name + " must be set for PostgreSqlRepositoryIT");
         }
         return value;
+    }
+
+    private static CreateOutcome create(
+            DocumentAnalysisService service,
+            AppUser owner,
+            String fileName) {
+        MultipartFile file = new MockMultipartFile(
+                "file", fileName, "application/pdf", "%PDF-1.4\n".getBytes());
+        try {
+            service.create(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE, file, owner);
+            return CreateOutcome.success();
+        } catch (ApiException exception) {
+            return CreateOutcome.failure(exception);
+        }
+    }
+
+    private static DocumentAnalysisProvider availableProvider() {
+        return new DocumentAnalysisProvider() {
+            @Override
+            public boolean supports(DocumentAnalysisProviderType provider) {
+                return provider == DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE;
+            }
+
+            @Override
+            public jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderResult analyze(
+                    jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRequest request) {
+                throw new UnsupportedOperationException("Provider dispatch is outside create coverage");
+            }
+        };
+    }
+
+    private static DocumentAnalysisProperties properties(int maxActiveJobsPerUser) {
+        return new DocumentAnalysisProperties(
+                true,
+                DocumentAnalysisProperties.ExecutionMode.FAKE,
+                org.springframework.util.unit.DataSize.ofMegabytes(10),
+                255,
+                Duration.ofDays(7),
+                Duration.ofHours(1),
+                50,
+                2,
+                Duration.ofHours(1),
+                Duration.ofMinutes(30),
+                maxActiveJobsPerUser,
+                20,
+                new DocumentAnalysisProperties.Azure(null),
+                new DocumentAnalysisProperties.Provider(
+                        true, null, "prebuilt-layout", "2024-11-30", Duration.ofMinutes(25)),
+                new DocumentAnalysisProperties.Provider(
+                        true, null, "prebuilt-layout", "2025-11-01", Duration.ofMinutes(25)),
+                new DocumentAnalysisProperties.Storage(
+                        null,
+                        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+                                + "AccountKey=test;BlobEndpoint=http://azurite:10000/devstoreaccount1;",
+                        null,
+                        "document-analysis-input",
+                        "document-analysis-result",
+                        false));
+    }
+
+    private record CreateOutcome(ApiException failure) {
+        private static CreateOutcome success() {
+            return new CreateOutcome(null);
+        }
+
+        private static CreateOutcome failure(ApiException failure) {
+            return new CreateOutcome(failure);
+        }
+
+        private boolean succeeded() {
+            return failure == null;
+        }
     }
 }

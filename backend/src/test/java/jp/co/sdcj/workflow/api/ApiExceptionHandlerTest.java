@@ -25,4 +25,21 @@ class ApiExceptionHandlerTest {
                 "EXPENSE_ATTACHMENT_TOO_LARGE",
                 "ファイルサイズが上限を超えています。"));
     }
+
+    @Test
+    void documentAnalysisのmultipartサイズ超過は専用コードへ変換する() {
+        ApiExceptionHandler handler = new ApiExceptionHandler(
+                mock(ManagementFailureAuditService.class));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/document-analyses");
+
+        var response = handler.handleMaxUploadSizeExceeded(
+                new MaxUploadSizeExceededException(1024),
+                request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(413);
+        assertThat(response.getBody()).isEqualTo(new ApiError(
+                "DOCUMENT_ANALYSIS_TOO_LARGE",
+                "ファイルサイズが上限を超えています。"));
+    }
 }

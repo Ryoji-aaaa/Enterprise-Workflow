@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties({
     SecurityProperties.class,
     NotificationProperties.class,
-    AttachmentProperties.class
+    AttachmentProperties.class,
+    DocumentAnalysisProperties.class
 })
 public class WorkflowPropertiesConfig {
 }

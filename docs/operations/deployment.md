@@ -55,6 +55,74 @@ PRの環境別planを有効にする前に、`staging-plan`と`production-plan`�
 `AZURE_OIDC_CONFIGURED=true`へ変更せず、workflowが`Azure plan skipped`ではなくstaging、
 production双方の`Terraform plan`まで成功したことを確認する。
 
+Document Analysis Azure mode用に、`staging-plan`、`staging`、`production-plan`、`production`へ次の
+resource名を環境ごとに登録する。値はsecretではなく、workflowやTerraformコードへ実名を固定しない。
+
+```text
+AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME
+AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME
+AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME
+```
+
+activation flagは次の3つである。未設定時はworkflowで`false`として扱う。
+
+```text
+WORKFLOW_DOCUMENT_ANALYSIS_ENABLED
+DOCUMENT_INTELLIGENCE_ENABLED
+CONTENT_UNDERSTANDING_ENABLED
+```
+
+stagingのDocument Analysis rolloutは二段階で行う。Phase Aでは3つのactivation flagをすべて`false`にして
+Terraform plan/applyし、Document Intelligence、Foundry、Document Analysis Storage、2つのcontainer、
+2つの専用User Assigned Managed Identity、3つのPrivate Endpoint、Private DNS link、RBAC role
+assignmentが作成されていることを確認する。Document IntelligenceとFoundryはlocal auth disabled、
+public network disabled、Storageはshared key disabled、public network disabledであることも確認する。
+この段階ではBackendの既存機能が正常であり、Document Analysis runtimeは`disabled`である。
+
+Phase BはPhase A成功後だけ実施する。stagingの3つのactivation flagを`true`に変更し、同じ検証済み
+image SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
+`AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、`DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`、
+Document Intelligence/Content Understanding endpoint、Document Analysis Storage endpointとcontainer名が
+設定されていることを確認する。既存の`AZURE_CLIENT_ID`は経費証憑Blob専用identityのclient IDのままである。
+Content UnderstandingのendpointはTerraform outputだけで確定せず、現在のJava
+`ContentUnderstandingClient`で`prebuilt-layout`分析が成功することをstaging smokeで確認する。
+もしFoundry resourceの標準endpointがSDK contractと合わないことをlive smokeで確認した場合だけ、
+services.ai系などSDKが受け付けるendpointへTerraformを修正し、`make verify-infra`とplanを再実行する。
+public networkを一時的に有効化して回避しない。
+
+Private DNSはBackend Container App内部から確認する。`az containerapp exec`などでBackend revision内から
+Document Intelligence endpoint、Content Understanding endpoint、Storage blob endpointを名前解決し、
+private IPが返ることを確認する。GitHub-hosted runnerや運用端末からprivate IPへ直接接続できることは
+期待しない。public IPへ解決される場合は、activation flagを有効にしたままsmoke testへ進まない。
+
+RBACはAzure CLIで次を確認する。一時回避としてOwner、Contributor、Content Understanding Contributor、
+Storage Account Contributorなどを追加しない。
+
+```text
+Document Analysis AI UAMI:
+  Document Intelligence scope: Cognitive Services Data Reader
+  Foundry scope: Cognitive Services Content Understanding Reader
+
+Document Analysis Storage UAMI:
+  document-analysis-input container scope: Storage Blob Data Contributor
+  document-analysis-result container scope: Storage Blob Data Contributor
+```
+
+staging application smokeは既存Frontendから行う。`/document-intelligence`で小さいPDFを分析し、
+`QUEUED`または`RUNNING`から`SUCCEEDED`になり、Markdown、Paragraphs、Tables、Raw Resultが表示されることを
+確認する。Raw Resultが`backend-fake-provider`ではなくDocument Intelligence native resultであることも
+確認する。`/content-understanding`でも同様に`CONTENT_UNDERSTANDING` providerとして成功し、API
+`2025-11-01`で処理されることを確認する。Content Understandingの`prebuilt-layout`ではFoundry model
+deploymentが0件でも分析できる。
+保持期限確認では期限切れJobのBlob cleanup後もPostgreSQLのJob metadataが`EXPIRED`で残ることを確認する。
+`RUNNING`はcleanup対象ではなく、lease expiry後に`FAILED_RECOVERY_REQUIRED`となってからcleanup対象になる。
+
+BrowserのNetwork logには`*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、
+`*.blob.core.windows.net`への直接requestが存在せず、従来どおり`/api/backend/...`だけを呼ぶことを確認する。
+productionではPlan7導入時点で`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED=false`を維持する。production activationは
+stagingのDocument Intelligence成功、Content Understanding成功、RBAC確認、Private DNS確認、cost/retention
+確認、検証済みimage SHA promotionの後に明示的に行う。
+
 ## stagingの確認項目
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、
@@ -64,7 +132,7 @@ Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。dep
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV013）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV014）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
@@ -88,6 +156,8 @@ System log、Log Analytics、依存先の順に調べる。代表例は次のと
 | Container Apps Jobが`Failed` | System logだけで判断せず、対象executionのConsole logでSpring例外と`manual_seed_result ... failed=...`を確認する。部分成功後は原因を直し、冪等な対象Jobを再実行する。 |
 | Flyway V007が失敗 | 旧revisionの停止とwrite drain、reconciliation対象データ、Console log、履歴を確認する。`flyway repair`は使用せず、原因を解消してcontract deployを再試行する。 |
 | 添付APIが`EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE` | Backend revisionにBlob専用identityとendpoint/container/client IDがあること、container scope RBACが反映済みであること、Storage Accountのservice状態を確認する。connection stringやshared keyを追加せずTerraformを修正する。 |
+| Document AnalysisがAzureで`401`または`403`になる | `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`がAI専用identityを指すこと、Document Intelligenceに`Cognitive Services Data Reader`、Foundryに`Cognitive Services Content Understanding Reader`が付与されていること、RBAC propagationを確認する。API Key、client secret、Owner/Contributorを追加しない。 |
+| Document Analysis Storageが利用できない | `DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`がStorage専用identityを指すこと、input/result container scopeに`Storage Blob Data Contributor`があること、Storage Private EndpointとBlob Private DNSを確認する。既存の経費証憑Storageや`AZURE_CLIENT_ID`へ切り替えない。 |
 
 PortalでTerraform管理の環境変数、secret参照、probe、trafficを恒久変更しない。調査中に必要な
 構成差分が判明した場合はコードと文書をレビューし、GitHub Actionsからapplyする。

@@ -41,6 +41,45 @@ BackendにはBlob専用User Assigned Managed Identityを追加し、container sc
 Blob RBACを付与しない。BackendにはBlob endpoint、container名、専用identityのclient IDだけを
 渡し、connection string、Storage key、SASは使用しない。
 
+Document Analysisは環境ごとにAzure AI Document Intelligence resource、
+Microsoft Foundry用の`AIServices` resource、専用Storage Account、Private Endpoint、Private DNSを
+Terraformで作成する。Document Intelligenceは`FormRecognizer`、Foundryは`AIServices`で、どちらも
+SKUは`S0`、custom subdomainを設定し、local authenticationとpublic network accessを無効化する。
+Document Intelligenceは`prebuilt-layout`とAPI `2024-11-30`、Content Understandingは
+`prebuilt-layout`とAPI `2025-11-01`を使う。Foundry model deployment、GPT deployment、embedding
+deployment、Custom Analyzerは作成しない。
+
+Document Analysis用Storage Accountは経費証憑用Storage Accountと分離し、
+`document-analysis-input`と`document-analysis-result`の2つの非公開containerだけを持つ。Shared Key、
+Storage connection string、SASは使わず、OAuthを既定認証にする。soft deleteは7日であり、Plan8以降の
+application retention cleanupとは別の誤削除復旧windowである。
+
+Backend Container Appには既存のruntime identity、既存の経費証憑Blob専用identityに加え、
+Document Analysis AI専用identityとStorage専用identityをattachする。既存の`AZURE_CLIENT_ID`は
+経費証憑Blob専用identityのclient IDのまま維持し、Document Analysis AIには
+`AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、Document Analysis Storageには
+`DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`を使う。AI専用identityにはDocument Intelligence
+resource scopeの`Cognitive Services Data Reader`とFoundry resource scopeの
+`Cognitive Services Content Understanding Reader`だけを付与する。Storage専用identityにはinput/result
+各container scopeの`Storage Blob Data Contributor`だけを付与し、Storage Account全体やFrontend、
+Keycloak、seed Jobへは付与しない。
+
+Private Endpoint専用subnetはContainer Apps subnet、PostgreSQL subnetと分ける。既定CIDRはstagingが
+`10.40.3.0/24`、productionが`10.50.3.0/24`である。Document IntelligenceとFoundryは`account`
+subresource、Document Analysis Storageは`blob` subresourceだけをPrivate Endpoint化する。Private DNS
+zoneは`privatelink.cognitiveservices.azure.com`、`privatelink.openai.azure.com`、
+`privatelink.services.ai.azure.com`、`privatelink.blob.core.windows.net`を環境VNetへlinkする。
+BackendからのAzure AI/Blob呼び出しはPrivate Endpoint経由で行い、Browserは引き続きNext.js BFFだけへ
+通信する。
+
+Document Analysis runtimeは`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INTELLIGENCE_ENABLED`、
+`CONTENT_UNDERSTANDING_ENABLED`で有効化する。productionではPlan7導入だけでruntimeを有効化せず、
+stagingのDocument Intelligence、Content Understanding、Private DNS、RBAC、cost、retention確認後に
+明示的に切り替える。
+application retention cleanupはBackendの既定値で1時間ごと、最大50件ずつ実行し、期限切れJobの
+input/result Blobだけを削除してPostgreSQL metadataを`EXPIRED`として残す。Azure Storageの7日soft
+deleteは誤削除復旧windowであり、application retentionの代替ではない。
+
 全Container Appは共通の環境別User Assigned Managed Identityを持ち、Backendだけが前述のBlob専用
 identityも持つ。ACRからのpullには
 `AcrPull`、Key Vault secret参照には`Key Vault Secrets User`を使い、ACR admin userや

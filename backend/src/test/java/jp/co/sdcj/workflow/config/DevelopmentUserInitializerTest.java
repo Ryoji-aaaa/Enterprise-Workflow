@@ -33,6 +33,7 @@ import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
 import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
 import jp.co.sdcj.workflow.service.AuditActor;
 import jp.co.sdcj.workflow.service.AuditLogService;
+import jp.co.sdcj.workflow.service.RoleCodes;
 import jp.co.sdcj.workflow.service.UserAccountService;
 import jp.co.sdcj.workflow.service.UserOrganizationAssignmentService;
 import jp.co.sdcj.workflow.service.UserRoleAssignmentService;
@@ -113,5 +114,6 @@ class DevelopmentUserInitializerTest {
                     .toInstant();
             assertThat(validFrom).isEqualTo(utcDayStart).isBeforeOrEqualTo(Instant.now());
         });
+        verify(roleRepository).findByRoleCode(RoleCodes.DOCUMENT_ANALYSIS_USER);
     }
 }

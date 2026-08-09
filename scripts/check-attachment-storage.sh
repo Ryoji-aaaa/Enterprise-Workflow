@@ -25,10 +25,12 @@ grep -Fq 'container_access_type = "private"' "${STORAGE_FILE}"
 grep -Fq 'soft_delete_retention_days = 30' "${STACK_FILE}"
 grep -Fq 'role_definition_name = "Storage Blob Data Contributor"' "${STACK_FILE}"
 grep -Fq 'scope                = module.attachment_storage.container_scope' "${STACK_FILE}"
-grep -Fq 'additional_identity_ids      = [module.backend_blob_identity.id]' "${STACK_FILE}"
+backend_module_block="$(sed -n '/module "backend" {/,/^}/p' "${STACK_FILE}")"
+grep -Fq 'additional_identity_ids = [' <<<"${backend_module_block}"
+grep -Fq 'module.backend_blob_identity.id' <<<"${backend_module_block}"
 grep -Fq 'AZURE_STORAGE_BLOB_ENDPOINT' "${STACK_FILE}"
 grep -Fq 'AZURE_CLIENT_ID' "${STACK_FILE}"
-grep -Fq 'ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"' "${STACK_FILE}"
+grep -Eq 'ATTACHMENT_STORAGE_CREATE_CONTAINER[[:space:]]*=[[:space:]]*"false"' "${STACK_FILE}"
 grep -Fq 'identity_ids = concat([var.identity_id], tolist(var.additional_identity_ids))' \
   "${CONTAINER_APP_FILE}"
 for provider_file in "${ENVIRONMENT_PROVIDER_FILES[@]}"; do
@@ -58,10 +60,10 @@ done
 grep -Fq 'target_environment: staging' "${TERRAFORM_PLAN_WORKFLOW}"
 grep -Fq 'target_environment: production' "${TERRAFORM_PLAN_WORKFLOW}"
 
-[[ "$(grep -Fc 'additional_identity_ids      = [module.backend_blob_identity.id]' \
+[[ "$(grep -Fc 'scope                = module.attachment_storage.container_scope' \
   "${STACK_FILE}")" == "1" ]]
-[[ "$(grep -Fc 'role_definition_name = "Storage Blob Data Contributor"' \
-  "${STACK_FILE}")" == "1" ]]
+[[ "$(grep -Fc 'principal_id         = module.backend_blob_identity.principal_id' \
+  "${STACK_FILE}")" -ge "1" ]]
 
 for container_app_module in keycloak frontend; do
   module_block="$(sed -n "/module \"${container_app_module}\" {/,/^}/p" "${STACK_FILE}")"

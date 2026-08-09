@@ -17,7 +17,8 @@
   [組織図](frontend/organization-chart.md) /
   [ユーザー管理](frontend/user-management.md) /
   [経費精算申請](frontend/expense-application.md) /
-  [メール通知履歴](frontend/mail-notification-history.md)
+  [メール通知履歴](frontend/mail-notification-history.md) /
+  [Document Analysis](frontend/document-analysis.md)
 - Backend:
   [Spring Boot](backend/spring-boot.md) /
   [Flyway](backend/flyway.md) /
@@ -27,6 +28,7 @@
   [監査ログ](backend/audit-logging.md) /
   [経費精算申請](backend/expense-application.md) /
   [ローカルメール通知Outbox](backend/notification-outbox.md) /
+  [Document Analysis](backend/document-analysis.md) /
   [開発・staging用seedデータ](backend/development-seed-data.md)
 - Infrastructure:
   [Docker Compose](infrastructure/docker-compose.md) /
@@ -64,6 +66,7 @@
 - [ADR-0014: 経費承認経路の申請時確定](decisions/ADR-0014-expense-approval-route-resolution.md)
 - [ADR-0015: 経費証憑のBackend専用Blob Storage](decisions/ADR-0015-expense-attachment-blob-storage.md)
 - [ADR-0016: ローカルMailpitとTransactional Outbox](decisions/ADR-0016-local-mailpit-transactional-outbox.md)
+- [ADR-0017: Document AnalysisをBFF境界と非同期Jobで実装](decisions/ADR-0017-document-analysis-architecture.md)
 
 ## 履歴資料
 

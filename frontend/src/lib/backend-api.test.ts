@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canUseContentUnderstanding,
+  canUseDocumentIntelligence,
   canViewMailNotificationHistory,
   canViewOrganizationChart,
   requestBackendMe,
@@ -18,7 +20,11 @@ const currentUser: CurrentUser = {
   department: { name: "開発部" },
   roles: ["USER"],
   permissions: ["WORKFLOW_SUBMIT", "ORGANIZATION_CHART_READ"],
-  features: { mailNotificationHistory: true },
+  features: {
+    mailNotificationHistory: true,
+    documentIntelligence: true,
+    contentUnderstanding: true,
+  },
 };
 
 test("組織図メニューは権限を持つ正社員と準社員だけに許可する", () => {
@@ -42,7 +48,42 @@ test("メール通知履歴はローカル機能フラグとDB権限が両方あ
   assert.equal(canViewMailNotificationHistory(currentUser), false);
   assert.equal(canViewMailNotificationHistory({
     ...permitted,
-    features: { mailNotificationHistory: false },
+    features: {
+      ...permitted.features,
+      mailNotificationHistory: false,
+    },
+  }), false);
+});
+
+test("Document Intelligenceは機能フラグとDB権限が両方ある場合だけ許可する", () => {
+  const permitted = {
+    ...currentUser,
+    permissions: [...currentUser.permissions, "DOCUMENT_INTELLIGENCE_ANALYZE"],
+  };
+  assert.equal(canUseDocumentIntelligence(permitted), true);
+  assert.equal(canUseDocumentIntelligence(currentUser), false);
+  assert.equal(canUseDocumentIntelligence({
+    ...permitted,
+    features: {
+      ...permitted.features,
+      documentIntelligence: false,
+    },
+  }), false);
+});
+
+test("Content Understandingは機能フラグとDB権限が両方ある場合だけ許可する", () => {
+  const permitted = {
+    ...currentUser,
+    permissions: [...currentUser.permissions, "CONTENT_UNDERSTANDING_ANALYZE"],
+  };
+  assert.equal(canUseContentUnderstanding(permitted), true);
+  assert.equal(canUseContentUnderstanding(currentUser), false);
+  assert.equal(canUseContentUnderstanding({
+    ...permitted,
+    features: {
+      ...permitted.features,
+      contentUnderstanding: false,
+    },
   }), false);
 });
 

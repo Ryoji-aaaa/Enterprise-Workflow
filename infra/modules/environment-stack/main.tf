@@ -22,14 +22,15 @@ module "monitoring" {
 module "container_app_environment" {
   source = "../container-app-environment"
 
-  name                           = var.container_app_environment_name
-  location                       = var.location
-  resource_group_name            = data.azurerm_resource_group.this.name
-  log_analytics_workspace_id     = module.monitoring.id
-  vnet_name                      = "vnet-enterprise-workflow-${var.environment}"
-  vnet_address_space             = var.vnet_address_space
-  infrastructure_subnet_prefixes = var.container_apps_subnet_prefixes
-  postgres_subnet_prefixes       = var.postgres_subnet_prefixes
+  name                             = var.container_app_environment_name
+  location                         = var.location
+  resource_group_name              = data.azurerm_resource_group.this.name
+  log_analytics_workspace_id       = module.monitoring.id
+  vnet_name                        = "vnet-enterprise-workflow-${var.environment}"
+  vnet_address_space               = var.vnet_address_space
+  infrastructure_subnet_prefixes   = var.container_apps_subnet_prefixes
+  postgres_subnet_prefixes         = var.postgres_subnet_prefixes
+  private_endpoint_subnet_prefixes = var.private_endpoint_subnet_prefixes
 }
 
 module "runtime_identity" {
@@ -62,6 +63,202 @@ resource "azurerm_role_assignment" "backend_attachment_blob" {
   scope                = module.attachment_storage.container_scope
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = module.backend_blob_identity.principal_id
+}
+
+module "document_analysis_ai_identity" {
+  source = "../identity"
+
+  name                = "uami-enterprise-workflow-${var.environment}-backend-document-analysis-ai"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+module "document_analysis_storage_identity" {
+  source = "../identity"
+
+  name                = "uami-enterprise-workflow-${var.environment}-backend-document-analysis-storage"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+module "document_intelligence" {
+  source = "../cognitive-account"
+
+  name                       = var.document_intelligence_account_name
+  location                   = var.location
+  resource_group_name        = data.azurerm_resource_group.this.name
+  kind                       = "FormRecognizer"
+  sku_name                   = "S0"
+  project_management_enabled = false
+}
+
+module "content_understanding" {
+  source = "../cognitive-account"
+
+  name                       = var.content_understanding_account_name
+  location                   = var.location
+  resource_group_name        = data.azurerm_resource_group.this.name
+  kind                       = "AIServices"
+  sku_name                   = "S0"
+  project_management_enabled = false
+}
+
+module "document_analysis_storage" {
+  source = "../document-analysis-storage"
+
+  name                       = var.document_analysis_storage_account_name
+  location                   = var.location
+  resource_group_name        = data.azurerm_resource_group.this.name
+  input_container_name       = "document-analysis-input"
+  result_container_name      = "document-analysis-result"
+  soft_delete_retention_days = 7
+}
+
+resource "azurerm_role_assignment" "document_intelligence_reader" {
+  scope                = module.document_intelligence.id
+  role_definition_name = "Cognitive Services Data Reader"
+  principal_id         = module.document_analysis_ai_identity.principal_id
+}
+
+resource "azurerm_role_assignment" "content_understanding_reader" {
+  scope                = module.content_understanding.id
+  role_definition_name = "Cognitive Services Content Understanding Reader"
+  principal_id         = module.document_analysis_ai_identity.principal_id
+}
+
+resource "azurerm_role_assignment" "document_analysis_input_blob" {
+  scope                = module.document_analysis_storage.input_container_scope
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = module.document_analysis_storage_identity.principal_id
+}
+
+resource "azurerm_role_assignment" "document_analysis_result_blob" {
+  scope                = module.document_analysis_storage.result_container_scope
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = module.document_analysis_storage_identity.principal_id
+}
+
+resource "azurerm_private_dns_zone" "cognitive_services" {
+  name                = "privatelink.cognitiveservices.azure.com"
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+resource "azurerm_private_dns_zone" "openai" {
+  name                = "privatelink.openai.azure.com"
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+resource "azurerm_private_dns_zone" "services_ai" {
+  name                = "privatelink.services.ai.azure.com"
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+resource "azurerm_private_dns_zone" "blob" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = data.azurerm_resource_group.this.name
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "cognitive_services" {
+  name                  = "vnet-enterprise-workflow-${var.environment}-cognitive-services"
+  private_dns_zone_name = azurerm_private_dns_zone.cognitive_services.name
+  resource_group_name   = data.azurerm_resource_group.this.name
+  virtual_network_id    = module.container_app_environment.vnet_id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "openai" {
+  name                  = "vnet-enterprise-workflow-${var.environment}-openai"
+  private_dns_zone_name = azurerm_private_dns_zone.openai.name
+  resource_group_name   = data.azurerm_resource_group.this.name
+  virtual_network_id    = module.container_app_environment.vnet_id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "services_ai" {
+  name                  = "vnet-enterprise-workflow-${var.environment}-services-ai"
+  private_dns_zone_name = azurerm_private_dns_zone.services_ai.name
+  resource_group_name   = data.azurerm_resource_group.this.name
+  virtual_network_id    = module.container_app_environment.vnet_id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
+  name                  = "vnet-enterprise-workflow-${var.environment}-blob"
+  private_dns_zone_name = azurerm_private_dns_zone.blob.name
+  resource_group_name   = data.azurerm_resource_group.this.name
+  virtual_network_id    = module.container_app_environment.vnet_id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_endpoint" "document_intelligence" {
+  name                = "pe-enterprise-workflow-${var.environment}-document-intelligence"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.this.name
+  subnet_id           = module.container_app_environment.private_endpoint_subnet_id
+
+  private_service_connection {
+    name                           = "psc-enterprise-workflow-${var.environment}-document-intelligence"
+    private_connection_resource_id = module.document_intelligence.id
+    is_manual_connection           = false
+    subresource_names              = ["account"]
+  }
+
+  private_dns_zone_group {
+    name                 = "document-intelligence"
+    private_dns_zone_ids = [azurerm_private_dns_zone.cognitive_services.id]
+  }
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.cognitive_services]
+}
+
+resource "azurerm_private_endpoint" "content_understanding" {
+  name                = "pe-enterprise-workflow-${var.environment}-content-understanding"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.this.name
+  subnet_id           = module.container_app_environment.private_endpoint_subnet_id
+
+  private_service_connection {
+    name                           = "psc-enterprise-workflow-${var.environment}-content-understanding"
+    private_connection_resource_id = module.content_understanding.id
+    is_manual_connection           = false
+    subresource_names              = ["account"]
+  }
+
+  private_dns_zone_group {
+    name = "content-understanding"
+    private_dns_zone_ids = [
+      azurerm_private_dns_zone.cognitive_services.id,
+      azurerm_private_dns_zone.openai.id,
+      azurerm_private_dns_zone.services_ai.id,
+    ]
+  }
+
+  depends_on = [
+    azurerm_private_dns_zone_virtual_network_link.cognitive_services,
+    azurerm_private_dns_zone_virtual_network_link.openai,
+    azurerm_private_dns_zone_virtual_network_link.services_ai,
+  ]
+}
+
+resource "azurerm_private_endpoint" "document_analysis_blob" {
+  name                = "pe-enterprise-workflow-${var.environment}-document-analysis-blob"
+  location            = var.location
+  resource_group_name = data.azurerm_resource_group.this.name
+  subnet_id           = module.container_app_environment.private_endpoint_subnet_id
+
+  private_service_connection {
+    name                           = "psc-enterprise-workflow-${var.environment}-document-analysis-blob"
+    private_connection_resource_id = module.document_analysis_storage.id
+    is_manual_connection           = false
+    subresource_names              = ["blob"]
+  }
+
+  private_dns_zone_group {
+    name                 = "document-analysis-blob"
+    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
+  }
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.blob]
 }
 
 module "key_vault" {
@@ -108,12 +305,16 @@ module "backend" {
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
   identity_id                  = module.runtime_identity.id
-  additional_identity_ids      = [module.backend_blob_identity.id]
-  registry_server              = module.registry.login_server
-  image                        = "${module.registry.login_server}/enterprise-workflow-backend:${var.image_tag}"
-  target_port                  = 8080
-  external_enabled             = false
-  key_vault_uri                = module.key_vault.vault_uri
+  additional_identity_ids = [
+    module.backend_blob_identity.id,
+    module.document_analysis_ai_identity.id,
+    module.document_analysis_storage_identity.id,
+  ]
+  registry_server  = module.registry.login_server
+  image            = "${module.registry.login_server}/enterprise-workflow-backend:${var.image_tag}"
+  target_port      = 8080
+  external_enabled = false
+  key_vault_uri    = module.key_vault.vault_uri
   environment_variables = merge({
     SPRING_DATASOURCE_URL               = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
     SPRING_DATASOURCE_USERNAME          = "workflow"
@@ -127,6 +328,26 @@ module "backend" {
     AZURE_STORAGE_CONTAINER_NAME        = module.attachment_storage.container_name
     AZURE_CLIENT_ID                     = module.backend_blob_identity.client_id
     ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"
+    WORKFLOW_DOCUMENT_ANALYSIS_ENABLED  = tostring(var.document_analysis_enabled)
+    WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE = (
+      var.document_analysis_enabled ? "azure" : "disabled"
+    )
+    AZURE_DOCUMENT_ANALYSIS_CLIENT_ID                    = module.document_analysis_ai_identity.client_id
+    DOCUMENT_INTELLIGENCE_ENABLED                        = tostring(var.document_analysis_enabled && var.document_intelligence_enabled)
+    DOCUMENT_INTELLIGENCE_ENDPOINT                       = module.document_intelligence.endpoint
+    DOCUMENT_INTELLIGENCE_MODEL_ID                       = "prebuilt-layout"
+    DOCUMENT_INTELLIGENCE_API_VERSION                    = "2024-11-30"
+    DOCUMENT_INTELLIGENCE_ANALYSIS_TIMEOUT               = "25m"
+    CONTENT_UNDERSTANDING_ENABLED                        = tostring(var.document_analysis_enabled && var.content_understanding_enabled)
+    CONTENT_UNDERSTANDING_ENDPOINT                       = module.content_understanding.endpoint
+    CONTENT_UNDERSTANDING_ANALYZER_ID                    = "prebuilt-layout"
+    CONTENT_UNDERSTANDING_API_VERSION                    = "2025-11-01"
+    CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT               = "25m"
+    DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT              = module.document_analysis_storage.primary_blob_endpoint
+    DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID = module.document_analysis_storage_identity.client_id
+    DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME               = module.document_analysis_storage.input_container_name
+    DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME              = module.document_analysis_storage.result_container_name
+    DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
     }, var.contract_legacy_user_columns ? tomap({}) : tomap({
       # Pin only the application-switch deployment. Once the legacy contract is
       # approved, omitting the target lets later Flyway versions apply normally.
@@ -166,6 +387,13 @@ module "backend" {
     module.key_vault,
     azurerm_role_assignment.acr_pull,
     azurerm_role_assignment.backend_attachment_blob,
+    azurerm_role_assignment.document_intelligence_reader,
+    azurerm_role_assignment.content_understanding_reader,
+    azurerm_role_assignment.document_analysis_input_blob,
+    azurerm_role_assignment.document_analysis_result_blob,
+    azurerm_private_endpoint.document_intelligence,
+    azurerm_private_endpoint.content_understanding,
+    azurerm_private_endpoint.document_analysis_blob,
   ]
 }
 

@@ -41,6 +41,38 @@ workflow:
       container-name: expense-evidence
       endpoint: https://127.0.0.1:10000/devstoreaccount1
       create-container: false
+  document-analysis:
+    enabled: false
+    execution-mode: disabled
+    max-file-size: 10MB
+    max-original-file-name-length: 255
+    retention: 7d
+    retention-cleanup-interval: 1h
+    retention-cleanup-batch-size: 50
+    batch-size: 2
+    dispatch-interval: 1h
+    processing-timeout: 30m
+    max-active-jobs-per-user: 2
+    max-requests-per-user-per-hour: 20
+    azure:
+      managed-identity-client-id:
+    document-intelligence:
+      enabled: false
+      endpoint:
+      model-id: prebuilt-layout
+      api-version: 2024-11-30
+      analysis-timeout: 25m
+    content-understanding:
+      enabled: false
+      endpoint:
+      model-id: prebuilt-layout
+      api-version: 2025-11-01
+      analysis-timeout: 25m
+    storage:
+      endpoint: https://127.0.0.1:10000/devstoreaccount1
+      input-container-name: document-analysis-input
+      result-container-name: document-analysis-result
+      create-containers: false
   seed:
     enabled: false
     admin-email: example.admin1@sdcj.co.jp

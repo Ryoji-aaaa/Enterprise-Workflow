@@ -193,7 +193,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V013 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V014 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -223,7 +223,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V013 schema.
+# validates the complete V014 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -654,8 +654,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 13 THEN
-        RAISE EXCEPTION 'expected 13 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 14 THEN
+        RAISE EXCEPTION 'expected 14 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -718,6 +718,30 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'btree_gist') THEN
         RAISE EXCEPTION 'btree_gist is not installed';
+    END IF;
+    IF (SELECT count(*)
+        FROM role_permissions mapping
+        JOIN roles role ON role.id = mapping.role_id
+        JOIN permissions permission ON permission.id = mapping.permission_id
+        WHERE role.role_code IN ('SYSTEM_ADMIN', 'DOCUMENT_ANALYSIS_USER')
+          AND permission.permission_code IN (
+              'DOCUMENT_ANALYSIS_READ_OWN',
+              'DOCUMENT_INTELLIGENCE_ANALYZE',
+              'CONTENT_UNDERSTANDING_ANALYZE')) <> 6 THEN
+        RAISE EXCEPTION 'document analysis role-permission mapping is invalid';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM role_permissions mapping
+        JOIN roles role ON role.id = mapping.role_id
+        JOIN permissions permission ON permission.id = mapping.permission_id
+        WHERE role.role_code = 'APPLICATION_USER'
+          AND permission.permission_code IN (
+              'DOCUMENT_ANALYSIS_READ_OWN',
+              'DOCUMENT_INTELLIGENCE_ANALYZE',
+              'CONTENT_UNDERSTANDING_ANALYZE')
+    ) THEN
+        RAISE EXCEPTION 'APPLICATION_USER must not receive document analysis permissions';
     END IF;
 END;
 $$;
@@ -982,7 +1006,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 13 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 14 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -997,7 +1021,7 @@ BEGIN
         WHERE id = '00000000-0000-0000-0000-000000000001') <> 'SYSTEM' THEN
         RAISE EXCEPTION 'fresh database SYSTEM employment type is invalid';
     END IF;
-    IF (SELECT count(*) FROM roles) <> 9 OR (SELECT count(*) FROM permissions) <> 18 THEN
+    IF (SELECT count(*) FROM roles) <> 10 OR (SELECT count(*) FROM permissions) <> 21 THEN
         RAISE EXCEPTION 'fresh database authorization seeds are invalid';
     END IF;
     IF (SELECT count(*) FROM information_schema.tables
@@ -1038,6 +1062,55 @@ BEGIN
             'ck_expense_application_attachments_deleted'
         )) <> 20 THEN
         RAISE EXCEPTION 'expense application constraints are invalid';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'document_analysis_jobs'
+    ) OR (SELECT count(*) FROM pg_constraint WHERE conname IN (
+            'uk_document_analysis_jobs_input_object',
+            'uk_document_analysis_jobs_raw_result_object',
+            'uk_document_analysis_jobs_normalized_result_object',
+            'ck_document_analysis_jobs_provider',
+            'ck_document_analysis_jobs_status',
+            'ck_document_analysis_jobs_file_size',
+            'ck_document_analysis_jobs_attempt_count',
+            'ck_document_analysis_jobs_normalized_schema_version',
+            'ck_document_analysis_jobs_sha256',
+            'ck_document_analysis_jobs_error_pair',
+            'ck_document_analysis_jobs_result_objects_distinct',
+            'ck_document_analysis_jobs_lease_status'
+        )) <> 12 OR (SELECT count(*) FROM pg_indexes
+          WHERE tablename = 'document_analysis_jobs'
+            AND indexname IN (
+                'ix_document_analysis_jobs_dispatch',
+                'ix_document_analysis_jobs_requested_provider_history',
+                'ix_document_analysis_jobs_retention')) <> 3 THEN
+        RAISE EXCEPTION 'document analysis schema is invalid';
+    END IF;
+    IF (SELECT count(*)
+        FROM role_permissions mapping
+        JOIN roles role ON role.id = mapping.role_id
+        JOIN permissions permission ON permission.id = mapping.permission_id
+        WHERE role.role_code IN ('SYSTEM_ADMIN', 'DOCUMENT_ANALYSIS_USER')
+          AND permission.permission_code IN (
+              'DOCUMENT_ANALYSIS_READ_OWN',
+              'DOCUMENT_INTELLIGENCE_ANALYZE',
+              'CONTENT_UNDERSTANDING_ANALYZE')) <> 6 THEN
+        RAISE EXCEPTION 'document analysis permissions were not assigned';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM role_permissions mapping
+        JOIN roles role ON role.id = mapping.role_id
+        JOIN permissions permission ON permission.id = mapping.permission_id
+        WHERE role.role_code = 'APPLICATION_USER'
+          AND permission.permission_code IN (
+              'DOCUMENT_ANALYSIS_READ_OWN',
+              'DOCUMENT_INTELLIGENCE_ANALYZE',
+              'CONTENT_UNDERSTANDING_ANALYZE')
+    ) THEN
+        RAISE EXCEPTION 'APPLICATION_USER must not receive document analysis permissions';
     END IF;
     IF (SELECT count(*)
         FROM role_permissions mapping
@@ -1106,10 +1179,10 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 13
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 14
        OR (SELECT count(*) FROM app_users) <> 1
-       OR (SELECT count(*) FROM roles) <> 9
-       OR (SELECT count(*) FROM permissions) <> 18
+       OR (SELECT count(*) FROM roles) <> 10
+       OR (SELECT count(*) FROM permissions) <> 21
        OR (SELECT count(*) FROM audit_logs
            WHERE action_type = 'MIGRATE_EXISTING_USER_DATA') <> 1 THEN
         RAISE EXCEPTION 'second startup was not idempotent';

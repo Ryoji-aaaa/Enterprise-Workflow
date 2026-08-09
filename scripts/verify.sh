@@ -233,13 +233,14 @@ WHERE table_schema = 'public'
     'expense_approval_steps',
     'expense_approval_candidates',
     'expense_application_attachments',
-    'notification_outbox'
+    'notification_outbox',
+    'document_analysis_jobs'
   );
 SQL
   )"
-  [[ "${schema_table_count}" == "22" ]] || {
+  [[ "${schema_table_count}" == "23" ]] || {
     fail_check "Flyway history and workflow schema tables were not initialized." \
-      "22 tables" "${schema_table_count} tables"
+      "23 tables" "${schema_table_count} tables"
   }
 
   migration_summary="$(
@@ -263,7 +264,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V010__create_expense_application_attachment_schema.sql',
     'V011__create_notification_outbox.sql',
     'V012__backfill_access_request_notification_queue.sql',
-    'V013__add_mail_notification_read_permission.sql'
+    'V013__add_mail_notification_read_permission.sql',
+    'V014__create_document_analysis_schema.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -272,9 +274,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "13:13" ]] || {
+  [[ "${migration_summary}" == "14:14" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "13 total migrations:13 successful checksummed migrations" "${migration_summary}"
+      "14 total migrations:14 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(
@@ -334,9 +336,9 @@ SELECT
       AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP));
 SQL
   )"
-  [[ "${development_organization_summary}" == "69:39:7:71:184" ]] || {
+  [[ "${development_organization_summary}" == "69:39:7:71:185" ]] || {
     fail_check "Development organization seed data does not match." \
-      "users:units:positions:assignments:roles = 69:39:7:71:184" \
+      "users:units:positions:assignments:roles = 69:39:7:71:185" \
       "${development_organization_summary}"
   }
 
@@ -396,9 +398,9 @@ if contains_service frontend; then
       "no DATABASE, DB_, or POSTGRES variables" "one or more matching variables"
   fi
   if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
-    "${frontend_id}" | grep -Ei '^(AZURE_STORAGE|ATTACHMENT_STORAGE)'; then
+    "${frontend_id}" | grep -Ei '^(AZURE_STORAGE|ATTACHMENT_STORAGE|DOCUMENT_ANALYSIS_STORAGE|WORKFLOW_DOCUMENT_ANALYSIS)'; then
     fail_check "Frontend container contains attachment Storage environment variables." \
-      "no AZURE_STORAGE or ATTACHMENT_STORAGE variables" "one or more matching variables"
+      "no AZURE_STORAGE, ATTACHMENT_STORAGE, or DOCUMENT_ANALYSIS storage variables" "one or more matching variables"
   fi
   log_pass "Frontend connectivity and database isolation are valid"
 fi
@@ -432,7 +434,7 @@ if contains_service postgres \
     ([.services.frontend.environment | keys[]
       | select(test("^(DATABASE|DB_|POSTGRES)"; "i"))] | length == 0) and
     ([.services.frontend.environment | keys[]
-      | select(test("^(AZURE_STORAGE|ATTACHMENT_STORAGE)"; "i"))] | length == 0) and
+      | select(test("^(AZURE_STORAGE|ATTACHMENT_STORAGE|DOCUMENT_ANALYSIS_STORAGE|WORKFLOW_DOCUMENT_ANALYSIS)"; "i"))] | length == 0) and
     .networks["application-network"].internal == true and
     .networks["database-network"].internal == true
   ' "${compose_json}" >/dev/null

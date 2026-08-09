@@ -103,7 +103,9 @@ public class DevelopmentUserInitializer implements ApplicationRunner {
         upsert(report, adminEmail, "開発管理者",
                 RoleCodes.SYSTEM_ADMIN, RoleCodes.ORGANIZATION_CHART_VIEWER);
         upsert(report, userEmail, "開発一般ユーザー",
-                RoleCodes.APPLICATION_USER, RoleCodes.ORGANIZATION_CHART_VIEWER);
+                RoleCodes.APPLICATION_USER,
+                RoleCodes.ORGANIZATION_CHART_VIEWER,
+                RoleCodes.DOCUMENT_ANALYSIS_USER);
     }
 
     private void upsert(SeedReport report, String email, String displayName, String... roleCodes) {

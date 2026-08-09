@@ -11,6 +11,9 @@ variable "keycloak_container_app_name" { type = string }
 variable "key_vault_name" { type = string }
 variable "postgres_server_name" { type = string }
 variable "attachment_storage_account_name" { type = string }
+variable "document_intelligence_account_name" { type = string }
+variable "content_understanding_account_name" { type = string }
+variable "document_analysis_storage_account_name" { type = string }
 variable "postgres_administrator_login" {
   type    = string
   default = "workflowadmin"
@@ -32,6 +35,18 @@ variable "contract_legacy_user_columns" {
   type    = bool
   default = false
 }
+variable "document_analysis_enabled" {
+  type    = bool
+  default = false
+}
+variable "document_intelligence_enabled" {
+  type    = bool
+  default = false
+}
+variable "content_understanding_enabled" {
+  type    = bool
+  default = false
+}
 variable "allowed_email_domain" { type = string }
 variable "vnet_address_space" {
   type    = list(string)
@@ -44,4 +59,8 @@ variable "container_apps_subnet_prefixes" {
 variable "postgres_subnet_prefixes" {
   type    = list(string)
   default = ["10.50.2.0/24"]
+}
+variable "private_endpoint_subnet_prefixes" {
+  type    = list(string)
+  default = ["10.50.3.0/24"]
 }
