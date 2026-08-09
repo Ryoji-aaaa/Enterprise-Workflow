@@ -59,6 +59,20 @@ module "attachment_storage" {
   soft_delete_retention_days = 30
 }
 
+resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis" {
+  count = var.environment == "staging" ? 1 : 0
+
+  name = "diag-enterprise-workflow-staging-attachment-blob-write"
+
+  target_resource_id             = "${module.attachment_storage.id}/blobServices/default"
+  log_analytics_workspace_id     = module.monitoring.id
+  log_analytics_destination_type = "Dedicated"
+
+  enabled_log {
+    category = "StorageWrite"
+  }
+}
+
 resource "azurerm_role_assignment" "backend_attachment_blob" {
   scope                = module.attachment_storage.container_scope
   role_definition_name = "Storage Blob Data Contributor"
