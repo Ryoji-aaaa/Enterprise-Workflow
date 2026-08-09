@@ -83,6 +83,7 @@ public class ExpenseApplicationAttachmentService {
                     "attachment_id", attachmentId.toString(),
                     "sha256", validated.sha256()));
         } catch (AttachmentStorageException exception) {
+            logStorageFailure("STORE", applicationId, attachmentId, exception);
             recordStorageFailure(user, applicationId, attachmentId, "STORE_FAILED");
             throw storageUnavailable();
         }
@@ -157,6 +158,7 @@ public class ExpenseApplicationAttachmentService {
             }
             return opened;
         } catch (AttachmentStorageException exception) {
+            logStorageFailure("LOAD", applicationId, attachmentId, exception);
             recordStorageFailure(user, applicationId, attachmentId, "LOAD_FAILED");
             throw storageUnavailable();
         }
@@ -186,12 +188,7 @@ public class ExpenseApplicationAttachmentService {
         try {
             storage.delete(deleted.storageObjectName());
         } catch (AttachmentStorageException exception) {
-            LOGGER.error(
-                    "Attachment Blob deletion failed after metadata commit "
-                            + "applicationId={} attachmentId={} storageObjectName={} "
-                            + "errorType={} retryRequired=true",
-                    applicationId, attachmentId, deleted.storageObjectName(),
-                    exception.getClass().getSimpleName());
+            logStorageFailure("DELETE", applicationId, attachmentId, exception);
             recordDeleteStorageFailure(user, applicationId, attachmentId);
         }
     }
@@ -241,6 +238,11 @@ public class ExpenseApplicationAttachmentService {
     private void compensateUpload(String objectName, UUID applicationId, UUID attachmentId) {
         try {
             storage.delete(objectName);
+        } catch (AttachmentStorageException exception) {
+            logStorageFailure("DELETE", applicationId, attachmentId, exception);
+            LOGGER.error(
+                    "Attachment upload compensation failed applicationId={} attachmentId={} errorType={}",
+                    applicationId, attachmentId, exception.getClass().getSimpleName());
         } catch (RuntimeException compensationFailure) {
             LOGGER.error(
                     "Attachment upload compensation failed applicationId={} attachmentId={} errorType={}",
@@ -253,6 +255,18 @@ public class ExpenseApplicationAttachmentService {
         auditLogService.recordFailure(
                 AuditActor.user(user), "EXPENSE_ATTACHMENT_STORAGE_FAILED", TARGET_TYPE,
                 attachmentId.toString(), "%s:%s".formatted(applicationId, reason));
+    }
+
+    private void logStorageFailure(
+            String operation, UUID applicationId, UUID attachmentId,
+            AttachmentStorageException exception) {
+        AttachmentStorageException.Diagnostics diagnostics = exception.diagnostics();
+        LOGGER.error(
+                "event=expense_attachment_storage_failed operation={} applicationId={} attachmentId={} "
+                        + "causeType={} rootCauseType={} httpStatus={} storageErrorCode={} requestId={}",
+                operation, applicationId, attachmentId,
+                diagnostics.causeType(), diagnostics.rootCauseType(), diagnostics.httpStatus(),
+                diagnostics.storageErrorCode(), diagnostics.requestId());
     }
 
     private void recordDeleteStorageFailure(
