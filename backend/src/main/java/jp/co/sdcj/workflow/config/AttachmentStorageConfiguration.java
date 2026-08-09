@@ -1,5 +1,7 @@
 package jp.co.sdcj.workflow.config;
 
+import com.azure.core.http.HttpClient;
+import com.azure.core.http.jdk.httpclient.JdkHttpClientBuilder;
 import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
@@ -15,8 +17,10 @@ public class AttachmentStorageConfiguration {
     @Bean
     BlobContainerClient attachmentBlobContainerClient(AttachmentProperties properties) {
         AttachmentProperties.Storage storage = properties.storage();
+        HttpClient httpClient = new JdkHttpClientBuilder().build();
         BlobContainerClientBuilder builder = new BlobContainerClientBuilder()
-                .containerName(storage.containerName());
+                .containerName(storage.containerName())
+                .httpClient(httpClient);
         if (storage.connectionString() != null && !storage.connectionString().isBlank()) {
             builder.connectionString(storage.connectionString());
         } else if (storage.endpoint() != null && !storage.endpoint().isBlank()) {

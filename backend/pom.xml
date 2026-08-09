@@ -79,6 +79,10 @@
     </dependency>
     <dependency>
       <groupId>com.azure</groupId>
+      <artifactId>azure-core-http-jdk-httpclient</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
       <artifactId>azure-identity</artifactId>
     </dependency>
     <dependency>
