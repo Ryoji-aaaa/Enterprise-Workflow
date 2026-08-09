@@ -473,7 +473,8 @@ class ExpenseApplicationApiIntegrationTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void Blob保存失敗とDB保存失敗で不完全な行またはBlobを残さない() throws Exception {
+    void Blob保存失敗とDB保存失敗で不完全な行またはBlobを残さない(
+            CapturedOutput output) throws Exception {
         String applicationId = createDraft(member, "member", "添付補償テスト");
         doThrow(new AttachmentStorageException(new IllegalStateException("store failed")))
                 .when(attachmentStorage).store(
@@ -484,6 +485,11 @@ class ExpenseApplicationApiIntegrationTest {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE"));
         assertThat(attachmentRepository.count()).isZero();
+        assertThat(output)
+                .contains("event=expense_attachment_storage_failed")
+                .contains("operation=STORE")
+                .contains("causeType=IllegalStateException")
+                .doesNotContain("store failed");
 
         setUpAttachmentStorage();
         doThrow(new org.springframework.dao.DataIntegrityViolationException("test DB failure"))
@@ -561,12 +567,12 @@ class ExpenseApplicationApiIntegrationTest {
                 .extracting("actionType")
                 .contains("EXPENSE_ATTACHMENT_DELETED", "EXPENSE_ATTACHMENT_STORAGE_FAILED");
         assertThat(output)
-                .contains("Attachment Blob deletion failed after metadata commit")
+                .contains("event=expense_attachment_storage_failed")
+                .contains("operation=DELETE")
                 .contains("applicationId=" + applicationId)
                 .contains("attachmentId=" + attachmentId)
-                .contains("storageObjectName=" + objectName)
-                .contains("errorType=AttachmentStorageException")
-                .contains("retryRequired=true");
+                .contains("causeType=IllegalStateException")
+                .doesNotContain("storageObjectName=", objectName, "delete failed");
     }
 
     @Test

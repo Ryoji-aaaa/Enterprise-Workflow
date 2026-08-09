@@ -42,6 +42,12 @@ connection string、Storage key、SASをKey Vault、Terraform、Container App環
 削除する。補償削除にも失敗した場合は申請ID、添付ID、例外型だけを構造化ログへ記録し、内容や
 credentialを記録しない。
 
+Blobの登録、読込、削除で障害が発生した場合は、運用ログへ`event`、操作種別、申請ID、
+添付ID、直接例外型、根本例外型、HTTP status、Storage error code、`x-ms-request-id`だけを
+構造化記録する。取得できない値はnullとし、SDKの例外message・stack trace・Blob URLや
+object名・ファイル名・メタデータ・HTTP response body・credentialは出力しない。APIと監査の
+既存エラーコードは変更しない。
+
 削除は申請と添付をlockし、DBの論理削除と成功監査を同じtransactionで先にcommitしてからBlobを
 best-effortで削除する。DB更新またはcommitに失敗した場合はBlob削除を開始せず、有効なmetadataと
 Blobを維持する。Blob削除に失敗してもAPIは204を返し、論理削除済み添付は一覧、content取得、再削除で
