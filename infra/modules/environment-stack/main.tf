@@ -100,7 +100,7 @@ module "content_understanding" {
   resource_group_name        = data.azurerm_resource_group.this.name
   kind                       = "AIServices"
   sku_name                   = "S0"
-  project_management_enabled = true
+  project_management_enabled = false
 }
 
 module "document_analysis_storage" {

@@ -21,7 +21,12 @@ readonly -a TERRAFORM_WORKFLOWS=(
 grep -Fq 'kind                       = "FormRecognizer"' "${STACK_FILE}"
 grep -Fq 'kind                       = "AIServices"' "${STACK_FILE}"
 grep -Fq 'sku_name                   = "S0"' "${STACK_FILE}"
-grep -Fq 'project_management_enabled = true' "${STACK_FILE}"
+content_understanding_block="$(sed -n '/module "content_understanding" {/,/^}/p' "${STACK_FILE}")"
+grep -Fq 'project_management_enabled = false' <<<"${content_understanding_block}"
+if grep -Fq 'azurerm_cognitive_account_project' "${STACK_FILE}" "${COGNITIVE_MODULE_FILE}"; then
+  echo "Document Analysis infrastructure must not create a Foundry Project." >&2
+  exit 1
+fi
 grep -Fq 'custom_subdomain_name         = var.name' "${COGNITIVE_MODULE_FILE}"
 grep -Fq 'local_auth_enabled            = false' "${COGNITIVE_MODULE_FILE}"
 grep -Fq 'public_network_access_enabled = false' "${COGNITIVE_MODULE_FILE}"
