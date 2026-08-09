@@ -20,7 +20,8 @@ public class AttachmentStorageConfiguration {
         HttpClient httpClient = new JdkHttpClientBuilder().build();
         BlobContainerClientBuilder builder = new BlobContainerClientBuilder()
                 .containerName(storage.containerName())
-                .httpClient(httpClient);
+                .httpClient(httpClient)
+                .addPolicy(new AttachmentBlobHttpFailureLoggingPolicy());
         if (storage.connectionString() != null && !storage.connectionString().isBlank()) {
             builder.connectionString(storage.connectionString());
         } else if (storage.endpoint() != null && !storage.endpoint().isBlank()) {
