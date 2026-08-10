@@ -116,10 +116,17 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
         try {
             return client.beginAnalyzeBinary(
                     request.modelId(),
-                    BinaryData.fromStream(request.content(), request.contentLength()),
+                    BinaryData.fromBytes(request.content().readAllBytes()),
                     null,
                     request.contentType(),
                     ProcessingLocation.GEOGRAPHY);
+        } catch (IOException exception) {
+            throw providerException(
+                    "CONTENT_UNDERSTANDING_UNAVAILABLE",
+                    "Content Understanding is unavailable.",
+                    false,
+                    null,
+                    exception);
         } catch (RuntimeException exception) {
             throw classifySubmissionFailure(exception);
         }
