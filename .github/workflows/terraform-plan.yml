@@ -27,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Install ripgrep for infrastructure checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
       - uses: hashicorp/setup-terraform@v3
       - name: Verify Terraform and infrastructure configuration
         run: make verify-infra
