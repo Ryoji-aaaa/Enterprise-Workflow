@@ -9,6 +9,11 @@ readonly PROJECT_DIRECTORY
 
 cd "${PROJECT_DIRECTORY}"
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ERROR: rg is required to check the Azure notification boundary." >&2
+  exit 2
+fi
+
 readonly azure_paths=(infra .github/workflows)
 readonly forbidden_pattern='MAIL_HOST|MAIL_PORT|MAIL_FROM|SMTP_USERNAME|SMTP_PASSWORD|MAIL_USERNAME|MAIL_PASSWORD|local-mailpit|mailpit'
 

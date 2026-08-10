@@ -9,7 +9,7 @@ readonly PROJECT_DIRECTORY
 
 cd "${PROJECT_DIRECTORY}"
 
-required_commands=(bash curl docker envsubst git grep jq make timeout)
+required_commands=(bash curl docker envsubst git grep jq make rg timeout)
 missing_commands=()
 
 for command_name in "${required_commands[@]}"; do

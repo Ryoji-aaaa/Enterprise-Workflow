@@ -22,7 +22,7 @@ on Ubuntu/WSL2:
   - Docker Engine, Docker CLI, Buildx, and Docker Compose plugin
   - GNU Make
   - Git and GitHub CLI (gh)
-  - curl, jq, OpenSSL, envsubst, and grep
+  - curl, jq, OpenSSL, envsubst, grep, and ripgrep (rg)
 
 Node.js/npm, Java, Maven, PostgreSQL, Keycloak, and Playwright are intentionally
 excluded because this project runs them in containers.
@@ -100,7 +100,8 @@ log "Installing base command-line dependencies..."
   grep \
   jq \
   make \
-  openssl
+  openssl \
+  ripgrep
 
 temporary_directory="$(mktemp -d)"
 
@@ -221,6 +222,7 @@ docker buildx version
 make --version | sed -n '1p'
 git --version
 gh --version | sed -n '1p'
+rg --version | sed -n '1p'
 "${SUDO[@]}" docker info --format 'Docker daemon: Server {{.ServerVersion}}'
 
 printf '\nHost dependencies were installed successfully.\n'
