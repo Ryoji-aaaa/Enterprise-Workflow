@@ -102,7 +102,7 @@ Storage Account Contributorなどを追加しない。
 
 ```text
 Document Analysis AI UAMI:
-  Document Intelligence scope: Cognitive Services Data Reader
+  Document Intelligence scope: Enterprise Workflow <Environment> Document Intelligence Analyze
   Foundry scope: Cognitive Services Content Understanding Reader
 
 Document Analysis Storage UAMI:
@@ -184,7 +184,7 @@ System log、Log Analytics、依存先の順に調べる。代表例は次のと
 | Container Apps Jobが`Failed` | System logだけで判断せず、対象executionのConsole logでSpring例外と`manual_seed_result ... failed=...`を確認する。部分成功後は原因を直し、冪等な対象Jobを再実行する。 |
 | Flyway V007が失敗 | 旧revisionの停止とwrite drain、reconciliation対象データ、Console log、履歴を確認する。`flyway repair`は使用せず、原因を解消してcontract deployを再試行する。 |
 | 添付APIが`EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE` | Backend revisionにBlob専用identityとendpoint/container/client IDがあること、container scope RBACが反映済みであること、Storage Accountのservice状態を確認する。connection stringやshared keyを追加せずTerraformを修正する。 |
-| Document AnalysisがAzureで`401`または`403`になる | `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`がAI専用identityを指すこと、Document Intelligenceに`Cognitive Services Data Reader`、Foundryに`Cognitive Services Content Understanding Reader`が付与されていること、RBAC propagationを確認する。API Key、client secret、Owner/Contributorを追加しない。 |
+| Document AnalysisがAzureで`401`または`403`になる | `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`がAI専用identityを指すこと、Document Intelligenceに環境別の`Enterprise Workflow <Environment> Document Intelligence Analyze`（analyzeと結果readのみ）、Foundryに`Cognitive Services Content Understanding Reader`が付与されていること、RBAC propagationを確認する。API Key、client secret、SAS、`Cognitive Services User`、Owner/Contributorを追加しない。 |
 | Document Analysis Storageが利用できない | `DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`がStorage専用identityを指すこと、input/result container scopeに`Storage Blob Data Contributor`があること、Storage Private EndpointとBlob Private DNSを確認する。既存の経費証憑Storageや`AZURE_CLIENT_ID`へ切り替えない。 |
 
 PortalでTerraform管理の環境変数、secret参照、probe、trafficを恒久変更しない。調査中に必要な

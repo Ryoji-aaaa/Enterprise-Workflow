@@ -255,7 +255,8 @@ ai_principal_id=''
 storage_principal_id=''
 identity_principal_id "$AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID" ai_principal_id
 identity_principal_id "$AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID" storage_principal_id
-has_role "$ai_principal_id" "$document_intelligence_id" "Cognitive Services Data Reader"
+document_intelligence_role="Enterprise Workflow ${AZURE_ENVIRONMENT^} Document Intelligence Analyze"
+has_role "$ai_principal_id" "$document_intelligence_id" "$document_intelligence_role"
 has_role "$ai_principal_id" "$content_understanding_id" "Cognitive Services Content Understanding Reader"
 has_role "$storage_principal_id" \
   "${storage_id}/blobServices/default/containers/${DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME}" \

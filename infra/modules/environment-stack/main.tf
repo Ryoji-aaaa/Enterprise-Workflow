@@ -128,9 +128,27 @@ module "document_analysis_storage" {
   soft_delete_retention_days = 7
 }
 
-resource "azurerm_role_assignment" "document_intelligence_reader" {
+resource "azurerm_role_definition" "document_intelligence_analyze" {
+  name        = "Enterprise Workflow ${title(var.environment)} Document Intelligence Analyze"
+  scope       = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  description = "Allows only Document Intelligence document-model analysis and result reads."
+
+  permissions {
+    actions     = []
+    not_actions = []
+    data_actions = [
+      "Microsoft.CognitiveServices/accounts/FormRecognizer/documentmodels:analyze/action",
+      "Microsoft.CognitiveServices/accounts/FormRecognizer/documentmodels/analyzeresults/read",
+    ]
+    not_data_actions = []
+  }
+
+  assignable_scopes = [module.document_intelligence.id]
+}
+
+resource "azurerm_role_assignment" "document_intelligence_analyze" {
   scope                = module.document_intelligence.id
-  role_definition_name = "Cognitive Services Data Reader"
+  role_definition_name = azurerm_role_definition.document_intelligence_analyze.name
   principal_id         = module.document_analysis_ai_identity.principal_id
 }
 
@@ -401,7 +419,7 @@ module "backend" {
     module.key_vault,
     azurerm_role_assignment.acr_pull,
     azurerm_role_assignment.backend_attachment_blob,
-    azurerm_role_assignment.document_intelligence_reader,
+    azurerm_role_assignment.document_intelligence_analyze,
     azurerm_role_assignment.content_understanding_reader,
     azurerm_role_assignment.document_analysis_input_blob,
     azurerm_role_assignment.document_analysis_result_blob,
