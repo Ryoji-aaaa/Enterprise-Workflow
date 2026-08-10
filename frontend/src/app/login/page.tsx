@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ShieldCheck, Sparkles } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 import { LoginButton } from "@/app/login/login-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { WorkflowLogo } from "@/components/workflow-logo";
 import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -36,9 +37,7 @@ export default async function LoginPage({
         <div className="absolute -left-24 -top-24 size-80 rounded-full border border-primary-foreground/10" />
         <div className="absolute -bottom-40 -right-24 size-[32rem] rounded-full border border-primary-foreground/10" />
         <div className="relative flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-xl bg-primary-foreground text-primary shadow-sm">
-            <Sparkles className="size-5" />
-          </div>
+          <WorkflowLogo className="size-10" />
           <span className="font-heading text-lg font-semibold">
             ワークフローシステム
           </span>
@@ -61,9 +60,7 @@ export default async function LoginPage({
       <section className="flex min-h-svh items-center justify-center bg-muted/20 p-4 sm:p-8">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
-            <div className="mb-3 grid size-11 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <Sparkles className="size-5" />
-            </div>
+            <WorkflowLogo className="mb-3 size-11" />
             <p className="font-heading text-lg font-semibold">
               ワークフローシステム
             </p>
