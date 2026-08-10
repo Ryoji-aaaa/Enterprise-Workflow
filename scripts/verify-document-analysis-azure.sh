@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Read-only Azure control-plane verification for an already deployed environment.
+# Read-only Azure Resource Manager verification for an already deployed environment.
 set -Eeuo pipefail
 
 usage() {
@@ -24,8 +24,8 @@ AZURE_FRONTEND_CONTAINER_APP_NAME, AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
 AZURE_CONTENT_UNDERSTANDING_ENDPOINT, and
 AZURE_DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT.
 
-The script only uses Azure CLI read commands. It never creates, updates, or
-deletes Azure resources, role assignments, containers, or revisions.
+The script only uses Azure CLI read commands. Containers are read through the
+Microsoft.Storage control plane; it never uses Storage data-plane credentials.
 USAGE
 }
 
@@ -74,121 +74,187 @@ expect() {
     fail "$label" "$expected" "${actual:-<empty>}"
   fi
 }
-read_value() {
-  local label="$1"
-  shift
-  local output
-  if ! output="$("$@" 2>/dev/null)"; then
-    fail "$label" "Azure CLI read succeeds" "Azure CLI read failed"
-    printf ''
-    return
+
+# Store command output in a caller-supplied variable.  Do not return it through
+# command substitution: fail() must update failures in this shell, not a subshell.
+az_read() {
+  local label="$1" target="$2" output
+  shift 2
+  if output="$("$@" 2>/dev/null)"; then
+    printf -v "$target" '%s' "$output"
+    return 0
   fi
-  printf '%s' "$output"
+  printf -v "$target" '%s' ''
+  fail "$label" "Azure CLI read succeeds" "Azure CLI read failed"
+  return 1
 }
-identity_principal_id() {
-  local client_id="$1"
-  read_value "managed identity ${client_id}" \
-    az identity list --resource-group "$AZURE_RESOURCE_GROUP" \
-    --query "[?clientId=='${client_id}'].principalId | [0]" --output tsv
+
+jq_read() {
+  local label="$1" target="$2" filter="$3" json="$4" output
+  shift 4
+  if output="$(jq -er "$@" "$filter" <<<"$json" 2>/dev/null)"; then
+    printf -v "$target" '%s' "$output"
+    return 0
+  fi
+  printf -v "$target" '%s' ''
+  fail "$label" "a present, valid value" "missing or invalid"
+  return 1
 }
-has_role() {
-  local principal_id="$1" scope="$2" role="$3"
-  local count
-  count="$(read_value "role ${role} at ${scope}" \
-    az role assignment list --all --assignee "$principal_id" --scope "$scope" \
-    --query "[?roleDefinitionName=='${role}'] | length(@)" --output tsv)"
-  expect "role ${role} at ${scope}" "1" "$count"
-}
+
 verify_cognitive_account() {
   local label="$1" account_name="$2" expected_kind="$3"
-  local account_json kind sku local_auth public_network
-  account_json="$(read_value "${label} account" \
+  local account_json kind sku local_auth public_network account_id
+  az_read "${label} account" account_json \
     az cognitiveservices account show --resource-group "$AZURE_RESOURCE_GROUP" \
-    --name "$account_name" --output json)"
-  [[ -n "$account_json" ]] || return
-  kind="$(jq -r '.kind // empty' <<<"$account_json")"
-  sku="$(jq -r '.sku.name // empty' <<<"$account_json")"
-  local_auth="$(jq -r '.properties.disableLocalAuth // empty' <<<"$account_json")"
-  public_network="$(jq -r '.properties.publicNetworkAccess // empty' <<<"$account_json")"
+    --name "$account_name" --output json || true
+  if [[ -z "$account_json" ]]; then
+    fail "${label} account fields" "a readable account" "unavailable"
+    return
+  fi
+  jq_read "${label} kind" kind '.kind' "$account_json" || true
+  jq_read "${label} SKU" sku '.sku.name' "$account_json" || true
+  jq_read "${label} local authentication" local_auth '.properties.disableLocalAuth' "$account_json" || true
+  jq_read "${label} public network" public_network '.properties.publicNetworkAccess' "$account_json" || true
+  jq_read "${label} resource ID" account_id '.id' "$account_json" || true
   expect "${label} kind" "$expected_kind" "$kind"
   expect "${label} SKU" "S0" "$sku"
   expect "${label} local authentication disabled" "true" "$local_auth"
   expect "${label} public network disabled" "Disabled" "$public_network"
+  printf -v "$4" '%s' "$account_id"
 }
+
 verify_private_endpoint() {
   local name="$1" endpoint_json state
-  endpoint_json="$(read_value "private endpoint ${name}" \
+  az_read "private endpoint ${name}" endpoint_json \
     az network private-endpoint show --resource-group "$AZURE_RESOURCE_GROUP" \
-    --name "$name" --output json)"
-  [[ -n "$endpoint_json" ]] || return
-  state="$(jq -r '.privateLinkServiceConnections[0].privateLinkServiceConnectionState.status // empty' <<<"$endpoint_json")"
+    --name "$name" --output json || true
+  if [[ -z "$endpoint_json" ]]; then
+    fail "private endpoint ${name} approved" "Approved" "unavailable"
+    return
+  fi
+  jq_read "private endpoint ${name} status" state \
+    '.privateLinkServiceConnections[0].privateLinkServiceConnectionState.status' "$endpoint_json" || true
   expect "private endpoint ${name} approved" "Approved" "$state"
 }
+
 verify_private_dns_zone() {
-  local zone="$1" expected_vnet_suffix="$2" links
-  read_value "private DNS zone ${zone}" \
+  local zone="$1" expected_vnet_suffix="$2" zone_json links linked
+  az_read "private DNS zone ${zone}" zone_json \
     az network private-dns zone show --resource-group "$AZURE_RESOURCE_GROUP" \
-    --name "$zone" --query name --output tsv >/dev/null
-  links="$(read_value "private DNS VNet link ${zone}" \
+    --name "$zone" --output json || true
+  if [[ -z "$zone_json" ]]; then
+    fail "private DNS zone ${zone}" "a readable zone" "unavailable"
+  else
+    jq_read "private DNS zone ${zone} name" linked '.name' "$zone_json" || true
+    expect "private DNS zone ${zone} name" "$zone" "$linked"
+  fi
+  az_read "private DNS VNet link ${zone}" links \
     az network private-dns link vnet list --resource-group "$AZURE_RESOURCE_GROUP" \
-    --zone-name "$zone" --query '[].virtualNetwork.id' --output json)"
+    --zone-name "$zone" --output json || true
+  if [[ -z "$links" ]]; then
+    fail "private DNS VNet link ${zone}" "a link to ${expected_vnet_suffix}" "unavailable"
+    return
+  fi
   if jq -e --arg suffix "$expected_vnet_suffix" \
-      'any(.[]?; endswith($suffix))' <<<"${links:-[]}" >/dev/null; then
+      'type == "array" and any(.[]; (.virtualNetwork.id? // "") | endswith($suffix))' \
+      <<<"$links" >/dev/null 2>&1; then
     pass "private DNS VNet link ${zone}"
   else
     fail "private DNS VNet link ${zone}" "a link to ${expected_vnet_suffix}" "no matching link"
   fi
 }
 
-verify_cognitive_account "Document Intelligence" \
-  "$AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME" "FormRecognizer"
-verify_cognitive_account "Content Understanding" \
-  "$AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME" "AIServices"
+identity_principal_id() {
+  local client_id="$1" target="$2" identities principal_id
+  az_read "managed identity ${client_id}" identities \
+    az identity list --resource-group "$AZURE_RESOURCE_GROUP" --output json || true
+  if [[ -z "$identities" ]]; then
+    fail "managed identity ${client_id}" "a readable matching identity" "unavailable"
+    printf -v "$target" '%s' ''
+    return
+  fi
+  jq_read "managed identity ${client_id} principal ID" principal_id \
+    '$client as $client | [.[] | select(.clientId == $client) | .principalId] | if length == 1 and .[0] != "" then .[0] else error("missing identity") end' \
+    "$identities" --arg client "$client_id" || true
+  printf -v "$target" '%s' "$principal_id"
+}
 
-storage_json="$(read_value "Document Analysis Storage account" \
+has_role() {
+  local principal_id="$1" scope="$2" role="$3" assignments present
+  if [[ -z "$principal_id" || -z "$scope" ]]; then
+    fail "role ${role} at ${scope:-<unavailable>}" "a readable identity and scope" "unavailable"
+    return
+  fi
+  az_read "role ${role} at ${scope}" assignments \
+    az role assignment list --all --assignee "$principal_id" --scope "$scope" --output json || true
+  if [[ -z "$assignments" ]]; then
+    fail "role ${role} at ${scope}" "a readable role assignment list" "unavailable"
+    return
+  fi
+  jq_read "role ${role} at ${scope}" present \
+    'if type == "array" and any(.[]; .roleDefinitionName == $role) then "present" else error("role missing") end' \
+    "$assignments" --arg role "$role" || true
+  expect "role ${role} at ${scope}" "present" "$present"
+}
+
+document_intelligence_id=''
+content_understanding_id=''
+verify_cognitive_account "Document Intelligence" \
+  "$AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME" "FormRecognizer" document_intelligence_id
+verify_cognitive_account "Content Understanding" \
+  "$AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME" "AIServices" content_understanding_id
+
+storage_json=''
+storage_id=''
+az_read "Document Analysis Storage account" storage_json \
   az storage account show --resource-group "$AZURE_RESOURCE_GROUP" \
-  --name "$AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME" --output json)"
-if [[ -n "$storage_json" ]]; then
-  expect "Document Analysis Storage shared key disabled" "false" \
-    "$(jq -r '.allowSharedKeyAccess // empty' <<<"$storage_json")"
-  expect "Document Analysis Storage public network disabled" "Disabled" \
-    "$(jq -r '.publicNetworkAccess // empty' <<<"$storage_json")"
+  --name "$AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME" --output json || true
+if [[ -z "$storage_json" ]]; then
+  fail "Document Analysis Storage account fields" "a readable account" "unavailable"
+else
+  allow_shared_key=''
+  public_network=''
+  jq_read "Document Analysis Storage shared key setting" allow_shared_key \
+    'if (.allowSharedKeyAccess | type) == "boolean" then (.allowSharedKeyAccess | tostring) else error("missing boolean") end' \
+    "$storage_json" || true
+  jq_read "Document Analysis Storage public network setting" public_network '.publicNetworkAccess' "$storage_json" || true
+  jq_read "Document Analysis Storage resource ID" storage_id '.id' "$storage_json" || true
+  expect "Document Analysis Storage shared key disabled" "false" "$allow_shared_key"
+  expect "Document Analysis Storage public network disabled" "Disabled" "$public_network"
 fi
+
 for container in "$DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME" "$DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME"; do
-  public_access="$(read_value "private container ${container}" \
-    az storage container show --auth-mode login \
-    --account-name "$AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME" --name "$container" \
-    --query 'properties.publicAccess' --output tsv)"
-  if [[ -z "$public_access" || "$public_access" == "None" ]]; then
+  container_json=''
+  public_access=''
+  az_read "Document Analysis container ${container}" container_json \
+    az storage container-rm show --resource-group "$AZURE_RESOURCE_GROUP" \
+    --storage-account "$AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME" --name "$container" --output json || true
+  if [[ -z "$container_json" ]]; then
+    fail "private container ${container}" "a readable private container" "unavailable"
+    continue
+  fi
+  jq_read "private container ${container} access" public_access \
+    'if (.properties | type) != "object" then error("missing properties") elif .properties.publicAccess == null then "None" else .properties.publicAccess end' \
+    "$container_json" || true
+  if [[ "$public_access" == "None" ]]; then
     pass "private container ${container}"
   else
-    fail "private container ${container}" "None" "$public_access"
+    fail "private container ${container}" "None" "${public_access:-<empty>}"
   fi
 done
 
-document_intelligence_id="$(read_value "Document Intelligence resource ID" \
-  az cognitiveservices account show --resource-group "$AZURE_RESOURCE_GROUP" \
-  --name "$AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME" --query id --output tsv)"
-content_understanding_id="$(read_value "Content Understanding resource ID" \
-  az cognitiveservices account show --resource-group "$AZURE_RESOURCE_GROUP" \
-  --name "$AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME" --query id --output tsv)"
-storage_id="$(read_value "Document Analysis Storage resource ID" \
-  az storage account show --resource-group "$AZURE_RESOURCE_GROUP" \
-  --name "$AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME" --query id --output tsv)"
-ai_principal_id="$(identity_principal_id "$AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID")"
-storage_principal_id="$(identity_principal_id "$AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID")"
-
-[[ -z "$document_intelligence_id" || -z "$content_understanding_id" || -z "$storage_id" \
-  || -z "$ai_principal_id" || -z "$storage_principal_id" ]] || {
-  has_role "$ai_principal_id" "$document_intelligence_id" "Cognitive Services Data Reader"
-  has_role "$ai_principal_id" "$content_understanding_id" "Cognitive Services Content Understanding Reader"
-  has_role "$storage_principal_id" \
-    "${storage_id}/blobServices/default/containers/${DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME}" \
-    "Storage Blob Data Contributor"
-  has_role "$storage_principal_id" \
-    "${storage_id}/blobServices/default/containers/${DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME}" \
-    "Storage Blob Data Contributor"
-}
+ai_principal_id=''
+storage_principal_id=''
+identity_principal_id "$AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID" ai_principal_id
+identity_principal_id "$AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID" storage_principal_id
+has_role "$ai_principal_id" "$document_intelligence_id" "Cognitive Services Data Reader"
+has_role "$ai_principal_id" "$content_understanding_id" "Cognitive Services Content Understanding Reader"
+has_role "$storage_principal_id" \
+  "${storage_id}/blobServices/default/containers/${DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME}" \
+  "Storage Blob Data Contributor"
+has_role "$storage_principal_id" \
+  "${storage_id}/blobServices/default/containers/${DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME}" \
+  "Storage Blob Data Contributor"
 
 verify_private_endpoint "pe-enterprise-workflow-${AZURE_ENVIRONMENT}-document-intelligence"
 verify_private_endpoint "pe-enterprise-workflow-${AZURE_ENVIRONMENT}-content-understanding"
@@ -201,6 +267,63 @@ for zone in \
   privatelink.blob.core.windows.net; do
   verify_private_dns_zone "$zone" "$vnet_suffix"
 done
+
+verify_active_revision_images() {
+  local app="$1" revisions valid
+  az_read "active revision ${app}" revisions \
+    az containerapp revision list --resource-group "$AZURE_RESOURCE_GROUP" --name "$app" --output json || true
+  if [[ -z "$revisions" ]]; then
+    fail "active revision image ${app}" "every active image tagged ${EXPECTED_IMAGE_SHA}" "unavailable"
+    return
+  fi
+  if jq -e --arg suffix ":${EXPECTED_IMAGE_SHA}" \
+      '[.[] | select(.properties.active == true)] as $active | ($active | length) > 0 and all($active[]; [(.properties.template.containers // [])[]?.image] as $images | ($images | length) > 0 and all($images[]; endswith($suffix)))' \
+      <<<"$revisions" >/dev/null 2>&1; then
+    pass "active revision image ${app} uses ${EXPECTED_IMAGE_SHA}"
+  else
+    fail "active revision image ${app}" "every active image tagged ${EXPECTED_IMAGE_SHA}" "missing or different image"
+  fi
+  printf -v "$2" '%s' "$revisions"
+}
+
+verify_active_backend_environment() {
+  local revisions="$1" entry name value attachment_identity
+  if [[ -z "$revisions" ]]; then
+    fail "active Backend revision environment" "a readable active revision" "unavailable"
+    return
+  fi
+  for entry in \
+    "WORKFLOW_DOCUMENT_ANALYSIS_ENABLED=true" \
+    "WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure" \
+    "DOCUMENT_INTELLIGENCE_ENABLED=true" \
+    "CONTENT_UNDERSTANDING_ENABLED=true" \
+    "DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false" \
+    "AZURE_DOCUMENT_ANALYSIS_CLIENT_ID=${AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID}" \
+    "DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID=${AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID}" \
+    "DOCUMENT_INTELLIGENCE_ENDPOINT=${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT}" \
+    "CONTENT_UNDERSTANDING_ENDPOINT=${AZURE_CONTENT_UNDERSTANDING_ENDPOINT}" \
+    "DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT=${AZURE_DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT}" \
+    "DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME=${DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME}" \
+    "DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME=${DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME}"; do
+    name="${entry%%=*}"
+    value="${entry#*=}"
+    if jq -e --arg name "$name" --arg value "$value" \
+        '[.[] | select(.properties.active == true)] as $active | ($active | length) > 0 and all($active[]; any((.properties.template.containers[0].env // [])[]?; .name == $name and .value == $value))' \
+        <<<"$revisions" >/dev/null 2>&1; then
+      pass "Backend environment ${name}"
+    else
+      fail "Backend environment ${name}" "$value" "missing or different"
+    fi
+  done
+  if jq -e --arg ai "$AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID" \
+      --arg storage "$AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID" \
+      '[.[] | select(.properties.active == true)] as $active | ($active | length) > 0 and all($active[]; any((.properties.template.containers[0].env // [])[]?; .name == "AZURE_CLIENT_ID" and .value != "" and .value != $ai and .value != $storage))' \
+      <<<"$revisions" >/dev/null 2>&1; then
+    pass "Backend attachment identity remains separate"
+  else
+    fail "Backend attachment identity remains separate" "a non-Document-Analysis client ID" "missing or reused"
+  fi
+}
 
 if [[ -n "${EXPECTED_IMAGE_SHA:-}" ]]; then
   [[ "$EXPECTED_IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -217,47 +340,11 @@ if [[ -n "${EXPECTED_IMAGE_SHA:-}" ]]; then
       exit 2
     }
   done
-  for app in "$AZURE_BACKEND_CONTAINER_APP_NAME" "$AZURE_FRONTEND_CONTAINER_APP_NAME"; do
-    images="$(read_value "active revision image ${app}" \
-      az containerapp revision list --resource-group "$AZURE_RESOURCE_GROUP" --name "$app" \
-      --query '[?properties.active].properties.template.containers[].image' --output tsv)"
-    if [[ -n "$images" ]] && ! grep -Evq ":${EXPECTED_IMAGE_SHA}$" <<<"$images"; then
-      pass "active revision image ${app} uses ${EXPECTED_IMAGE_SHA}"
-    else
-      fail "active revision image ${app}" "every active image tagged ${EXPECTED_IMAGE_SHA}" "missing or different image"
-    fi
-  done
-  backend_env="$(read_value "active Backend revision environment" \
-    az containerapp revision list --resource-group "$AZURE_RESOURCE_GROUP" \
-    --name "$AZURE_BACKEND_CONTAINER_APP_NAME" \
-    --query '[?properties.active].properties.template.containers[0].env' --output json)"
-  for entry in \
-    "WORKFLOW_DOCUMENT_ANALYSIS_ENABLED=true" \
-    "WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure" \
-    "AZURE_DOCUMENT_ANALYSIS_CLIENT_ID=${AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID}" \
-    "DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID=${AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID}" \
-    "DOCUMENT_INTELLIGENCE_ENDPOINT=${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT}" \
-    "CONTENT_UNDERSTANDING_ENDPOINT=${AZURE_CONTENT_UNDERSTANDING_ENDPOINT}" \
-    "DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT=${AZURE_DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT}" \
-    "DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME=${DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME}" \
-    "DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME=${DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME}"; do
-    name="${entry%%=*}"
-    value="${entry#*=}"
-    if jq -e --arg name "$name" --arg value "$value" \
-        'any(.[][]?; .name == $name and .value == $value)' <<<"${backend_env:-[]}" >/dev/null; then
-      pass "Backend environment ${name}"
-    else
-      fail "Backend environment ${name}" "$value" "missing or different"
-    fi
-  done
-  attachment_identity="$(jq -r '.[][]? | select(.name == "AZURE_CLIENT_ID") | .value' <<<"${backend_env:-[]}" | head -n 1)"
-  if [[ -n "$attachment_identity" \
-    && "$attachment_identity" != "$AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID" \
-    && "$attachment_identity" != "$AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID" ]]; then
-    pass "Backend attachment identity remains separate"
-  else
-    fail "Backend attachment identity remains separate" "a non-Document-Analysis client ID" "missing or reused"
-  fi
+  frontend_revisions=''
+  backend_revisions=''
+  verify_active_revision_images "$AZURE_FRONTEND_CONTAINER_APP_NAME" frontend_revisions
+  verify_active_revision_images "$AZURE_BACKEND_CONTAINER_APP_NAME" backend_revisions
+  verify_active_backend_environment "$backend_revisions"
 fi
 
 if (( failures > 0 )); then

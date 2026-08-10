@@ -16,7 +16,7 @@ jobs:
   smoke:
     environment: staging
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TF_IN_AUTOMATION: "true"
       TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -43,18 +43,40 @@ jobs:
       TF_VAR_content_understanding_enabled: ${{ vars.CONTENT_UNDERSTANDING_ENABLED || 'false' }}
 
     steps:
-      - name: Validate immutable image SHA
+      - name: Checkout trusted main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate main dispatch and immutable image SHA
+        id: target
         env:
           IMAGE_SHA: ${{ inputs.image_sha }}
         run: |
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "This workflow must be dispatched from the repository default branch main." >&2
+            exit 1
+          }
           [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
             echo "image_sha must be a 40-character lowercase hexadecimal commit SHA." >&2
             exit 1
           }
-          echo "IMAGE_SHA=$IMAGE_SHA" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v5
+          git cat-file -e "${IMAGE_SHA}^{commit}" || {
+            echo "image_sha does not identify an existing commit." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$IMAGE_SHA" origin/main || {
+            echo "image_sha must be an ancestor of origin/main." >&2
+            exit 1
+          }
+          echo "image_sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Checkout verified image SHA
+        uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.image_sha }}
+          ref: ${{ steps.target.outputs.image_sha }}
+          fetch-depth: 1
+          persist-credentials: false
       - name: Check staging smoke prerequisites
         env:
           AZURE_OIDC_CONFIGURED: ${{ vars.AZURE_OIDC_CONFIGURED }}
@@ -75,6 +97,16 @@ jobs:
             TF_VAR_backend_container_app_name TF_VAR_key_vault_name; do
             [[ -n "${!name}" ]] || { echo "Missing staging Environment variable: ${name}" >&2; exit 1; }
           done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - name: Install Chromium for the isolated live smoke
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -109,57 +141,46 @@ jobs:
           AZURE_FRONTEND_CONTAINER_APP_NAME: ${{ vars.AZURE_FRONTEND_CONTAINER_APP_NAME }}
           DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME: document-analysis-input
           DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME: document-analysis-result
-          EXPECTED_IMAGE_SHA: ${{ inputs.image_sha }}
+          EXPECTED_IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
         run: ./scripts/verify-document-analysis-azure.sh
-      - name: Read staging smoke password from Key Vault
+      - name: Run billed Document Analysis smoke through the Frontend BFF
+        working-directory: tests/e2e
         env:
-          KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"
+          DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-live-smoke-summary.json
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_DIAGNOSTIC_PATH: test-results/document-analysis-live-smoke-diagnostics.json
         run: |
-          password="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" \
+          password="$(az keyvault secret show --vault-name "$TF_VAR_key_vault_name" \
             --name development-seed-password --query value --output tsv)"
           [[ -n "$password" ]] || {
             echo "Staging seed account is unavailable. Follow docs/backend/development-seed-data.md to run the approved staging seed Jobs before retrying." >&2
             exit 1
           }
           echo "::add-mask::$password"
-          echo "DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD=$password" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.18.0
-          cache: npm
-          cache-dependency-path: tests/e2e/package-lock.json
-      - name: Install Chromium for the isolated live smoke
-        working-directory: tests/e2e
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-      - name: Run billed Document Analysis smoke through the Frontend BFF
-        working-directory: tests/e2e
-        env:
-          AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"
-          DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
-          DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-live-smoke-summary.json
-          PLAYWRIGHT_OUTPUT_DIR: test-results/results
-          PLAYWRIGHT_JUNIT_OUTPUT: test-results/junit.xml
-          PLAYWRIGHT_JSON_OUTPUT: test-results/report.json
-          PLAYWRIGHT_HTML_OUTPUT: test-results/html-report
-        run: npx playwright test specs/azure-document-analysis-smoke.spec.ts
+          DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD="$password" \
+            npx playwright test --config=playwright.live.config.ts specs/azure-document-analysis-smoke.spec.ts
       - name: Publish non-sensitive smoke evidence
         if: success()
         working-directory: tests/e2e
+        env:
+          IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
         run: |
-          {
-            echo "## Document Analysis staging smoke"
-            echo "- Image SHA: \`${IMAGE_SHA}\`"
-            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            jq -r '.analyses[] | "- \(.provider): analysis \(.analysisId), \(.status), API \(.apiVersion), \(.startedAt) to \(.finishedAt)"' \
-              test-results/document-analysis-live-smoke-summary.json
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload short-retention diagnostics on failure
+          echo "- Image SHA: ${IMAGE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          jq -er --arg image_sha "$IMAGE_SHA" '
+            . as $summary
+            | ($summary.imageSha == $image_sha)
+              and (($summary.analyses | type) == "array")
+              and (($summary.analyses | length) == 2)
+            | if . then $summary.analyses[] else error("invalid safe smoke summary") end
+            | "- \(.provider): \(.status), API \(.apiVersion), \(.createdAt) to \(.completedAt)"
+          ' test-results/document-analysis-live-smoke-summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload allow-listed smoke diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: document-analysis-staging-smoke-diagnostics-${{ github.run_id }}
-          path: tests/e2e/test-results
+          path: tests/e2e/test-results/document-analysis-live-smoke-diagnostics.json
           if-no-files-found: ignore
           retention-days: 1

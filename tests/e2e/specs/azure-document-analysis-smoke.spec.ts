@@ -1,15 +1,19 @@
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 
 const liveSmokeEnabled = process.env.AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE === "true";
 const summaryPath = process.env.DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH;
+const diagnosticPath = process.env.DOCUMENT_ANALYSIS_LIVE_SMOKE_DIAGNOSTIC_PATH;
+const imageSha = process.env.DOCUMENT_ANALYSIS_LIVE_SMOKE_IMAGE_SHA;
 const forbiddenAzureHosts = /\.(?:cognitiveservices\.azure\.com|services\.ai\.azure\.com|openai\.azure\.com|blob\.core\.windows\.net)$/;
+const providerTimeoutMilliseconds = 10 * 60_000;
 
+type Provider = "DOCUMENT_INTELLIGENCE" | "CONTENT_UNDERSTANDING";
 type Job = {
   id: string;
-  provider: "DOCUMENT_INTELLIGENCE" | "CONTENT_UNDERSTANDING";
+  provider: Provider;
   modelId: string;
   providerApiVersion: string;
   status: string;
@@ -19,12 +23,23 @@ type Job = {
 
 type View = {
   schemaVersion: number;
-  provider: Job["provider"];
+  provider: Provider;
   modelId: string;
   providerApiVersion: string;
   status: string;
   documents: Array<{ markdown?: string }>;
 };
+
+type SafeDiagnostic = {
+  provider?: Provider;
+  stage: "login" | "capabilities" | "submit" | "poll" | "result" | "ui";
+  status?: string;
+  apiVersion?: string;
+  createdAt?: string;
+  completedAt?: string;
+};
+
+let diagnostic: SafeDiagnostic = { stage: "login" };
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -32,8 +47,35 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
+function requireCondition(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
+function updateDiagnostic(
+  stage: SafeDiagnostic["stage"],
+  job?: Pick<Job, "provider" | "status" | "providerApiVersion" | "createdAt" | "completedAt">,
+): void {
+  diagnostic = {
+    stage,
+    ...(job ? {
+      provider: job.provider,
+      status: job.status,
+      apiVersion: job.providerApiVersion,
+      createdAt: job.createdAt,
+      ...(job.completedAt ? { completedAt: job.completedAt } : {}),
+    } : {}),
+  };
+}
+
+async function writeSafeDiagnostic(): Promise<void> {
+  if (!diagnosticPath) return;
+  await mkdir(dirname(diagnosticPath), { recursive: true });
+  await writeFile(diagnosticPath, `${JSON.stringify(diagnostic)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
 async function login(page: Page, email: string, password: string): Promise<void> {
   const issuer = requiredEnvironment("KEYCLOAK_URL");
+  updateDiagnostic("login");
   await page.goto("/login");
   await page.getByRole("button", { name: "ログイン", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(
@@ -46,25 +88,57 @@ async function login(page: Page, email: string, password: string): Promise<void>
 }
 
 async function requireDocumentAnalysisCapabilities(page: Page): Promise<void> {
+  updateDiagnostic("capabilities");
   const response = await page.request.get("/api/backend/me");
-  expect(response.status()).toBe(200);
+  requireCondition(response.status() === 200, "Document Analysis capabilities request failed.");
   const user = (await response.json()) as {
-    permissions: string[];
-    features: { documentIntelligence: boolean; contentUnderstanding: boolean };
+    permissions?: string[];
+    features?: { documentIntelligence?: boolean; contentUnderstanding?: boolean };
   };
-  expect(user.features).toMatchObject({ documentIntelligence: true, contentUnderstanding: true });
-  expect(user.permissions).toEqual(expect.arrayContaining([
-    "DOCUMENT_INTELLIGENCE_ANALYZE",
-    "CONTENT_UNDERSTANDING_ANALYZE",
-  ]));
+  requireCondition(
+    user.features?.documentIntelligence === true && user.features.contentUnderstanding === true,
+    "Document Analysis capabilities are not enabled.",
+  );
+  requireCondition(
+    user.permissions?.includes("DOCUMENT_INTELLIGENCE_ANALYZE")
+      && user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE"),
+    "Document Analysis permissions are unavailable.",
+  );
+}
+
+async function waitForTerminalJob(page: Page, job: Job): Promise<Job> {
+  const deadline = Date.now() + providerTimeoutMilliseconds;
+  updateDiagnostic("poll", job);
+  while (Date.now() < deadline) {
+    const response = await page.request.get(`/api/backend/document-analyses/${job.id}`);
+    requireCondition(response.status() === 200, "Document Analysis job polling failed.");
+    const polled = (await response.json()) as Job;
+    updateDiagnostic("poll", polled);
+    if (polled.status === "SUCCEEDED") {
+      requireCondition(Boolean(polled.completedAt), "Document Analysis job did not return completedAt.");
+      return polled;
+    }
+    if (polled.status === "FAILED" || polled.status === "FAILED_RECOVERY_REQUIRED") {
+      throw new Error("Document Analysis job reached a terminal failure state.");
+    }
+    await page.waitForTimeout(5_000);
+  }
+  throw new Error("Document Analysis job did not reach SUCCEEDED within 10 minutes.");
 }
 
 async function analyze(
   page: Page,
   route: "/document-intelligence" | "/content-understanding",
-  expectedProvider: Job["provider"],
+  expectedProvider: Provider,
   expectedApiVersion: string,
 ): Promise<Job> {
+  updateDiagnostic("submit", {
+    provider: expectedProvider,
+    status: "SUBMITTING",
+    providerApiVersion: expectedApiVersion,
+    createdAt: "",
+    completedAt: null,
+  });
   await page.goto(route);
   await expect(page).toHaveURL(new RegExp(`${route}$`));
   await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
@@ -74,64 +148,77 @@ async function analyze(
   );
   await page.getByRole("button", { name: "Run Analysis", exact: true }).click();
   const submitted = await submit;
-  expect(submitted.status()).toBe(202);
+  requireCondition(submitted.status() === 202, "Document Analysis job submission failed.");
   const job = (await submitted.json()) as Job;
-  expect(job.provider).toBe(expectedProvider);
-  expect(job.modelId).toBe("prebuilt-layout");
-  expect(job.providerApiVersion).toBe(expectedApiVersion);
+  requireCondition(
+    job.provider === expectedProvider
+      && job.modelId === "prebuilt-layout"
+      && job.providerApiVersion === expectedApiVersion,
+    "Document Analysis job contract did not match the requested provider.",
+  );
+  const terminalJob = await waitForTerminalJob(page, job);
 
-  await expect.poll(async () => {
-    const response = await page.request.get(`/api/backend/document-analyses/${job.id}`);
-    expect(response.status()).toBe(200);
-    return (await response.json()) as Job;
-  }, { timeout: 10 * 60_000, intervals: [1_000, 2_000, 5_000] }).toMatchObject({ status: "SUCCEEDED" });
-
+  updateDiagnostic("result", terminalJob);
   const viewResponse = await page.request.get(`/api/backend/document-analyses/${job.id}/view`);
-  expect(viewResponse.status()).toBe(200);
+  requireCondition(viewResponse.status() === 200, "Document Analysis view request failed.");
   const view = (await viewResponse.json()) as View;
-  expect(view).toMatchObject({
-    schemaVersion: 1,
-    provider: expectedProvider,
-    modelId: "prebuilt-layout",
-    providerApiVersion: expectedApiVersion,
-    status: "SUCCEEDED",
-  });
-  expect(view.documents.length).toBeGreaterThan(0);
-  expect(view.documents.some((document) => Boolean(document.markdown?.trim()))).toBeTruthy();
+  requireCondition(
+    view.schemaVersion === 1
+      && view.provider === expectedProvider
+      && view.modelId === "prebuilt-layout"
+      && view.providerApiVersion === expectedApiVersion
+      && view.status === "SUCCEEDED",
+    "Document Analysis view contract did not match the requested provider.",
+  );
+  requireCondition(
+    view.documents.length > 0 && view.documents.some((document) => Boolean(document.markdown?.trim())),
+    "Document Analysis view did not contain Markdown.",
+  );
 
   const rawResponse = await page.request.get(`/api/backend/document-analyses/${job.id}/raw-result`);
-  expect(rawResponse.status()).toBe(200);
-  return await verifyUiAndReturnJob(page, job, rawResponse, expectedApiVersion);
+  requireCondition(rawResponse.status() === 200, "Document Analysis raw-result request failed.");
+  await verifyUiAndReturnTerminalJob(page, terminalJob, rawResponse, expectedApiVersion);
+  return terminalJob;
 }
 
-async function verifyUiAndReturnJob(
+async function verifyUiAndReturnTerminalJob(
   page: Page,
-  submittedJob: Job,
+  terminalJob: Job,
   rawResponse: APIResponse,
   expectedApiVersion: string,
-): Promise<Job> {
+): Promise<void> {
+  updateDiagnostic("ui", terminalJob);
   const rawText = await rawResponse.text();
-  expect(() => JSON.parse(rawText)).not.toThrow();
-  expect(rawText).not.toContain("backend-fake-provider");
+  let rawResultIsObject = false;
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    rawResultIsObject = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  } catch {
+    rawResultIsObject = false;
+  }
+  requireCondition(rawResultIsObject, "Document Analysis raw result must be a JSON object.");
+  requireCondition(!rawText.includes("backend-fake-provider"), "Document Analysis raw result must not use the Fake Provider.");
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
-    timeout: 10 * 60_000,
+    timeout: providerTimeoutMilliseconds,
   });
   await page.getByRole("tab", { name: "Markdown", exact: true }).first().click();
-  await expect(page.getByRole("tabpanel").first()).toContainText(/\S/);
+  const markdown = await page.getByRole("tabpanel").first().textContent();
+  requireCondition(Boolean(markdown?.trim()), "Document Analysis Markdown tab was empty.");
   await page.getByRole("tab", { name: "Result", exact: true }).first().click();
-  await expect(page.getByRole("tabpanel").first()).toContainText(new RegExp(`"apiVersion": "${expectedApiVersion}"`));
-  return {
-    ...submittedJob,
-    status: "SUCCEEDED",
-    completedAt: new Date().toISOString(),
-  };
+  const resultText = await page.getByRole("tabpanel").first().textContent();
+  requireCondition(resultText?.includes(`"apiVersion": "${expectedApiVersion}"`), "Document Analysis Result tab did not show the expected API version.");
 }
 
 test.describe("Azure Document Analysis staging smoke", () => {
   test.skip(!liveSmokeEnabled, "AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE=true is required for the billed staging smoke.");
 
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus) await writeSafeDiagnostic();
+  });
+
   test("runs both GA providers only through the BFF", async ({ page }) => {
-    test.setTimeout(11 * 60_000);
+    test.setTimeout(22 * 60_000);
+    requireCondition(/^[0-9a-f]{40}$/.test(imageSha ?? ""), "The live smoke image SHA is invalid.");
     const directAzureRequests: string[] = [];
     page.on("request", (request) => {
       const url = new URL(request.url());
@@ -144,28 +231,26 @@ test.describe("Azure Document Analysis staging smoke", () => {
       requiredEnvironment("DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD"),
     );
     await requireDocumentAnalysisCapabilities(page);
-    const startedAt = new Date().toISOString();
     const documentIntelligence = await analyze(
       page, "/document-intelligence", "DOCUMENT_INTELLIGENCE", "2024-11-30",
     );
     const contentUnderstanding = await analyze(
       page, "/content-understanding", "CONTENT_UNDERSTANDING", "2025-11-01",
     );
-    expect(directAzureRequests).toEqual([]);
+    requireCondition(directAzureRequests.length === 0, "Browser made a direct Azure request.");
 
     if (summaryPath) {
-      await writeFile(summaryPath, JSON.stringify({
-        startedAt,
-        finishedAt: new Date().toISOString(),
+      await mkdir(dirname(summaryPath), { recursive: true });
+      await writeFile(summaryPath, `${JSON.stringify({
+        imageSha,
         analyses: [documentIntelligence, contentUnderstanding].map((job) => ({
           provider: job.provider,
-          analysisId: job.id,
           status: job.status,
           apiVersion: job.providerApiVersion,
-          startedAt: job.createdAt,
-          finishedAt: job.completedAt,
+          createdAt: job.createdAt,
+          completedAt: job.completedAt,
         })),
-      }, null, 2));
+      })}\n`, { encoding: "utf8", mode: 0o600 });
     }
   });
 });

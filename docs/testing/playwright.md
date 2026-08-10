@@ -118,15 +118,21 @@ Azure endpoint、Private Endpoint、課金、RBAC propagationへ依存しない�
 `BASE_URL`、`KEYCLOAK_URL`、`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`、process environment内だけの
 `DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`を要求する。不足した状態でlive flagをtrueにすると明示的に失敗する。
 
-live specは既存`fixtures/receipt.pdf`だけを使い、Document IntelligenceとContent Understandingを各1件実行する。
-最大10分の有限待機で`SUCCEEDED`を確認し、schema version 1、`prebuilt-layout`、GA API version、非empty Markdown、
-Raw JSONのfake marker不在を確認する。UIではMarkdownとRaw Result tabを開く。全Browser requestを監視し、
+live specは既存`fixtures/receipt.pdf`だけを使い、Document IntelligenceとContent Understandingを各1件直列実行する。
+各Providerは最大10分の有限待機で`SUCCEEDED`を確認するため、test全体timeoutは22分、専用設定のtimeoutは23分である。
+`FAILED`または`FAILED_RECOVERY_REQUIRED`を取得した場合は再送や10分待機をせず固定メッセージでfail-fastする。pollingで得た
+実際のterminal Job responseを保持し、schema version 1、`prebuilt-layout`、GA API version、non-empty Markdown、
+Raw JSONのfake marker不在を確認する。summaryの時刻には`new Date()`を使わず、このterminal responseの
+`createdAt`と`completedAt`だけを使う。UIではMarkdownとRaw Result tabを開く。全Browser requestを監視し、
 `*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、`*.openai.azure.com`、`*.blob.core.windows.net`へ
 直接requestが0件であることをassertする。分析通信は同一originの`/api/backend/document-analyses...`だけを通す。
 
-failure trace、screenshot、videoにはfixtureと結果画面が含まれ得る。staging workflowは失敗時だけ診断artifactを
-非公開で1日保持し、password、Cookie、Authorization header、Markdown本文、Raw JSON本文をsummaryやartifact名へ
-書き出さない。
+live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`retries: 0`にする。
+failure時にも`test-results`全体をartifactへuploadしない。Provider、stage、status、API version、実際のJob時刻だけの
+allow-list済み診断JSONを1日だけ非公開保持できる。passwordはKey Vaultからlive smokeを実行する同じshellで取得して
+maskし、Playwright processだけへ渡す。Cookie、Authorization header、入力fixture、Markdown本文、Raw JSON本文、
+Azure response bodyはsummary、log、report、artifactへ書き出さない。Raw JSONの検査も本文をmatcher errorへ含めず、
+固定エラー文で失敗する。
 
 ## network
 

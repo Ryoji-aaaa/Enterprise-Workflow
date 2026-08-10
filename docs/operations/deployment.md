@@ -79,8 +79,10 @@ assignmentが作成されていることを確認する。Document Intelligence�
 public network disabled、Storageはshared key disabled、public network disabledであることも確認する。
 この段階ではBackendの既存機能が正常であり、Document Analysis runtimeは`disabled`である。
 
-Phase BはPhase A成功後だけ実施する。stagingの3つのactivation flagを`true`に変更し、同じ検証済み
-image SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
+Phase BはPhase A成功後だけ実施する。stagingの3つのactivation flagを`true`に変更し、`main`から到達可能な
+同じ検証済みimage SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
+`DOCUMENT_INTELLIGENCE_ENABLED=true`、`CONTENT_UNDERSTANDING_ENABLED=true`、
+`DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false`、
 `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、`DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`、
 Document Intelligence/Content Understanding endpoint、Document Analysis Storage endpointとcontainer名が
 設定されていることを確認する。既存の`AZURE_CLIENT_ID`は経費証憑Blob専用identityのclient IDのままである。
@@ -124,14 +126,17 @@ stagingのDocument Intelligence成功、Content Understanding成功、RBAC確認
 確認、検証済みimage SHA promotionの後に明示的に行う。
 
 Phase A/Phase Bのcontrol plane検査には、Azure login済みの担当者が次を使う。scriptはread-onlyであり、
-resource、role assignment、container、revisionを変更しない。
+resource、role assignment、container、revisionを変更しない。input/result containerは
+`az storage container-rm show`でMicrosoft.Storage control planeから検査するため、GitHub-hosted runnerは
+Storage data planeへ接続しない。Shared Key、SAS、connection stringへのfallbackはない。Cognitive Account、identity、
+RBAC、Private Endpoint、Private DNS、Container Apps revisionを含むAzure readが失敗した場合はfail-closedで終了する。
 
 ```bash
 ./scripts/verify-document-analysis-azure.sh
 ```
 
-Phase Aでは3 flagを`false`にした新しいstaging deployの後にこの検査を実行する。Phase Bでは同じ40文字SHAの
-まま3 flagを`true`に変更して**新しい**staging deployを実行し、active revision、Flyway、readiness、既存の
+Phase Aでは3 flagを`false`にした新しいstaging deployの後にこの検査を実行する。Phase Bでは`main`から到達可能な
+同じ40文字SHAのまま3 flagを`true`に変更して**新しい**staging deployを実行し、active revision、Flyway、readiness、既存の
 匿名public smokeを確認してから、次の手動workflowを起動する。Environment variable変更前のrunをrerunしない。
 
 ```bash
@@ -141,7 +146,7 @@ gh workflow run document-analysis-staging-smoke.yml --ref main -f image_sha=<40-
 このworkflowはseed Jobを開始しない。staging seed user、`development-seed-password`、Key Vault accessが
 事前に揃っていなければ、安全にfailした後で
 [開発・staging用seedデータ](../backend/development-seed-data.md)の手順を使う。成功summaryから同一SHA、2 Provider、
-analysis ID、API version、終了時刻をrelease recordへ転記するが、文書本文やRaw JSONは転記しない。
+status、API version、Azure Job responseの実際のcreatedAt/completedAtをrelease recordへ転記するが、文書本文やRaw JSONは転記しない。
 
 rollbackは3 activation flagを`false`へ戻して、同じ検証済みSHAで新しいdeploy runを開始する。Azure resource、
 Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Jobを自動再queueしない。

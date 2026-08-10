@@ -14,6 +14,8 @@ readonly PRODUCTION_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/environments/prod
 readonly TERRAFORM_PLAN_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/terraform-plan.yml"
 readonly STAGING_SMOKE_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/document-analysis-staging-smoke.yml"
 readonly AZURE_VERIFICATION_SCRIPT="${PROJECT_DIRECTORY}/scripts/verify-document-analysis-azure.sh"
+readonly AZURE_VERIFICATION_TEST_SCRIPT="${PROJECT_DIRECTORY}/scripts/test-verify-document-analysis-azure.sh"
+readonly LIVE_SMOKE_PLAYWRIGHT_CONFIG="${PROJECT_DIRECTORY}/tests/e2e/playwright.live.config.ts"
 readonly -a TERRAFORM_WORKFLOWS=(
   "${TERRAFORM_PLAN_WORKFLOW}"
   "${PROJECT_DIRECTORY}/.github/workflows/deploy-staging.yml"
@@ -131,11 +133,36 @@ grep -Fq 'TF_VAR_document_analysis_storage_account_name' "${TERRAFORM_PLAN_WORKF
 }
 grep -Fq 'set -Eeuo pipefail' "${AZURE_VERIFICATION_SCRIPT}"
 grep -Fq 'The script only uses Azure CLI read commands.' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'az storage container-rm show' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'DOCUMENT_INTELLIGENCE_ENABLED=true' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'CONTENT_UNDERSTANDING_ENABLED=true' "${AZURE_VERIFICATION_SCRIPT}"
+if grep -Eq 'az[[:space:]]+storage[[:space:]]+container[[:space:]]+show' "${AZURE_VERIFICATION_SCRIPT}"; then
+  echo "Document Analysis Azure verification must not use Storage data-plane container reads." >&2
+  exit 1
+fi
+if grep -Fq '.allowSharedKeyAccess // empty' "${AZURE_VERIFICATION_SCRIPT}"; then
+  echo "Document Analysis Azure verification must distinguish allowSharedKeyAccess=false from a missing value." >&2
+  exit 1
+fi
 if grep -Eq 'az[[:space:]].*(create|update|delete|apply|start|stop|restart)' \
   "${AZURE_VERIFICATION_SCRIPT}"; then
   echo "Document Analysis Azure verification must remain read-only." >&2
   exit 1
 fi
+[[ -x "${AZURE_VERIFICATION_TEST_SCRIPT}" ]] || {
+  echo "Document Analysis Azure verification regression test must be executable." >&2
+  exit 1
+}
+grep -Fq 'fake Azure CLI' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'allowSharedKeyAccess' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'read-failure' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'missing-identity' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'missing-role' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'public-container' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'activation-mismatch' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'test-verify-document-analysis-azure.sh' "${PROJECT_DIRECTORY}/scripts/verify-infra.sh"
+grep -Fq 'scripts/test-verify-document-analysis-azure.sh' "${TERRAFORM_PLAN_WORKFLOW}"
 
 grep -Fq 'workflow_dispatch:' "${STAGING_SMOKE_WORKFLOW}"
 if grep -Eq 'workflow_run:|pull_request:|^[[:space:]]*push:' "${STAGING_SMOKE_WORKFLOW}"; then
@@ -146,9 +173,37 @@ grep -Fq 'environment: staging' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'id-token: write' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'image_sha:' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq '^[0-9a-f]{40}$' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'ref: main' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'fetch-depth: 0' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'persist-credentials: false' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'GITHUB_REF" == "refs/heads/main' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'git merge-base --is-ancestor "$IMAGE_SHA" origin/main' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'Checkout verified image SHA' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'development-seed-password' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'retention-days: 1' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'playwright.live.config.ts' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD="$password"' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'document-analysis-live-smoke-diagnostics.json' "${STAGING_SMOKE_WORKFLOW}"
+if grep -Eq 'DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD=.*GITHUB_ENV' "${STAGING_SMOKE_WORKFLOW}"; then
+  echo "Staging smoke password must not be written to GITHUB_ENV." >&2
+  exit 1
+fi
+if grep -Eq '^[[:space:]]*path:[[:space:]]*tests/e2e/test-results[[:space:]]*$' "${STAGING_SMOKE_WORKFLOW}"; then
+  echo "Staging smoke must not upload the complete Playwright test-results directory." >&2
+  exit 1
+fi
+chromium_line="$(grep -n -m1 'Install Chromium for the isolated live smoke' "${STAGING_SMOKE_WORKFLOW}" | cut -d: -f1)"
+azure_login_line="$(grep -n -m1 'azure/login@v2' "${STAGING_SMOKE_WORKFLOW}" | cut -d: -f1)"
+if (( chromium_line >= azure_login_line )); then
+  echo "Staging smoke must install npm dependencies and Chromium before Azure login." >&2
+  exit 1
+fi
+grep -Fq 'timeout: 23 * 60_000' "${LIVE_SMOKE_PLAYWRIGHT_CONFIG}"
+grep -Fq 'retries: 0' "${LIVE_SMOKE_PLAYWRIGHT_CONFIG}"
+grep -Fq 'trace: "off"' "${LIVE_SMOKE_PLAYWRIGHT_CONFIG}"
+grep -Fq 'screenshot: "off"' "${LIVE_SMOKE_PLAYWRIGHT_CONFIG}"
+grep -Fq 'video: "off"' "${LIVE_SMOKE_PLAYWRIGHT_CONFIG}"
 if grep -Fq 'development-seed-password' \
   "${PROJECT_DIRECTORY}/.github/workflows/deploy-production.yml"; then
   echo "Production workflow must not reference the staging development seed secret." >&2

@@ -121,22 +121,31 @@ RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再
 送らない。Azure live validationはstaging resource作成後の運用確認として分離する。
 
 `document-analysis-staging-smoke.yml`は`workflow_dispatch`だけで起動し、`staging` Environmentと
-`contents: read`、`id-token: write`だけを使用する。必須の`image_sha`は40文字の小文字hex SHAに限定し、
-Terraform stateとAzure CLIのread-only検査で、activeなFrontend/Backend revisionが同じimage tagであること、
-3つのactivation flag、BackendのAzure execution mode、2つのDocument Analysis専用client ID、endpoint、
-containerが一致することを確認してからAzureへ分析要求を送る。`latest`やbranch名は受け付けない。
+`contents: read`、`id-token: write`だけを使用する。起動refはrepository default branchである`main`に限定する。
+Azure loginより前に、`fetch-depth: 0`、`persist-credentials: false`で信頼済みの`main`をcheckoutし、必須の
+`image_sha`が40文字の小文字hexの実commitであり`origin/main`のancestorであることを検証する。検証後だけ
+対象SHAをcheckoutするため、branch名、tag、未マージPR commit、同一repositoryの未レビューbranch commitを
+実行対象にできない。`latest`は受け付けない。
 
-このworkflowはOIDC login後にstaging Key Vaultの`development-seed-password`を一時process environmentへ
-読み込む。passwordはGitHub Secret、step output、summary、artifactへ保存しない。`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`
-はstaging Environment variableとして登録し、seed userが未投入の場合は
-[開発・staging用seedデータ](../backend/development-seed-data.md)の手順を実施してから再実行する。workflow自体は
-seed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、課金対象のstaging live smokeはそれぞれ別の
-責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
+Node依存関係とChromiumはAzure loginより前に導入する。Terraform stateとAzure CLIのread-only検査では、
+activeなFrontend/Backend revisionが同じimage tagであること、3つのactivation flag、BackendのAzure
+execution mode、2つのDocument Analysis専用client ID、endpoint、containerが一致することを確認してから
+Azureへ分析要求を送る。container検査は`az storage container-rm show`によるMicrosoft.Storage control plane
+readだけを使い、Private Endpoint限定でpublic networkを無効にしたStorageに対してもdata plane、Shared Key、
+SAS、connection stringへfallbackしない。Azure CLI readの失敗は検査成功として扱わない。
 
-live smoke成功時のsummaryにはimage SHA、workflow run、Provider名、analysis ID、終了status、API version、
-開始/終了時刻だけを記録する。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、
-operation tokenは記録しない。失敗時だけのPlaywright診断artifactは入力fixtureと画面結果を含み得るため、
-公開せず保持期間を1日に限定する。
+staging Key Vaultの`development-seed-password`は、setup-node、`npm ci`、Chromium導入後、live smokeを起動する
+同じshell stepで取得する。`add-mask`後に`DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`としてPlaywright processだけへ
+渡し、`GITHUB_ENV`、step output、summary、artifactへ保存しない。`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`はstaging
+Environment variableとして登録し、seed userが未投入の場合は[開発・staging用seedデータ](../backend/development-seed-data.md)
+の手順を実施してから再実行する。workflow自体はseed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、
+課金対象のstaging live smokeはそれぞれ別の責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
+
+live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`retries: 0`にする。成功summaryは
+同一image SHA、Provider、status、API version、Azure Job responseの実際の`createdAt`/`completedAt`だけに限定する。
+失敗時にartifactへ残せるのはProvider、stage、status、API version、時刻だけのallow-list済み専用診断ファイルであり、
+`test-results`全体はuploadしない。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、
+operation token、Azure response bodyはsummary、log、report、artifactに記録しない。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の
