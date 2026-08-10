@@ -6,8 +6,10 @@ import { Braces, FileCode2, Pilcrow, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DocumentAnalysisResult } from "@/lib/document-analysis";
 import type { DocumentAnalysisJob, DocumentAnalysisRawResult } from "@/lib/document-analysis-api";
+import { paragraphsToCsv, tablesToCsv } from "@/lib/document-analysis-copy";
 import { cn } from "@/lib/utils";
 
+import { CopyToClipboardButton } from "./copy-to-clipboard-button";
 import { MarkdownResult } from "./markdown-result";
 import { ParagraphsResult } from "./paragraphs-result";
 import { RawResult } from "./raw-result";
@@ -41,6 +43,17 @@ export function AnalysisResultTabs({
 }) {
   const [activeTab, setActiveTab] = useState<ResultTab>("markdown");
   const baseId = useId();
+  const copyAction = activeTab === "markdown"
+    ? { label: "Markdownをコピー", text: result?.markdown ?? "", disabled: !result }
+    : activeTab === "paragraphs"
+      ? { label: "Paragraphsをコピー", text: result ? paragraphsToCsv(result.paragraphs) : "", disabled: !result }
+      : activeTab === "tables"
+        ? { label: "Tablesをコピー", text: result ? tablesToCsv(result.tables) : "", disabled: !result }
+        : {
+          label: "Resultをコピー",
+          text: rawState.status === "success" ? rawState.value.text : "",
+          disabled: rawState.status !== "success",
+        };
 
   useEffect(() => {
     if (activeTab === "result" && result && rawState.status === "idle") {
@@ -49,7 +62,7 @@ export function AnalysisResultTabs({
   }, [activeTab, onLoadRawResult, rawState.status, result]);
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col">
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="border-b px-4 py-3">
         <h2 className="text-sm font-medium">Result</h2>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -58,8 +71,8 @@ export function AnalysisResultTabs({
             : "Run Analysis後に表示します。"}
         </p>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col p-4">
-        <div aria-label="分析結果タブ" className="mb-3 grid grid-cols-2 gap-2" role="tablist">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+        <div aria-label="分析結果タブ" className="mb-3 grid shrink-0 grid-cols-2 gap-2" role="tablist">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
@@ -81,9 +94,12 @@ export function AnalysisResultTabs({
             );
           })}
         </div>
+        <div className="mb-3 flex shrink-0 justify-end">
+          <CopyToClipboardButton {...copyAction} />
+        </div>
         <div
           aria-labelledby={`${baseId}-${activeTab}-tab`}
-          className="flex min-h-0 flex-1 flex-col"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           id={`${baseId}-${activeTab}-panel`}
           role="tabpanel"
           tabIndex={0}

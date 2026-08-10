@@ -376,18 +376,18 @@ export function DocumentAnalysisWorkbench({
             selectedFile={state.selectedFile}
             selectionError={state.status === "failed" ? state.error : null}
           />
-          <div className="min-h-0 min-w-0">
+          <div className="h-full min-h-0 min-w-0">
             <DocumentPreview
               file={state.selectedFile}
               objectUrl={objectUrl}
               serverUrl={serverPreviewUrl}
             />
           </div>
-          <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="flex h-full min-h-0 min-w-0 flex-col">
             <div className="border-b p-4">
               <AnalysisStatus state={state} viewLoading={viewLoading} />
             </div>
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 overflow-hidden">
               <AnalysisResultTabs
                 job={state.job}
                 onLoadRawResult={() => void loadRawResult()}
@@ -445,7 +445,7 @@ export function DocumentAnalysisWorkbench({
                 <div className="border-b p-4">
                   <AnalysisStatus state={state} viewLoading={viewLoading} />
                 </div>
-                <div className="min-h-0 flex-1">
+                <div className="min-h-0 flex-1 overflow-hidden">
                   <AnalysisResultTabs
                     job={state.job}
                     onLoadRawResult={() => void loadRawResult()}

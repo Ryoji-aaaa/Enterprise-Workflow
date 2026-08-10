@@ -244,6 +244,7 @@ test("一般ユーザーがログインしてモックダッシュボードを�
 test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実行できる", async ({ page }) => {
   test.setTimeout(180_000);
 
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await login(page, userEmail, userPassword);
   await expect(page).toHaveURL(/\/top$/);
 
@@ -291,13 +292,33 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   });
   await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
 
+  await expect(page.getByTestId("document-analysis-file-pane").first()).toHaveCSS("overflow-y", "auto");
+  await expect(page.getByTestId("document-analysis-preview-content").first()).toHaveCSS("overflow-y", "auto");
+  await expect(page.getByTestId("document-analysis-markdown-content").first()).toHaveCSS("overflow-y", "auto");
+  await page.getByRole("button", { name: "Markdownをコピー", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("# 発注書");
+
   await page.getByRole("tab", { name: "Paragraphs", exact: true }).first().click();
   await expect(page.getByText("発注番号: PO-2026-0001", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("document-analysis-paragraphs-content").first()).toHaveCSS("overflow-y", "auto");
+  await page.getByRole("button", { name: "Paragraphsをコピー", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "paragraph-1,sectionHeading,1,99.0%,発注番号: PO-2026-0001",
+  );
   await page.getByRole("tab", { name: "Tables", exact: true }).first().click();
   await expect(page.getByRole("cell", { name: "業務端末", exact: true })).toBeVisible();
+  await expect(page.getByTestId("document-analysis-tables-content").first()).toHaveCSS("overflow-y", "auto");
+  await page.getByRole("button", { name: "Tablesをコピー", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "table-0,1,業務端末,2,\"56,000\",\"112,000\"",
+  );
   expect(rawRequests).toBe(0);
   await page.getByRole("tab", { name: "Result", exact: true }).first().click();
+  await expect(page.getByRole("button", { name: "Resultをコピー", exact: true })).toBeDisabled();
   await expect(page.getByText(/"source": "backend-fake-provider"/).first()).toBeVisible();
+  await expect(page.getByTestId("document-analysis-raw-result-content").first()).toHaveCSS("overflow-y", "auto");
+  await page.getByRole("button", { name: "Resultをコピー", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('"source": "backend-fake-provider"');
   expect(rawRequests).toBe(1);
   await page.getByRole("tab", { name: "Markdown", exact: true }).first().click();
   await page.getByRole("tab", { name: "Result", exact: true }).first().click();
@@ -319,6 +340,7 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await expect(page).toHaveURL(/\/content-understanding$/);
   await expectActiveSidebarLink(page, "Content Understanding");
   await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+  await expect(page.getByTestId("document-analysis-file-pane").first()).toHaveCSS("overflow-y", "auto");
   await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
   const contentRunButton = page.getByRole("button", { name: "Run Analysis", exact: true });
   await expect(contentRunButton).toBeEnabled();
@@ -397,6 +419,11 @@ test("Document Analysis UI Shellはモバイルナビゲーションから到達
   await mobileNavigation.getByRole("link", { name: "Content Understanding" }).click();
   await expect(page).toHaveURL(/\/content-understanding$/);
   await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+  await expect(page.getByTestId("document-analysis-file-pane").last()).toHaveCSS("overflow-y", "auto");
+  const workbenchTabs = page.getByRole("tablist", { name: "ワークベンチ表示切替" });
+  await workbenchTabs.getByRole("tab", { name: "Preview", exact: true }).click();
+  await expect(page.getByTestId("document-analysis-preview-content").last()).toHaveCSS("overflow-y", "auto");
+  await workbenchTabs.getByRole("tab", { name: "File", exact: true }).click();
 
   await page.locator("#document-analysis-file-mobile").setInputFiles({
     name: "too-large.pdf",

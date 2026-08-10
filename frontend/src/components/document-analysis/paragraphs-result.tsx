@@ -5,7 +5,7 @@ import type { DocumentAnalysisParagraph } from "@/lib/document-analysis";
 
 export function ParagraphsResult({ paragraphs }: { paragraphs: DocumentAnalysisParagraph[] }) {
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div className="min-h-0 flex-1 overflow-auto" data-testid="document-analysis-paragraphs-content">
       {paragraphs.length === 0 ? (
         <p className="text-sm text-muted-foreground">Paragraphsはありません。</p>
       ) : (
@@ -27,4 +27,3 @@ export function ParagraphsResult({ paragraphs }: { paragraphs: DocumentAnalysisP
     </div>
   );
 }
-

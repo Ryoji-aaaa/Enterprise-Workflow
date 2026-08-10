@@ -10,7 +10,7 @@ export function RawResult({ value }: { value: DocumentAnalysisRawResult }) {
           Raw Resultが大きいため整形せず表示しています。
         </p>
       )}
-      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs leading-6">
+      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs leading-6" data-testid="document-analysis-raw-result-content">
         {value.text}
       </pre>
     </div>

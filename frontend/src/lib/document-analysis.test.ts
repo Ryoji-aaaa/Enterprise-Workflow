@@ -13,6 +13,7 @@ import {
   validateSingleDocumentSelection,
 } from "./document-analysis.ts";
 import { documentAnalysisSourceUrl, type DocumentAnalysisJob } from "./document-analysis-api.ts";
+import { paragraphsToCsv, tablesToCsv } from "./document-analysis-copy.ts";
 
 const job: DocumentAnalysisJob = {
   id: "123e4567-e89b-42d3-a456-426614174000",
@@ -173,6 +174,44 @@ test("Normalized V1をMarkdown、Paragraphs、Tablesへmappingする", () => {
   assert.equal(result.paragraphs[0]?.content, "発注番号: PO-2026-0001");
   assert.deepEqual(result.paragraphs[0]?.span, { offset: 4, length: 18 });
   assert.equal(result.tables[0]?.cells[0]?.kind, "columnHeader");
+});
+
+test("Paragraphsは全表示項目をRFC 4180形式CSVへ変換する", () => {
+  assert.equal(
+    paragraphsToCsv([{
+      id: "paragraph-0",
+      role: "content",
+      pageNumber: 2,
+      confidence: 0.987,
+      content: "値, \"引用\"\n次の行",
+    }]),
+    "id,role,pageNumber,confidence,content\r\nparagraph-0,content,2,98.7%,\"値, \"\"引用\"\"\r\n次の行\"",
+  );
+});
+
+test("Tablesは複数表を統合し結合セルと欠損セルを空欄のCSVへ変換する", () => {
+  assert.equal(
+    tablesToCsv([
+      {
+        id: "table-0",
+        rowCount: 2,
+        columnCount: 3,
+        cells: [
+          { rowIndex: 0, columnIndex: 0, rowSpan: 1, columnSpan: 2, kind: "columnHeader", content: "見出し", pageNumber: 1, confidence: 1 },
+          { rowIndex: 0, columnIndex: 2, rowSpan: 1, columnSpan: 1, kind: "columnHeader", content: "C", pageNumber: 1, confidence: 1 },
+          { rowIndex: 1, columnIndex: 0, rowSpan: 1, columnSpan: 1, kind: "content", content: "A", pageNumber: 1, confidence: 1 },
+          { rowIndex: 1, columnIndex: 2, rowSpan: 1, columnSpan: 1, kind: "content", content: "値,\"Q\"", pageNumber: 1, confidence: 1 },
+        ],
+      },
+      {
+        id: "table-1",
+        rowCount: 1,
+        columnCount: 1,
+        cells: [{ rowIndex: 0, columnIndex: 0, rowSpan: 1, columnSpan: 1, kind: "content", content: "次", pageNumber: 2, confidence: 1 }],
+      },
+    ]),
+    "tableId,column1,column2,column3\r\ntable-0,見出し,,C\r\ntable-0,A,,\"値,\"\"Q\"\"\"\r\ntable-1,次,,",
+  );
 });
 
 test("未知のNormalized schemaを拒否する", () => {

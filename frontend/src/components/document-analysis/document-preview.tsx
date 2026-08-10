@@ -16,7 +16,7 @@ export function DocumentPreview({
   const previewUrl = objectUrl ?? serverUrl;
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col">
+    <section className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="border-b px-4 py-3">
         <h2 className="text-sm font-medium">Preview</h2>
         <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -26,6 +26,7 @@ export function DocumentPreview({
       <div
         aria-label={file ? `${file.name}のプレビュー` : "ファイルプレビュー"}
         className="grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-muted/20 p-4"
+        data-testid="document-analysis-preview-content"
         role="region"
       >
         {!file || !previewUrl ? (

@@ -65,6 +65,13 @@ Normalized V1の`documents[].markdown`、`documents[].paragraphs`、`documents[]
 Markdown、Paragraphs、Tablesタブへ表示する。Tablesタブはstructured tablesを使用し、
 Markdownを再parseしてtableを作成しない。
 
+DesktopではFile、Preview、Resultの各ペイン、mobileでは選択中ペインがWorkbenchの固定高さ内で
+個別にスクロールする。ペイン見出しとResultのタブ・Copy操作は固定し、内容だけをスクロールする。
+すべての結果タブにCopyを表示する。Markdownは表示中のMarkdown、Paragraphsは
+`id,role,pageNumber,confidence,content`、Tablesは全表を`tableId,column1...columnN`へ統合した
+RFC 4180形式CSV、Resultは取得済みRaw Result本文をコピーする。Tablesの結合セルに覆われた箇所と
+欠損セルは空欄とし、Resultが読み込み中または取得失敗時はCopyを無効化する。
+
 Raw Resultは`SUCCEEDED`直後には取得しない。Resultタブを初めて開いた時だけ
 `/raw-result`を取得し、同じanalysis IDではタブを切り替えても再取得しない。analysis IDが変わると
 Raw stateをresetする。
