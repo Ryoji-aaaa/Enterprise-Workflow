@@ -59,8 +59,7 @@ Document Analysis AI専用identityとStorage専用identityをattachする。既�
 経費証憑Blob専用identityのclient IDのまま維持し、Document Analysis AIには
 `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、Document Analysis Storageには
 `DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`を使う。AI専用identityにはDocument Intelligence
-resource scopeの環境別カスタムロール`Enterprise Workflow <Environment> Document Intelligence Analyze`
-（`documentmodels:analyze`と解析結果readのみ）とFoundry resource scopeの
+resource scopeの`Cognitive Services User`とFoundry resource scopeの
 `Cognitive Services Content Understanding Reader`だけを付与する。Storage専用identityにはinput/result
 各container scopeの`Storage Blob Data Contributor`だけを付与し、Storage Account全体やFrontend、
 Keycloak、seed Jobへは付与しない。

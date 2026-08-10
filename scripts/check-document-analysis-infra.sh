@@ -60,11 +60,7 @@ done
 
 grep -Fq 'uami-enterprise-workflow-${var.environment}-backend-document-analysis-ai' "${STACK_FILE}"
 grep -Fq 'uami-enterprise-workflow-${var.environment}-backend-document-analysis-storage' "${STACK_FILE}"
-grep -Fq 'resource "azurerm_role_definition" "document_intelligence_analyze"' "${STACK_FILE}"
-grep -Fq 'Enterprise Workflow ${title(var.environment)} Document Intelligence Analyze' "${STACK_FILE}"
-grep -Fq 'Microsoft.CognitiveServices/accounts/FormRecognizer/documentmodels:analyze/action' "${STACK_FILE}"
-grep -Fq 'Microsoft.CognitiveServices/accounts/FormRecognizer/documentmodels/analyzeresults/read' "${STACK_FILE}"
-grep -Fq 'assignable_scopes = [module.document_intelligence.id]' "${STACK_FILE}"
+grep -Fq 'role_definition_name = "Cognitive Services User"' "${STACK_FILE}"
 grep -Fq 'role_definition_name = "Cognitive Services Content Understanding Reader"' "${STACK_FILE}"
 grep -Fq 'scope                = module.document_analysis_storage.input_container_scope' "${STACK_FILE}"
 grep -Fq 'scope                = module.document_analysis_storage.result_container_scope' "${STACK_FILE}"

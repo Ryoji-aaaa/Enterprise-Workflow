@@ -62,7 +62,7 @@ elif [[ "$arguments" == role\ assignment\ list* ]]; then
     done
     role='Storage Blob Data Contributor'
     if [[ "$scope" == *'/accounts/di' ]]; then
-      role='Enterprise Workflow Staging Document Intelligence Analyze'
+      role='Cognitive Services User'
     elif [[ "$scope" == *'/accounts/cu' ]]; then
       role='Cognitive Services Content Understanding Reader'
     fi
