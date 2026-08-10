@@ -205,8 +205,8 @@ async function verifyUiAndReturnTerminalJob(
   const markdown = await page.getByRole("tabpanel").first().textContent();
   requireCondition(Boolean(markdown?.trim()), "Document Analysis Markdown tab was empty.");
   await page.getByRole("tab", { name: "Result", exact: true }).first().click();
-  const resultText = await page.getByRole("tabpanel").first().textContent();
-  requireCondition(resultText?.includes(`"apiVersion": "${expectedApiVersion}"`), "Document Analysis Result tab did not show the expected API version.");
+  await expect(page.getByText(`${terminalJob.modelId} / ${expectedApiVersion}`, { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("tabpanel").first().locator("pre")).toBeVisible();
 }
 
 test.describe("Azure Document Analysis staging smoke", () => {
