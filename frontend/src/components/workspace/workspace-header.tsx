@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronDown, CircleHelp, Search, Sparkles } from "lucide-react";
+import { Bell, ChevronDown, CircleHelp, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { WorkflowLogo } from "@/components/workflow-logo";
 import { cn } from "@/lib/utils";
 
 import { useCurrentUser } from "./current-user-context";
@@ -26,9 +27,7 @@ export function WorkspaceHeader() {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur md:px-6">
       <div className="flex min-w-0 items-center gap-3 md:w-60">
-        <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <Sparkles className="size-5" />
-        </div>
+        <WorkflowLogo className="size-9 shrink-0" />
         <span className="hidden truncate font-heading text-base font-semibold sm:block">
           モック文字１
         </span>
