@@ -183,6 +183,15 @@ grep -Fq 'persist-credentials: false' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'GITHUB_REF" == "refs/heads/main' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'git merge-base --is-ancestor "$IMAGE_SHA" origin/main' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'Checkout verified image SHA' "${STAGING_SMOKE_WORKFLOW}"
+prerequisite_step_block="$(awk '
+  /^      - name: Check staging smoke prerequisites$/ { in_step = 1 }
+  in_step { print }
+  in_step && /^      - name: / && $0 !~ /Check staging smoke prerequisites/ { exit }
+' "${STAGING_SMOKE_WORKFLOW}")"
+if ! grep -Fq 'AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}' <<<"${prerequisite_step_block}"; then
+  echo "Document Analysis staging smoke prerequisites must expose AZURE_SUBSCRIPTION_ID." >&2
+  exit 1
+fi
 grep -Fq 'AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'development-seed-password' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'retention-days: 1' "${STAGING_SMOKE_WORKFLOW}"
