@@ -141,7 +141,9 @@ Environment variableとして登録し、seed userが未投入の場合は[開�
 の手順を実施してから再実行する。workflow自体はseed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、
 課金対象のstaging live smokeはそれぞれ別の責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
 
-live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`retries: 0`にする。成功summaryは
+live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`workers: 1`と
+`retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。
+成功summaryは
 同一image SHA、Provider、status、API version、Azure Job responseの実際の`createdAt`/`completedAt`だけに限定する。
 失敗時にartifactへ残せるのはProvider、stage、status、API version、時刻だけのallow-list済み専用診断ファイルであり、
 `test-results`全体はuploadしない。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、

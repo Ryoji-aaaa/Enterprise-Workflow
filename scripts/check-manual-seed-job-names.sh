@@ -7,6 +7,7 @@ readonly SCRIPT_DIRECTORY
 PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 readonly PROJECT_DIRECTORY
 readonly STACK_FILE="${PROJECT_DIRECTORY}/infra/modules/environment-stack/main.tf"
+readonly KEYCLOAK_SEED_SCRIPT="${PROJECT_DIRECTORY}/backend/scripts/seed-keycloak-users.sh"
 readonly MAX_EXCLUSIVE_LENGTH=32
 
 job_name_map="$(
@@ -55,5 +56,10 @@ assert_job_name() {
 assert_job_name db job-ewf-stg-seed-db
 assert_job_name keycloak job-ewf-stg-seed-kc
 assert_job_name all job-ewf-stg-seed-all
+
+for environment_variable in DEV_ADMIN_EMAIL DEV_USER_EMAIL; do
+  grep -Fq "name  = \"${environment_variable}\"" "${STACK_FILE}"
+  grep -Fq ": \"\${${environment_variable}:?${environment_variable} is required}\"" "${KEYCLOAK_SEED_SCRIPT}"
+done
 
 echo "Manual seed Container Apps Job names are valid."

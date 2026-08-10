@@ -40,6 +40,8 @@ fi
 : "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}"
 : "${KEYCLOAK_REALM:?KEYCLOAK_REALM is required}"
 : "${DEV_SEED_PASSWORD:?DEV_SEED_PASSWORD is required}"
+: "${DEV_ADMIN_EMAIL:?DEV_ADMIN_EMAIL is required}"
+: "${DEV_USER_EMAIL:?DEV_USER_EMAIL is required}"
 
 readonly users_file="${DEVELOPMENT_USERS_FILE:-/app/development-users.tsv}"
 [[ -r "${users_file}" ]] || {
@@ -166,6 +168,9 @@ ensure_user() {
     | api --request PUT "${realm_url}/users/${user_uuid}/reset-password" --data-binary @-
   updated=$((updated + 1))
 }
+
+ensure_user "${DEV_ADMIN_EMAIL}" "開発管理者"
+ensure_user "${DEV_USER_EMAIL}" "開発一般ユーザー"
 
 while IFS=$'\t' read -r seed_email seed_display_name; do
   case "${seed_email}" in

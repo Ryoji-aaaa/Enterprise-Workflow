@@ -186,14 +186,18 @@ has_role() {
     return
   fi
   az_read "role ${role} at ${scope}" assignments \
-    az role assignment list --all --assignee "$principal_id" --scope "$scope" --output json || true
+    az role assignment list --assignee "$principal_id" --scope "$scope" --output json || true
   if [[ -z "$assignments" ]]; then
     fail "role ${role} at ${scope}" "a readable role assignment list" "unavailable"
     return
   fi
   jq_read "role ${role} at ${scope}" present \
-    'if type == "array" and any(.[]; .roleDefinitionName == $role) then "present" else error("role missing") end' \
-    "$assignments" --arg role "$role" || true
+    'if type == "array" and any(.[];
+      ((.principalId? // "") | ascii_downcase) == ($principal | ascii_downcase) and
+      .scope == $scope and
+      .roleDefinitionName == $role
+    ) then "present" else error("exact role assignment missing") end' \
+    "$assignments" --arg principal "$principal_id" --arg scope "$scope" --arg role "$role" || true
   expect "role ${role} at ${scope}" "present" "$present"
 }
 
@@ -234,7 +238,11 @@ for container in "$DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME" "$DOCUMENT_ANALYSIS_R
     continue
   fi
   jq_read "private container ${container} access" public_access \
-    'if (.properties | type) != "object" then error("missing properties") elif .properties.publicAccess == null then "None" else .properties.publicAccess end' \
+    'if has("publicAccess") then
+       if .publicAccess == null then "None" else .publicAccess end
+     elif (.properties | type) == "object" and (.properties | has("publicAccess")) then
+       if .properties.publicAccess == null then "None" else .properties.publicAccess end
+     else error("missing publicAccess") end' \
     "$container_json" || true
   if [[ "$public_access" == "None" ]]; then
     pass "private container ${container}"

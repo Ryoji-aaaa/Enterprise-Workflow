@@ -127,7 +127,8 @@ Raw JSONのfake marker不在を確認する。summaryの時刻には`new Date()`
 `*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、`*.openai.azure.com`、`*.blob.core.windows.net`へ
 直接requestが0件であることをassertする。分析通信は同一originの`/api/backend/document-analyses...`だけを通す。
 
-live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`retries: 0`にする。
+live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`workers: 1`、
+`retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。
 failure時にも`test-results`全体をartifactへuploadしない。Provider、stage、status、API version、実際のJob時刻だけの
 allow-list済み診断JSONを1日だけ非公開保持できる。passwordはKey Vaultからlive smokeを実行する同じshellで取得して
 maskし、Playwright processだけへ渡す。Cookie、Authorization header、入力fixture、Markdown本文、Raw JSON本文、

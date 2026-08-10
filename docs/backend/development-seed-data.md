@@ -18,8 +18,11 @@ staging・productionでは実行しない。
 Initializerは組織コード、email、役職コードを自然キーとして存在しない行だけを追加する。
 既存行の手動変更は上書きせず、所属・ロールは期間重複検査で再起動時の重複を防ぐ。
 
-Keycloak側は`keycloak/development-users.tsv`を読み、組織図用69名と境界確認用2名の
-計71アカウントをemailで検索して作成または同期する。Keycloak Roleは業務認可に使わない。
+Keycloak側は最初に`DEV_ADMIN_EMAIL`と`DEV_USER_EMAIL`を作成または同期し、その後
+`keycloak/development-users.tsv`を読み、組織図用69名と境界確認用2名をemailで検索して
+作成または同期する。同じemailが複数経路にあっても既存ユーザーを同期するだけで重複作成しない。
+これにより、DB seedの一般ユーザー（既定`example.user1@sdcj.co.jp`）とKeycloak seedのログイン
+ユーザーが一致する。Keycloak Roleは業務認可に使わない。
 
 ## stagingへの一時投入
 

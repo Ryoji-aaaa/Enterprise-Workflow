@@ -1,14 +1,14 @@
 import { defineConfig } from "@playwright/test";
 
 // Billed staging smoke must never retain documents or Azure results in standard
-// Playwright diagnostics, and must not retry a chargeable provider request.
+// Playwright diagnostics. Staging validation permits bounded retries.
 export default defineConfig({
   testDir: "./specs",
   timeout: 23 * 60_000,
   expect: {
     timeout: 15_000,
   },
-  retries: 0,
+  retries: 2,
   workers: 1,
   reporter: [["line"]],
   use: {

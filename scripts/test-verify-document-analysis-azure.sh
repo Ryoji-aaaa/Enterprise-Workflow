@@ -35,10 +35,12 @@ elif [[ "$arguments" == cognitiveservices\ account\ show* ]]; then
 elif [[ "$arguments" == storage\ account\ show* ]]; then
   printf '%s\n' '{"id":"/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/docstore","allowSharedKeyAccess":false,"publicNetworkAccess":"Disabled"}'
 elif [[ "$arguments" == storage\ container-rm\ show* ]]; then
-  if [[ "${FAKE_AZ_SCENARIO:-success}" == "public-container" ]]; then
-    printf '%s\n' '{"properties":{"publicAccess":"Blob"}}'
-  else
+  if [[ "${FAKE_AZ_SCENARIO:-success}" == "top-level-private-container" ]]; then
+    printf '%s\n' '{"publicAccess":null}'
+  elif [[ "${FAKE_AZ_SCENARIO:-success}" == "legacy-private-container" ]]; then
     printf '%s\n' '{"properties":{"publicAccess":null}}'
+  else
+    printf '%s\n' '{"publicAccess":"Blob"}'
   fi
 elif [[ "$arguments" == identity\ list* ]]; then
   if [[ "${FAKE_AZ_SCENARIO:-success}" == "missing-identity" ]]; then
@@ -50,7 +52,27 @@ elif [[ "$arguments" == role\ assignment\ list* ]]; then
   if [[ "${FAKE_AZ_SCENARIO:-success}" == "missing-role" ]]; then
     printf '%s\n' '[]'
   else
-    printf '%s\n' '[{"roleDefinitionName":"Cognitive Services Data Reader"},{"roleDefinitionName":"Cognitive Services Content Understanding Reader"},{"roleDefinitionName":"Storage Blob Data Contributor"}]'
+    assignee=''
+    scope=''
+    previous=''
+    for argument in "$@"; do
+      if [[ "$previous" == "--assignee" ]]; then assignee="$argument"; fi
+      if [[ "$previous" == "--scope" ]]; then scope="$argument"; fi
+      previous="$argument"
+    done
+    role='Storage Blob Data Contributor'
+    if [[ "$scope" == *'/accounts/di' ]]; then
+      role='Cognitive Services Data Reader'
+    elif [[ "$scope" == *'/accounts/cu' ]]; then
+      role='Cognitive Services Content Understanding Reader'
+    fi
+    if [[ "${FAKE_AZ_SCENARIO:-success}" == "wrong-role" ]]; then
+      role='Owner'
+    elif [[ "${FAKE_AZ_SCENARIO:-success}" == "wrong-scope" ]]; then
+      scope="${scope}/wrong"
+    fi
+    jq --null-input --arg principal "$assignee" --arg scope "$scope" --arg role "$role" \
+      '[{principalId:$principal, scope:$scope, roleDefinitionName:$role}]'
   fi
 elif [[ "$arguments" == network\ private-endpoint\ show* ]]; then
   printf '%s\n' '{"privateLinkServiceConnections":[{"privateLinkServiceConnectionState":{"status":"Approved"}}]}'
@@ -130,14 +152,21 @@ expect_failure() {
   fi
 }
 
-expect_success success
+expect_success top-level-private-container
+expect_success legacy-private-container
 if grep -Eq '(^| )storage container show( |$)' "${fixture_directory}/az.log"; then
   echo "Verifier invoked the prohibited Storage data-plane container command." >&2
+  exit 1
+fi
+if grep -Eq 'role assignment list .*--all' "${fixture_directory}/az.log"; then
+  echo "Verifier must not use the incompatible --all role-assignment option." >&2
   exit 1
 fi
 expect_failure read-failure 'cognitiveservices account show'
 expect_failure missing-identity
 expect_failure missing-role
+expect_failure wrong-role
+expect_failure wrong-scope
 expect_failure public-container
 expect_failure activation-mismatch
 

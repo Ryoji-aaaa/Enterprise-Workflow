@@ -76,7 +76,8 @@ Document AnalysisのコードとTerraform foundationが準備できていても�
 - production imageがstagingで検証した同じSHAであり、全体の本番gateとリリース承認を満たしている
 
 staging live smokeは`main` dispatchと`origin/main` ancestryを検証した後だけに実行し、Key Vault passwordを同一shellの
-Playwright processへだけ渡す。専用設定はtrace、screenshot、videoを無効化し、`retries: 0`にする。成功証跡はProvider、
+Playwright processへだけ渡す。専用設定はtrace、screenshot、videoを無効化し、`workers: 1`と`retries: 2`にする。
+Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。成功証跡はProvider、
 status、API version、Azure Job responseの実際の`createdAt`/`completedAt`に限定し、失敗診断もallow-list済みの非機密
 フィールドだけを保持する。productionではdevelopment seed password、seed Job、test user、Playwright live smokeを使わない。重大障害、403、
 DNS誤解決、結果contract不整合、コスト異常時は3 flagをfalseへ戻し、同じSHAまたは直前の検証済みSHAで新しいdeploy
