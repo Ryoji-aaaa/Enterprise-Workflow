@@ -31,11 +31,10 @@ public class DocumentAnalysisStorageConfiguration {
         return new AzureBlobDocumentAnalysisStorage(inputClient, resultClient);
     }
 
-    private BlobContainerClient containerClient(
+    BlobContainerClient containerClient(
             DocumentAnalysisProperties.Storage storage,
             String containerName) {
-        BlobContainerClientBuilder builder = new BlobContainerClientBuilder()
-                .containerName(containerName);
+        BlobContainerClientBuilder builder = new BlobContainerClientBuilder();
         if (hasText(storage.connectionString())) {
             builder.connectionString(storage.connectionString());
         } else {
@@ -44,6 +43,8 @@ public class DocumentAnalysisStorageConfiguration {
                             .managedIdentityClientId(storage.managedIdentityClientId())
                             .build());
         }
+        // endpoint() parses its path and can replace an earlier container name with $root.
+        builder.containerName(containerName);
         return builder.buildClient();
     }
 

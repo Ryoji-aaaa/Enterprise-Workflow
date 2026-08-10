@@ -27,5 +27,21 @@ class AttachmentStorageConfigurationTest {
 
         assertThat(client.getHttpPipeline().getHttpClient().getClass().getPackageName())
                 .isEqualTo("com.azure.core.http.jdk.httpclient");
+        assertThat(client.getBlobContainerName()).isEqualTo("expense-evidence");
+    }
+
+    @Test
+    void serviceEndpointKeepsTheConfiguredContainerName() {
+        AttachmentProperties properties = new AttachmentProperties(
+                DataSize.ofMegabytes(10), 10, DataSize.ofMegabytes(50), 255,
+                Set.of("application/pdf"), new AttachmentProperties.Storage(
+                        "expense-evidence", "https://example.blob.core.windows.net/", null, false));
+
+        BlobContainerClient client = new AttachmentStorageConfiguration()
+                .attachmentBlobContainerClient(properties);
+
+        assertThat(client.getBlobContainerName()).isEqualTo("expense-evidence");
+        assertThat(client.getBlobContainerUrl())
+                .isEqualTo("https://example.blob.core.windows.net/expense-evidence");
     }
 }

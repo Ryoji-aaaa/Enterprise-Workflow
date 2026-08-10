@@ -296,6 +296,9 @@ workflow:
 
 ローカルComposeでは`enabled=true`、`execution-mode=fake`、両Provider enabled、
 既存Azuriteの`document-analysis-input`と`document-analysis-result` containerを使用する。
+Azureでは`DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT`のBlob service endpointを先に解決し、
+その後でinput/result container名を設定する。末尾`/`付きservice endpointをcontainerなしの
+`$root`として再解釈させないため、この設定順を維持する。
 `retention-cleanup-interval`と`retention-cleanup-batch-size`は
 `WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_INTERVAL`、
 `WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_BATCH_SIZE`で上書きできる。Azure Terraformには個別値を
