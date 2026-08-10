@@ -26,7 +26,7 @@ Backend Blob専用User Assigned Managed Identityへ、container scopeの
 Frontend、Keycloak、共通runtime identity、seed Jobには付与しない。Backend環境変数は次の非秘密値だけである。
 
 ```text
-AZURE_STORAGE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net
+AZURE_STORAGE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net/
 AZURE_STORAGE_CONTAINER_NAME=expense-evidence
 AZURE_CLIENT_ID=<backend-blob-identity-client-id>
 ATTACHMENT_STORAGE_CREATE_CONTAINER=false
@@ -34,6 +34,9 @@ ATTACHMENT_STORAGE_CREATE_CONTAINER=false
 
 Azureでは`DefaultAzureCredential`が指定client IDのManaged Identityを使用する。
 connection string、Storage key、SASをKey Vault、Terraform、Container App環境変数へ登録しない。
+Blob clientはservice endpointまたはconnection stringを先に解決し、その後で
+`AZURE_STORAGE_CONTAINER_NAME`を設定する。service endpointの末尾`/`をcontainerなしの`$root`として
+再解釈させないため、この設定順を維持する。
 
 ## staging障害調査中の一時診断
 

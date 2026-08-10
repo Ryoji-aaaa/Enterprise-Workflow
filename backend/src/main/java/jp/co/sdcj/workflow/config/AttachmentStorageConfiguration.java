@@ -19,7 +19,6 @@ public class AttachmentStorageConfiguration {
         AttachmentProperties.Storage storage = properties.storage();
         HttpClient httpClient = new JdkHttpClientBuilder().build();
         BlobContainerClientBuilder builder = new BlobContainerClientBuilder()
-                .containerName(storage.containerName())
                 .httpClient(httpClient)
                 .addPolicy(new AttachmentBlobHttpFailureLoggingPolicy());
         if (storage.connectionString() != null && !storage.connectionString().isBlank()) {
@@ -31,6 +30,8 @@ public class AttachmentStorageConfiguration {
             throw new IllegalStateException(
                     "attachment storage endpoint or connection string is required");
         }
+        // endpoint() parses its path and can replace an earlier container name with $root.
+        builder.containerName(storage.containerName());
         BlobContainerClient client = builder.buildClient();
         if (storage.createContainer()) {
             client.createIfNotExists();
