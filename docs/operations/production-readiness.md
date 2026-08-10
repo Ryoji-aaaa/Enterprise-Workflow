@@ -62,6 +62,27 @@ E2EではEntra IDの実tenantへ常時依存させるか、CI専用tenantとテ�
 
 ## 本番利用前に必須のセキュリティ変更
 
+### Document Analysisの昇格条件
+
+Document AnalysisのコードとTerraform foundationが準備できていても、アプリケーション全体のproduction readinessを
+満たしたことにはならない。productionの`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、
+`DOCUMENT_INTELLIGENCE_ENABLED`、`CONTENT_UNDERSTANDING_ENABLED`は、次の全項目とリリース承認が揃うまで
+`false`を維持する。
+
+- `main`から到達可能な同一40文字SHAでのstaging live smokeがDocument IntelligenceとContent Understandingの両方で成功している
+- read-only Azure検査でPrivate Endpoint、Private DNS、最小RBAC、local auth/shared key/public network無効、
+  input/result containerのprivate access、active Backend revisionの3 activation flagとcontainer作成禁止を確認している
+- 7日保持、Blob cleanup後の`EXPIRED` metadata、課金上限と監視方法を確認している
+- production imageがstagingで検証した同じSHAであり、全体の本番gateとリリース承認を満たしている
+
+staging live smokeは`main` dispatchと`origin/main` ancestryを検証した後だけに実行し、Key Vault passwordを同一shellの
+Playwright processへだけ渡す。専用設定はtrace、screenshot、videoを無効化し、`workers: 1`と`retries: 2`にする。
+Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。成功証跡はProvider、
+status、API version、Azure Job responseの実際の`createdAt`/`completedAt`に限定し、失敗診断もallow-list済みの非機密
+フィールドだけを保持する。productionではdevelopment seed password、seed Job、test user、Playwright live smokeを使わない。重大障害、403、
+DNS誤解決、結果contract不整合、コスト異常時は3 flagをfalseへ戻し、同じSHAまたは直前の検証済みSHAで新しいdeploy
+runを開始する。これはresource削除を伴わず、`FAILED_RECOVERY_REQUIRED` Jobの自動再送もしない。
+
 ### secretと資格情報
 
 - `.env.example`の全`replace-with-*`と`password`を十分な強度の値へ変更する

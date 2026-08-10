@@ -128,9 +128,9 @@ module "document_analysis_storage" {
   soft_delete_retention_days = 7
 }
 
-resource "azurerm_role_assignment" "document_intelligence_reader" {
+resource "azurerm_role_assignment" "document_intelligence_user" {
   scope                = module.document_intelligence.id
-  role_definition_name = "Cognitive Services Data Reader"
+  role_definition_name = "Cognitive Services User"
   principal_id         = module.document_analysis_ai_identity.principal_id
 }
 
@@ -401,7 +401,7 @@ module "backend" {
     module.key_vault,
     azurerm_role_assignment.acr_pull,
     azurerm_role_assignment.backend_attachment_blob,
-    azurerm_role_assignment.document_intelligence_reader,
+    azurerm_role_assignment.document_intelligence_user,
     azurerm_role_assignment.content_understanding_reader,
     azurerm_role_assignment.document_analysis_input_blob,
     azurerm_role_assignment.document_analysis_result_blob,

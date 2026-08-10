@@ -110,6 +110,31 @@ test-results/<run-id>/diagnostics/e2e/html/
 成果物はGit管理対象外である。traceはPlaywright Trace Viewerで開ける。
 Playwrightが失敗した場合、実行ログにもこの2つの保存先を表示する。
 
+## staging Azure Document Analysis live smoke
+
+`specs/azure-document-analysis-smoke.spec.ts`は通常の`make test SUITES=e2e`では
+`AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE=true`がないためskipする。通常suiteは引き続きFake Providerを使い、
+Azure endpoint、Private Endpoint、課金、RBAC propagationへ依存しない。live specはstagingだけで、
+`BASE_URL`、`KEYCLOAK_URL`、`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`、process environment内だけの
+`DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`を要求する。不足した状態でlive flagをtrueにすると明示的に失敗する。
+
+live specは既存`fixtures/receipt.pdf`だけを使い、Document IntelligenceとContent Understandingを各1件直列実行する。
+各Providerは最大10分の有限待機で`SUCCEEDED`を確認するため、test全体timeoutは22分、専用設定のtimeoutは23分である。
+`FAILED`または`FAILED_RECOVERY_REQUIRED`を取得した場合は再送や10分待機をせず固定メッセージでfail-fastする。pollingで得た
+実際のterminal Job responseを保持し、schema version 1、`prebuilt-layout`、GA API version、non-empty Markdown、
+Raw JSONのfake marker不在を確認する。summaryの時刻には`new Date()`を使わず、このterminal responseの
+`createdAt`と`completedAt`だけを使う。UIではMarkdownとRaw Result tabを開く。全Browser requestを監視し、
+`*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、`*.openai.azure.com`、`*.blob.core.windows.net`へ
+直接requestが0件であることをassertする。分析通信は同一originの`/api/backend/document-analyses...`だけを通す。
+
+live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`workers: 1`、
+`retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。
+failure時にも`test-results`全体をartifactへuploadしない。Provider、stage、status、API version、実際のJob時刻だけの
+allow-list済み診断JSONを1日だけ非公開保持できる。passwordはKey Vaultからlive smokeを実行する同じshellで取得して
+maskし、Playwright processだけへ渡す。Cookie、Authorization header、入力fixture、Markdown本文、Raw JSON本文、
+Azure response bodyはsummary、log、report、artifactへ書き出さない。Raw JSONの検査も本文をmatcher errorへ含めず、
+固定エラー文で失敗する。
+
 ## network
 
 Keycloak issuer、OAuth redirect、Cookieのhostを実利用と同じ`localhost`へ揃えるため、

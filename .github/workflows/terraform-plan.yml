@@ -11,8 +11,10 @@ on:
       - "scripts/check-backend-internal-url.sh"
       - "scripts/check-backend-probes.sh"
       - "scripts/check-document-analysis-infra.sh"
+      - "scripts/test-verify-document-analysis-azure.sh"
       - "scripts/check-manual-seed-job-names.sh"
       - "scripts/lib/log.sh"
+      - "scripts/verify-document-analysis-azure.sh"
       - "scripts/verify-infra.sh"
   workflow_dispatch:
 

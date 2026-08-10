@@ -1,0 +1,186 @@
+name: Document Analysis staging smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: Full 40-character lowercase commit SHA deployed to staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  smoke:
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_location: ${{ vars.AZURE_LOCATION }}
+      TF_VAR_resource_group_name: ${{ vars.AZURE_RESOURCE_GROUP }}
+      TF_VAR_acr_name: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+      TF_VAR_acr_resource_group_name: ${{ vars.AZURE_CONTAINER_REGISTRY_RESOURCE_GROUP }}
+      TF_VAR_github_identity_principal_id: ${{ vars.AZURE_GITHUB_IDENTITY_PRINCIPAL_ID }}
+      TF_VAR_container_app_environment_name: ${{ vars.AZURE_CONTAINER_APPS_ENVIRONMENT_NAME }}
+      TF_VAR_frontend_container_app_name: ${{ vars.AZURE_FRONTEND_CONTAINER_APP_NAME }}
+      TF_VAR_backend_container_app_name: ${{ vars.AZURE_BACKEND_CONTAINER_APP_NAME }}
+      TF_VAR_keycloak_container_app_name: ${{ vars.AZURE_KEYCLOAK_CONTAINER_APP_NAME }}
+      TF_VAR_key_vault_name: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      TF_VAR_postgres_server_name: ${{ vars.AZURE_POSTGRES_SERVER_NAME }}
+      TF_VAR_attachment_storage_account_name: ${{ vars.AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME }}
+      TF_VAR_document_intelligence_account_name: ${{ vars.AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME }}
+      TF_VAR_content_understanding_account_name: ${{ vars.AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME }}
+      TF_VAR_document_analysis_storage_account_name: ${{ vars.AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME }}
+      TF_VAR_allowed_email_domain: ${{ vars.ALLOWED_EMAIL_DOMAIN }}
+      TF_VAR_provision_workloads: ${{ vars.PROVISION_WORKLOADS || 'false' }}
+      TF_VAR_contract_legacy_user_columns: ${{ vars.CONTRACT_LEGACY_USER_COLUMNS || 'false' }}
+      TF_VAR_document_analysis_enabled: ${{ vars.WORKFLOW_DOCUMENT_ANALYSIS_ENABLED || 'false' }}
+      TF_VAR_document_intelligence_enabled: ${{ vars.DOCUMENT_INTELLIGENCE_ENABLED || 'false' }}
+      TF_VAR_content_understanding_enabled: ${{ vars.CONTENT_UNDERSTANDING_ENABLED || 'false' }}
+
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate main dispatch and immutable image SHA
+        id: target
+        env:
+          IMAGE_SHA: ${{ inputs.image_sha }}
+        run: |
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "This workflow must be dispatched from the repository default branch main." >&2
+            exit 1
+          }
+          [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "image_sha must be a 40-character lowercase hexadecimal commit SHA." >&2
+            exit 1
+          }
+          git cat-file -e "${IMAGE_SHA}^{commit}" || {
+            echo "image_sha does not identify an existing commit." >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$IMAGE_SHA" origin/main || {
+            echo "image_sha must be an ancestor of origin/main." >&2
+            exit 1
+          }
+          echo "image_sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Checkout verified image SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.target.outputs.image_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check staging smoke prerequisites
+        env:
+          AZURE_OIDC_CONFIGURED: ${{ vars.AZURE_OIDC_CONFIGURED }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          TF_STATE_RESOURCE_GROUP: ${{ vars.TF_STATE_RESOURCE_GROUP }}
+          TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+          TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+          TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+          DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
+        run: |
+          [[ "$AZURE_OIDC_CONFIGURED" == "true" ]] || { echo "Azure OIDC is not configured." >&2; exit 1; }
+          for name in \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
+            TF_STATE_RESOURCE_GROUP TF_STATE_STORAGE_ACCOUNT TF_STATE_CONTAINER TF_STATE_KEY \
+            DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL \
+            TF_VAR_resource_group_name TF_VAR_frontend_container_app_name \
+            TF_VAR_backend_container_app_name TF_VAR_key_vault_name; do
+            [[ -n "${!name}" ]] || { echo "Missing staging Environment variable: ${name}" >&2; exit 1; }
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - name: Install Chromium for the isolated live smoke
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: hashicorp/setup-terraform@v3
+      - name: Read staging Terraform state
+        working-directory: infra/environments/staging
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}"
+          {
+            echo "BASE_URL=$(terraform output -raw frontend_url)"
+            echo "KEYCLOAK_URL=$(terraform output -raw keycloak_url)"
+            echo "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=$(terraform output -raw document_intelligence_endpoint)"
+            echo "AZURE_CONTENT_UNDERSTANDING_ENDPOINT=$(terraform output -raw content_understanding_endpoint)"
+            echo "AZURE_DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT=$(terraform output -raw document_analysis_storage_blob_endpoint)"
+            echo "AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID=$(terraform output -raw document_analysis_ai_identity_client_id)"
+            echo "AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID=$(terraform output -raw document_analysis_storage_identity_client_id)"
+          } >> "$GITHUB_ENV"
+      - name: Verify Azure foundation and active Azure runtime
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_ENVIRONMENT: staging
+          AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME: ${{ vars.AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME }}
+          AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME: ${{ vars.AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME }}
+          AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME }}
+          AZURE_BACKEND_CONTAINER_APP_NAME: ${{ vars.AZURE_BACKEND_CONTAINER_APP_NAME }}
+          AZURE_FRONTEND_CONTAINER_APP_NAME: ${{ vars.AZURE_FRONTEND_CONTAINER_APP_NAME }}
+          DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME: document-analysis-input
+          DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME: document-analysis-result
+          EXPECTED_IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
+        run: ./scripts/verify-document-analysis-azure.sh
+      - name: Run billed Document Analysis smoke through the Frontend BFF
+        working-directory: tests/e2e
+        env:
+          AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"
+          DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-live-smoke-summary.json
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_DIAGNOSTIC_PATH: test-results/document-analysis-live-smoke-diagnostics.json
+        run: |
+          password="$(az keyvault secret show --vault-name "$TF_VAR_key_vault_name" \
+            --name development-seed-password --query value --output tsv)"
+          [[ -n "$password" ]] || {
+            echo "Staging seed account is unavailable. Follow docs/backend/development-seed-data.md to run the approved staging seed Jobs before retrying." >&2
+            exit 1
+          }
+          echo "::add-mask::$password"
+          DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD="$password" \
+            npx playwright test --config=playwright.live.config.ts specs/azure-document-analysis-smoke.spec.ts
+      - name: Publish non-sensitive smoke evidence
+        if: success()
+        working-directory: tests/e2e
+        env:
+          IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
+        run: |
+          echo "- Image SHA: ${IMAGE_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          jq -er --arg image_sha "$IMAGE_SHA" '
+            . as $summary
+            | ($summary.imageSha == $image_sha)
+              and (($summary.analyses | type) == "array")
+              and (($summary.analyses | length) == 2)
+            | if . then $summary.analyses[] else error("invalid safe smoke summary") end
+            | "- \(.provider): \(.status), API \(.apiVersion), \(.createdAt) to \(.completedAt)"
+          ' test-results/document-analysis-live-smoke-summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload allow-listed smoke diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: document-analysis-staging-smoke-diagnostics-${{ github.run_id }}
+          path: tests/e2e/test-results/document-analysis-live-smoke-diagnostics.json
+          if-no-files-found: ignore
+          retention-days: 1

@@ -8,6 +8,7 @@
   staging/production plan
 - `deploy-staging.yml`: main CI成功後のSHA image build/pushと自動apply
 - `deploy-production.yml`: 指定済みSHA imageを再buildせず手動昇格
+- `document-analysis-staging-smoke.yml`: 明示起動したstagingの2 Provider live smoke
 
 PRでは`ci.yml`の`make test`、`make verify`とimage build、`dependency-review.yml`の
 dependency reviewと`make audit`を実行する。Terraform、インフラ検証スクリプト、Makefile、
@@ -118,6 +119,35 @@ falseを維持する。stagingはまず3つともfalseのままfoundationをappl
 RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再deployする。
 通常CIとPRのE2EはFake Providerだけを使い、Azure AI、Foundry、Storage private endpointへlive requestを
 送らない。Azure live validationはstaging resource作成後の運用確認として分離する。
+
+`document-analysis-staging-smoke.yml`は`workflow_dispatch`だけで起動し、`staging` Environmentと
+`contents: read`、`id-token: write`だけを使用する。起動refはrepository default branchである`main`に限定する。
+Azure loginより前に、`fetch-depth: 0`、`persist-credentials: false`で信頼済みの`main`をcheckoutし、必須の
+`image_sha`が40文字の小文字hexの実commitであり`origin/main`のancestorであることを検証する。検証後だけ
+対象SHAをcheckoutするため、branch名、tag、未マージPR commit、同一repositoryの未レビューbranch commitを
+実行対象にできない。`latest`は受け付けない。
+
+Node依存関係とChromiumはAzure loginより前に導入する。Terraform stateとAzure CLIのread-only検査では、
+activeなFrontend/Backend revisionが同じimage tagであること、3つのactivation flag、BackendのAzure
+execution mode、2つのDocument Analysis専用client ID、endpoint、containerが一致することを確認してから
+Azureへ分析要求を送る。container検査は`az storage container-rm show`によるMicrosoft.Storage control plane
+readだけを使い、Private Endpoint限定でpublic networkを無効にしたStorageに対してもdata plane、Shared Key、
+SAS、connection stringへfallbackしない。Azure CLI readの失敗は検査成功として扱わない。
+
+staging Key Vaultの`development-seed-password`は、setup-node、`npm ci`、Chromium導入後、live smokeを起動する
+同じshell stepで取得する。`add-mask`後に`DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`としてPlaywright processだけへ
+渡し、`GITHUB_ENV`、step output、summary、artifactへ保存しない。`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`はstaging
+Environment variableとして登録し、seed userが未投入の場合は[開発・staging用seedデータ](../backend/development-seed-data.md)
+の手順を実施してから再実行する。workflow自体はseed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、
+課金対象のstaging live smokeはそれぞれ別の責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
+
+live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`workers: 1`と
+`retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。
+成功summaryは
+同一image SHA、Provider、status、API version、Azure Job responseの実際の`createdAt`/`completedAt`だけに限定する。
+失敗時にartifactへ残せるのはProvider、stage、status、API version、時刻だけのallow-list済み専用診断ファイルであり、
+`test-results`全体はuploadしない。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、
+operation token、Azure response bodyはsummary、log、report、artifactに記録しない。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の
