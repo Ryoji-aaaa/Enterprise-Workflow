@@ -56,7 +56,7 @@ export function DocumentUploadPanel({
   }
 
   return (
-    <aside className="flex min-h-0 min-w-0 flex-col gap-5 overflow-y-auto p-4">
+    <aside className="flex h-full min-h-0 min-w-0 flex-col gap-5 overflow-y-auto p-4" data-testid="document-analysis-file-pane">
       <section className="space-y-3">
         <div>
           <h2 className="text-sm font-medium">File</h2>

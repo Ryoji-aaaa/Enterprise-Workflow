@@ -20,7 +20,7 @@ function coveredBySpan(table: DocumentAnalysisTable, rowIndex: number, columnInd
 
 export function TablesResult({ tables }: { tables: DocumentAnalysisTable[] }) {
   return (
-    <div className="min-h-0 flex-1 space-y-4 overflow-auto">
+    <div className="min-h-0 flex-1 space-y-4 overflow-auto" data-testid="document-analysis-tables-content">
       {tables.length === 0 ? (
         <p className="text-sm text-muted-foreground">Tablesはありません。</p>
       ) : (
@@ -65,4 +65,3 @@ export function TablesResult({ tables }: { tables: DocumentAnalysisTable[] }) {
     </div>
   );
 }
-
