@@ -168,4 +168,5 @@ jobs:
             echo "- Image tag: \`$IMAGE_TAG\`"
             echo "- Frontend: ${FRONTEND_URL:-not available}"
             echo "- Keycloak: ${KEYCLOAK_URL:-not available}"
+            echo "- Document Analysis Azure live validation is manual: run \`Document Analysis staging smoke\` with image_sha=$IMAGE_TAG after Phase B checks."
           } >> "$GITHUB_STEP_SUMMARY"

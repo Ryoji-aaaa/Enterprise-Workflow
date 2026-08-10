@@ -8,6 +8,7 @@
   staging/production plan
 - `deploy-staging.yml`: main CI成功後のSHA image build/pushと自動apply
 - `deploy-production.yml`: 指定済みSHA imageを再buildせず手動昇格
+- `document-analysis-staging-smoke.yml`: 明示起動したstagingの2 Provider live smoke
 
 PRでは`ci.yml`の`make test`、`make verify`とimage build、`dependency-review.yml`の
 dependency reviewと`make audit`を実行する。Terraform、インフラ検証スクリプト、Makefile、
@@ -118,6 +119,24 @@ falseを維持する。stagingはまず3つともfalseのままfoundationをappl
 RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再deployする。
 通常CIとPRのE2EはFake Providerだけを使い、Azure AI、Foundry、Storage private endpointへlive requestを
 送らない。Azure live validationはstaging resource作成後の運用確認として分離する。
+
+`document-analysis-staging-smoke.yml`は`workflow_dispatch`だけで起動し、`staging` Environmentと
+`contents: read`、`id-token: write`だけを使用する。必須の`image_sha`は40文字の小文字hex SHAに限定し、
+Terraform stateとAzure CLIのread-only検査で、activeなFrontend/Backend revisionが同じimage tagであること、
+3つのactivation flag、BackendのAzure execution mode、2つのDocument Analysis専用client ID、endpoint、
+containerが一致することを確認してからAzureへ分析要求を送る。`latest`やbranch名は受け付けない。
+
+このworkflowはOIDC login後にstaging Key Vaultの`development-seed-password`を一時process environmentへ
+読み込む。passwordはGitHub Secret、step output、summary、artifactへ保存しない。`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`
+はstaging Environment variableとして登録し、seed userが未投入の場合は
+[開発・staging用seedデータ](../backend/development-seed-data.md)の手順を実施してから再実行する。workflow自体は
+seed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、課金対象のstaging live smokeはそれぞれ別の
+責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
+
+live smoke成功時のsummaryにはimage SHA、workflow run、Provider名、analysis ID、終了status、API version、
+開始/終了時刻だけを記録する。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、
+operation tokenは記録しない。失敗時だけのPlaywright診断artifactは入力fixtureと画面結果を含み得るため、
+公開せず保持期間を1日に限定する。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の

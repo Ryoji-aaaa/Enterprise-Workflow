@@ -12,6 +12,8 @@ readonly CONTAINER_APP_ENVIRONMENT_FILE="${PROJECT_DIRECTORY}/infra/modules/cont
 readonly STAGING_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/environments/staging/variables.tf"
 readonly PRODUCTION_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/environments/production/variables.tf"
 readonly TERRAFORM_PLAN_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/terraform-plan.yml"
+readonly STAGING_SMOKE_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/document-analysis-staging-smoke.yml"
+readonly AZURE_VERIFICATION_SCRIPT="${PROJECT_DIRECTORY}/scripts/verify-document-analysis-azure.sh"
 readonly -a TERRAFORM_WORKFLOWS=(
   "${TERRAFORM_PLAN_WORKFLOW}"
   "${PROJECT_DIRECTORY}/.github/workflows/deploy-staging.yml"
@@ -122,5 +124,53 @@ done
 grep -Fq 'TF_VAR_document_intelligence_account_name' "${TERRAFORM_PLAN_WORKFLOW}"
 grep -Fq 'TF_VAR_content_understanding_account_name' "${TERRAFORM_PLAN_WORKFLOW}"
 grep -Fq 'TF_VAR_document_analysis_storage_account_name' "${TERRAFORM_PLAN_WORKFLOW}"
+
+[[ -x "${AZURE_VERIFICATION_SCRIPT}" ]] || {
+  echo "Document Analysis Azure verification script must be executable." >&2
+  exit 1
+}
+grep -Fq 'set -Eeuo pipefail' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'The script only uses Azure CLI read commands.' "${AZURE_VERIFICATION_SCRIPT}"
+if grep -Eq 'az[[:space:]].*(create|update|delete|apply|start|stop|restart)' \
+  "${AZURE_VERIFICATION_SCRIPT}"; then
+  echo "Document Analysis Azure verification must remain read-only." >&2
+  exit 1
+fi
+
+grep -Fq 'workflow_dispatch:' "${STAGING_SMOKE_WORKFLOW}"
+if grep -Eq 'workflow_run:|pull_request:|^[[:space:]]*push:' "${STAGING_SMOKE_WORKFLOW}"; then
+  echo "Document Analysis staging smoke must be workflow_dispatch-only." >&2
+  exit 1
+fi
+grep -Fq 'environment: staging' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'id-token: write' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'image_sha:' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq '^[0-9a-f]{40}$' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'development-seed-password' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'retention-days: 1' "${STAGING_SMOKE_WORKFLOW}"
+if grep -Fq 'development-seed-password' \
+  "${PROJECT_DIRECTORY}/.github/workflows/deploy-production.yml"; then
+  echo "Production workflow must not reference the staging development seed secret." >&2
+  exit 1
+fi
+if grep -Fq 'AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE' \
+  "${PROJECT_DIRECTORY}/.github/workflows/ci.yml" \
+  "${PROJECT_DIRECTORY}/.github/workflows/deploy-staging.yml" \
+  "${PROJECT_DIRECTORY}/.github/workflows/deploy-production.yml"; then
+  echo "Normal CI and deploy workflows must not enable the billed live smoke." >&2
+  exit 1
+fi
+
+for flags_file in \
+  "${PROJECT_DIRECTORY}/infra/environments/staging/terraform.tfvars.example" \
+  "${PROJECT_DIRECTORY}/infra/environments/production/terraform.tfvars.example"; do
+  for flag in \
+    document_analysis_enabled \
+    document_intelligence_enabled \
+    content_understanding_enabled; do
+    grep -Eq "^${flag}[[:space:]]*=[[:space:]]*false$" "${flags_file}"
+  done
+done
 
 echo "Document Analysis Azure infrastructure boundaries are valid."

@@ -123,6 +123,29 @@ productionではPlan7導入時点で`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED=false`�
 stagingのDocument Intelligence成功、Content Understanding成功、RBAC確認、Private DNS確認、cost/retention
 確認、検証済みimage SHA promotionの後に明示的に行う。
 
+Phase A/Phase Bのcontrol plane検査には、Azure login済みの担当者が次を使う。scriptはread-onlyであり、
+resource、role assignment、container、revisionを変更しない。
+
+```bash
+./scripts/verify-document-analysis-azure.sh
+```
+
+Phase Aでは3 flagを`false`にした新しいstaging deployの後にこの検査を実行する。Phase Bでは同じ40文字SHAの
+まま3 flagを`true`に変更して**新しい**staging deployを実行し、active revision、Flyway、readiness、既存の
+匿名public smokeを確認してから、次の手動workflowを起動する。Environment variable変更前のrunをrerunしない。
+
+```bash
+gh workflow run document-analysis-staging-smoke.yml --ref main -f image_sha=<40-character-sha>
+```
+
+このworkflowはseed Jobを開始しない。staging seed user、`development-seed-password`、Key Vault accessが
+事前に揃っていなければ、安全にfailした後で
+[開発・staging用seedデータ](../backend/development-seed-data.md)の手順を使う。成功summaryから同一SHA、2 Provider、
+analysis ID、API version、終了時刻をrelease recordへ転記するが、文書本文やRaw JSONは転記しない。
+
+rollbackは3 activation flagを`false`へ戻して、同じ検証済みSHAで新しいdeploy runを開始する。Azure resource、
+Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Jobを自動再queueしない。
+
 ## stagingの確認項目
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、

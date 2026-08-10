@@ -181,6 +181,12 @@ Azure SDK呼び出しへ渡す。Service API versionは`2024-11-30`だけを許�
 Azure Layoutの`AnalyzeResult.content`をNormalized V1の`documents[0].markdown`へそのまま保存し、
 MarkdownをBackendで再構築したり、Markdownからtableを再parseしたりしない。
 
+`DocumentAnalysisAzureSdkWireContractTest`は実Azure networkを使わず、Azure Java SDKのHTTP pipelineへ
+固定credentialと4xx responseを渡して最初のrequestを検査する。Document IntelligenceのGA API
+`2024-11-30`、`prebuilt-layout`、Markdown、UTF-16 code unitと入力PDFの`base64Source`をSDK serializerの
+出力で固定する。Document Intelligence SDKのtyped optionはJSON bodyを送るため、requestの`Content-Type`は
+`application/json`であり、PDF MIMEを無理にheaderへ上書きしない。
+
 Paragraphsは`AnalyzeResult.paragraphs`から順序、role、最初のbounding regionのpage numberとpolygon、
 最初のspanのUTF-16 offset/lengthを正規化する。Tablesは`AnalyzeResult.tables`からrow/column countと
 cellsを正規化し、`columnHeader`以外のcell kindはFrontend互換のため`content`へ丸める。
@@ -232,6 +238,11 @@ secret、AzureKeyCredentialはContent Understanding認証として使用しな�
 `ProcessingLocation.GEOGRAPHY`を明示し、service defaultのGLOBALへ依存しない。DATA_ZONEやGLOBALを
 UI/APIへ露出しない。LROは同期Pollerで待機し、`content-understanding.analysis-timeout`を有限timeout
 として使う。既定は25分で、`processing-timeout`より短い値だけを許可する。
+
+同SDKの公開5引数overloadの第3引数は`ContentRange`であり、`null`はstring encodingを意味しない。このoverloadは
+SDK内部で`stringEncoding=utf16`を設定するため、GA API `2025-11-01`、`processingLocation=geography`、
+PDF MIMEとともにwire contract testで固定する。binary overloadのSDK contractは
+`prebuilt-layout:analyzeBinary` pathを使うため、RESTのURL input用`:analyze` pathへ置き換えない。
 
 成功時は`AnalysisResult.contents`の各`DocumentContent`をNormalized V1の`documents[]`へ変換する。
 `DocumentContent.markdown`をそのまま`documents[n].markdown`へ保存し、BackendでMarkdownを再構築せず、
