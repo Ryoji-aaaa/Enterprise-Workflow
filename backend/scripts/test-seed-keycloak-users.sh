@@ -21,11 +21,21 @@ arguments=("$@")
 url=''
 query=''
 method='GET'
+payload=''
 for ((index = 0; index < ${#arguments[@]}; index++)); do
   argument="${arguments[index]}"
   case "$argument" in
     --request)
       method="${arguments[index + 1]}"
+      ;;
+    --data-binary)
+      data_binary="${arguments[index + 1]}"
+      if [[ "$data_binary" == '@-' ]]; then
+        payload="$(cat)"
+      else
+        payload="$data_binary"
+      fi
+      index=$((index + 1))
       ;;
     http://*|https://*)
       url="$argument"
@@ -47,7 +57,6 @@ lookup_user() {
 }
 
 if [[ "$method" == 'POST' && "$url" == */users ]]; then
-  payload="$(cat)"
   email="$(jq --raw-output '.email' <<<"$payload")"
   if [[ -n "$(lookup_user "$email")" ]]; then
     echo "duplicate user creation for ${email}" >&2
@@ -60,7 +69,6 @@ if [[ "$method" == 'POST' && "$url" == */users ]]; then
 fi
 
 if [[ "$method" == 'PUT' && "$url" == */reset-password ]]; then
-  payload="$(cat)"
   jq -e --arg password "$FAKE_EXPECTED_PASSWORD" \
     '.type == "password" and .value == $password and .temporary == false' \
     <<<"$payload" >/dev/null
@@ -69,7 +77,6 @@ if [[ "$method" == 'PUT' && "$url" == */reset-password ]]; then
 fi
 
 if [[ "$method" == 'PUT' && "$url" == */users/* ]]; then
-  cat >/dev/null
   printf 'update %s\n' "$url" >>"${FAKE_KEYCLOAK_LOG}"
   exit 0
 fi
