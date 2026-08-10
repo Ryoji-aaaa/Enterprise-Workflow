@@ -136,7 +136,7 @@ RBAC、Private Endpoint、Private DNS、Container Apps revisionを含むAzure re
 ```
 
 Phase Aでは3 flagを`false`にした新しいstaging deployの後にこの検査を実行する。Phase Bでは`main`から到達可能な
-同じ40文字SHAのまま3 flagを`true`に変更して**新しい**staging deployを実行し、active revision、Flyway、readiness、既存の
+同じ40文字SHAのまま3 flagを`true`に変更して**新しい**staging deployを実行し、trafficを受ける最新revision、Flyway、readiness、既存の
 匿名public smokeを確認してから、次の手動workflowを起動する。Environment variable変更前のrunをrerunしない。
 
 ```bash

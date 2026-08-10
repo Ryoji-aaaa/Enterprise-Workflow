@@ -37,7 +37,7 @@ elif [[ "$arguments" == storage\ account\ show* ]]; then
 elif [[ "$arguments" == storage\ container-rm\ show* ]]; then
   if [[ "${FAKE_AZ_SCENARIO:-success}" == "top-level-private-container" ]]; then
     printf '%s\n' '{"publicAccess":null}'
-  elif [[ "${FAKE_AZ_SCENARIO:-success}" == "legacy-private-container" ]]; then
+  elif [[ "${FAKE_AZ_SCENARIO:-success}" == "legacy-private-container" || "${FAKE_AZ_SCENARIO:-success}" == "zero-traffic-stale-revision" ]]; then
     printf '%s\n' '{"properties":{"publicAccess":null}}'
   else
     printf '%s\n' '{"publicAccess":"Blob"}'
@@ -92,9 +92,11 @@ elif [[ "$arguments" == containerapp\ revision\ list* ]]; then
     environment="${environment/\"DOCUMENT_INTELLIGENCE_ENABLED\",\"value\":\"true\"/\"DOCUMENT_INTELLIGENCE_ENABLED\",\"value\":\"false\"}"
   fi
   if [[ "$arguments" == *"--name frontend"* ]]; then
-    printf '%s\n' '[{"properties":{"active":true,"template":{"containers":[{"image":"registry/frontend:0123456789abcdef0123456789abcdef01234567"}]}}}]'
+    printf '%s\n' '[{"properties":{"active":true,"trafficWeight":100,"template":{"containers":[{"image":"registry/frontend:0123456789abcdef0123456789abcdef01234567"}]}}}]'
+  elif [[ "${FAKE_AZ_SCENARIO:-success}" == "zero-traffic-stale-revision" ]]; then
+    printf '[{"properties":{"active":true,"trafficWeight":0,"template":{"containers":[{"image":"registry/backend:stale","env":[{"name":"WORKFLOW_DOCUMENT_ANALYSIS_ENABLED","value":"false"}]}]} }},{"properties":{"active":true,"trafficWeight":100,"template":{"containers":[{"image":"registry/backend:0123456789abcdef0123456789abcdef01234567","env":%s}]}}}]\n' "$environment"
   else
-    printf '[{"properties":{"active":true,"template":{"containers":[{"image":"registry/backend:0123456789abcdef0123456789abcdef01234567","env":%s}]}}}]\n' "$environment"
+    printf '[{"properties":{"active":true,"trafficWeight":100,"template":{"containers":[{"image":"registry/backend:0123456789abcdef0123456789abcdef01234567","env":%s}]}}}]\n' "$environment"
   fi
 else
   echo "Unexpected fake az invocation: ${arguments}" >&2
@@ -154,6 +156,7 @@ expect_failure() {
 
 expect_success top-level-private-container
 expect_success legacy-private-container
+expect_success zero-traffic-stale-revision
 if grep -Eq '(^| )storage container show( |$)' "${fixture_directory}/az.log"; then
   echo "Verifier invoked the prohibited Storage data-plane container command." >&2
   exit 1

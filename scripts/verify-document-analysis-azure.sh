@@ -278,18 +278,18 @@ done
 
 verify_active_revision_images() {
   local app="$1" revisions valid
-  az_read "active revision ${app}" revisions \
+  az_read "traffic-serving revision ${app}" revisions \
     az containerapp revision list --resource-group "$AZURE_RESOURCE_GROUP" --name "$app" --output json || true
   if [[ -z "$revisions" ]]; then
-    fail "active revision image ${app}" "every active image tagged ${EXPECTED_IMAGE_SHA}" "unavailable"
+    fail "traffic-serving revision image ${app}" "every traffic-serving image tagged ${EXPECTED_IMAGE_SHA}" "unavailable"
     return
   fi
   if jq -e --arg suffix ":${EXPECTED_IMAGE_SHA}" \
-      '[.[] | select(.properties.active == true)] as $active | ($active | length) > 0 and all($active[]; [(.properties.template.containers // [])[]?.image] as $images | ($images | length) > 0 and all($images[]; endswith($suffix)))' \
+      '[.[] | select(.properties.active == true and ((.properties.trafficWeight // 0) > 0))] as $active | ($active | length) > 0 and all($active[]; [(.properties.template.containers // [])[]?.image] as $images | ($images | length) > 0 and all($images[]; endswith($suffix)))' \
       <<<"$revisions" >/dev/null 2>&1; then
-    pass "active revision image ${app} uses ${EXPECTED_IMAGE_SHA}"
+    pass "traffic-serving revision image ${app} uses ${EXPECTED_IMAGE_SHA}"
   else
-    fail "active revision image ${app}" "every active image tagged ${EXPECTED_IMAGE_SHA}" "missing or different image"
+    fail "traffic-serving revision image ${app}" "every traffic-serving image tagged ${EXPECTED_IMAGE_SHA}" "missing or different image"
   fi
   printf -v "$2" '%s' "$revisions"
 }
@@ -297,7 +297,7 @@ verify_active_revision_images() {
 verify_active_backend_environment() {
   local revisions="$1" entry name value attachment_identity
   if [[ -z "$revisions" ]]; then
-    fail "active Backend revision environment" "a readable active revision" "unavailable"
+    fail "traffic-serving Backend revision environment" "a readable traffic-serving revision" "unavailable"
     return
   fi
   for entry in \
@@ -316,7 +316,7 @@ verify_active_backend_environment() {
     name="${entry%%=*}"
     value="${entry#*=}"
     if jq -e --arg name "$name" --arg value "$value" \
-        '[.[] | select(.properties.active == true)] as $active | ($active | length) > 0 and all($active[]; any((.properties.template.containers[0].env // [])[]?; .name == $name and .value == $value))' \
+        '[.[] | select(.properties.active == true and ((.properties.trafficWeight // 0) > 0))] as $active | ($active | length) > 0 and all($active[]; any((.properties.template.containers[0].env // [])[]?; .name == $name and .value == $value))' \
         <<<"$revisions" >/dev/null 2>&1; then
       pass "Backend environment ${name}"
     else
@@ -325,7 +325,7 @@ verify_active_backend_environment() {
   done
   if jq -e --arg ai "$AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID" \
       --arg storage "$AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID" \
-      '[.[] | select(.properties.active == true)] as $active | ($active | length) > 0 and all($active[]; any((.properties.template.containers[0].env // [])[]?; .name == "AZURE_CLIENT_ID" and .value != "" and .value != $ai and .value != $storage))' \
+      '[.[] | select(.properties.active == true and ((.properties.trafficWeight // 0) > 0))] as $active | ($active | length) > 0 and all($active[]; any((.properties.template.containers[0].env // [])[]?; .name == "AZURE_CLIENT_ID" and .value != "" and .value != $ai and .value != $storage))' \
       <<<"$revisions" >/dev/null 2>&1; then
     pass "Backend attachment identity remains separate"
   else
