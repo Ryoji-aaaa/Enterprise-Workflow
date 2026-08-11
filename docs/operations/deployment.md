@@ -76,9 +76,16 @@ CONTENT_UNDERSTANDING_ENABLED
 stagingのDocument Analysis rolloutは二段階で行う。Phase Aでは3つのruntime controlをすべて`false`にして
 Terraform plan/applyし、Document Intelligence、Foundry、Document Analysis Storage、2つのcontainer、
 2つの専用User Assigned Managed Identity、3つのPrivate Endpoint、Private DNS link、RBAC role
-assignmentが作成されていることを確認する。Document IntelligenceとFoundryはlocal auth disabled、
+assignment、Phase 1Aの`auto-entry-gpt-5-2`と`auto-entry-text-embedding-3-large` deploymentが作成されて
+いることを確認する。前者は`gpt-5.2` version `2025-12-11`、後者は`text-embedding-3-large` version `1`で、
+両方とも`GlobalStandard` capacity 150、`NoAutoUpgrade`でなければならない。Document IntelligenceとFoundryはlocal auth disabled、
 public network disabled、Storageはshared key disabled、public network disabledであることも確認する。
 この段階ではBackendの既存機能が正常であり、Document Analysis runtimeは`disabled`である。
+
+Phase 1AではCustom AnalyzerのCopy/Ready確認、Analyzerへのmodel deployment設定、`AUTO_ENTRY`のAzure分析を
+実行しない。CopyはVNet内から手動で開始し、Readyを確認してからのみ後続Phase 1Bへ進む。Portalでmodel deploymentを
+手動作成・変更したり、public networkを一時的に有効化して回避したりしない。productionはPhase 1Aでこの2 deploymentを
+作成しない。
 
 Phase BはPhase A成功後だけ実施する。stagingの3つのruntime controlを`true`に変更し、`main`から到達可能な
 同じ検証済みimage SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
@@ -115,8 +122,8 @@ staging application smokeは既存Frontendから行う。`/document-intelligence
 `QUEUED`または`RUNNING`から`SUCCEEDED`になり、Markdown、Paragraphs、Tables、Raw Resultが表示されることを
 確認する。Raw Resultが`backend-fake-provider`ではなくDocument Intelligence native resultであることも
 確認する。`/content-understanding`でも同様に`CONTENT_UNDERSTANDING` providerとして成功し、API
-`2025-11-01`で処理されることを確認する。Content Understandingの`prebuilt-layout`ではFoundry model
-deploymentが0件でも分析できる。
+`2025-11-01`で処理されることを確認する。`GENERAL`の`prebuilt-layout`分析は自動入力用model deploymentを
+Provider呼出しへ渡さない。
 保持期限確認では期限切れJobのBlob cleanup後もPostgreSQLのJob metadataが`EXPIRED`で残ることを確認する。
 `RUNNING`はcleanup対象ではなく、lease expiry後に`FAILED_RECOVERY_REQUIRED`となってからcleanup対象になる。
 
@@ -161,7 +168,7 @@ Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。dep
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV015）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV016）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。

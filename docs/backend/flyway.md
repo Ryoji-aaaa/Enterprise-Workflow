@@ -26,7 +26,8 @@ backend/src/main/resources/db/migration/
 ├── V012__backfill_access_request_notification_queue.sql
 ├── V013__add_mail_notification_read_permission.sql
 ├── V014__create_document_analysis_schema.sql
-└── V015__promote_document_analysis_to_application_user.sql
+├── V015__promote_document_analysis_to_application_user.sql
+└── V016__add_document_analysis_profiles.sql
 ```
 
 V001は従来の`app_users`と`access_requests`、V002からV005は新しい管理基盤、V006は
@@ -38,7 +39,9 @@ V011は通知Outbox、V012は利用申請通知のqueue時刻backfill、V013は�
 `MAIL_NOTIFICATION_READ` Permissionと`SYSTEM_ADMIN`への割当を追加する。V014は
 Document Analysisのprovider-neutralなJob metadataテーブル、専用Role/Permission、
 `SYSTEM_ADMIN`と当時の`DOCUMENT_ANALYSIS_USER`への権限割当を追加する。V015は正式機能化に伴って
-3 Permissionを`APPLICATION_USER`へ移し、旧RoleのPermissionと有効割当を除去する。追記専用履歴が
+3 Permissionを`APPLICATION_USER`へ移し、旧RoleのPermissionと有効割当を除去する。V016は
+Document Analysis Jobへ`analysis_profile`と自動入力用のmodel deployment snapshot列を追加し、既存Jobを
+`GENERAL`へbackfillする。追記専用履歴が
 参照する場合だけ旧Role rowを無効tombstoneとして保持する。文書本体、Markdown、Raw JSONは
 PostgreSQLへ保存しない。
 適用履歴、ファイル名、checksum、成功状態はPostgreSQLの
@@ -48,7 +51,8 @@ stagingではV001からV008までの適用成功を確認済みである。V007�
 contract済みであり、GitHub Environment `staging`の
 `CONTRACT_LEGACY_USER_COLUMNS`は以後`true`を維持する。通常Backendは最新migrationまでを
 適用し、V009の経費申請schema・Permission、V010の添付metadata schema、V011からV013の
-通知Outbox・queue backfill・履歴Permission、V014のDocument Analysis永続化基盤、V015の正式機能向け認可を
+通知Outbox・queue backfill・履歴Permission、V014のDocument Analysis永続化基盤、V015の正式機能向け認可、
+V016のprofile/snapshot schemaを
 利用できる状態を前提とする。
 
 V003の期間重複排他制約は`btree_gist`を使用する。Azure Database for PostgreSQL
@@ -87,9 +91,9 @@ make verify
 
 `make test SUITES=backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
 
-- 空DBへのV001からV015とHibernate schema validation
-- V001既存ユーザーからV015までの実データ移行
-- 既存V014 DBからV015への権限昇格、旧Role割当終了、追記専用履歴保持
+- 空DBへのV001からV016とHibernate schema validation
+- V001既存ユーザーからV016までの実データ移行
+- 既存V014 DBからV016への権限昇格、旧Role割当終了、V016の`GENERAL` backfill、追記専用履歴保持
 - email正規化の事前検査、排他制約、追記専用trigger
 - 二回目起動時のFlyway・基盤seedの冪等性
 
@@ -137,7 +141,7 @@ make restart
 make verify
 ```
 
-最初の検証ではV001からV015が1回ずつ成功していること、再起動後も履歴行とseedが
+最初の検証ではV001からV016が1回ずつ成功していること、再起動後も履歴行とseedが
 重複しないことを確認する。
 
 ## マイグレーション失敗時の確認方法

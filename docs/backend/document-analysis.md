@@ -26,10 +26,17 @@ Base pathは`/api/document-analyses`である。Controllerは
 
 ### `POST /api/document-analyses`
 
-`multipart/form-data`で`provider`と`file`を受け付ける。`provider`は
-`DOCUMENT_INTELLIGENCE`または`CONTENT_UNDERSTANDING`である。`modelId`、
+`multipart/form-data`で`provider`、`file`、任意の`profile`を受け付ける。`provider`は
+`DOCUMENT_INTELLIGENCE`または`CONTENT_UNDERSTANDING`である。`profile`は`GENERAL`または
+`AUTO_ENTRY`で、未指定時は後方互換のため`GENERAL`である。`AUTO_ENTRY`は
+`CONTENT_UNDERSTANDING`だけで利用でき、他Providerとの組合せは
+`400 DOCUMENT_ANALYSIS_PROFILE_PROVIDER_INVALID`にする。`modelId`、
 `providerApiVersion`、`normalizedSchemaVersion`、Blob object name、保持期限、
 credentialはBrowserから受け取らず、Backend設定から決定する。
+
+`GENERAL`はContent Understandingの`prebuilt-layout`を使う。`AUTO_ENTRY`はBackend設定の
+Custom Analyzer `enterprise_workflow_auto_entry_v2.1`をJobへsnapshotする。BrowserはAnalyzer ID、
+completion model deployment、embedding model deployment、API versionを指定または上書きできない。
 
 成功時は`202 Accepted`を返し、`Location`に`/api/document-analyses/{analysisId}`を設定する。
 Jobは`QUEUED`で作成される。
@@ -44,12 +51,15 @@ Provider別の権限はService層で再確認する。
 ### `GET /api/document-analyses`
 
 `DOCUMENT_ANALYSIS_READ_OWN`を要求し、自分のJobだけを返す。`provider`で任意に絞り込める。
-既定page sizeは20、最大page sizeは100で、`createdAt DESC, id DESC`で返す。
+`profile`は任意で、未指定時は`GENERAL`である。既存Workbenchの履歴に`AUTO_ENTRY` Jobを混在
+させないため、`AUTO_ENTRY`を読むときは`profile=AUTO_ENTRY`を明示する。既定page sizeは20、
+最大page sizeは100で、`createdAt DESC, id DESC`で返す。
 
 ### `GET /api/document-analyses/{analysisId}`
 
-`DOCUMENT_ANALYSIS_READ_OWN`を要求し、自分のJobだけを返す。他利用者のIDまたは存在しないIDは
-どちらも`404 DOCUMENT_ANALYSIS_NOT_FOUND`になる。
+`DOCUMENT_ANALYSIS_READ_OWN`を要求し、自分のJobだけを返す。`profile`は任意で、未指定時は
+`GENERAL`である。他利用者のID、profileが一致しないID、存在しないIDはどれも
+`404 DOCUMENT_ANALYSIS_NOT_FOUND`になる。`source`、`view`、`raw-result`も同じprofile条件を使う。
 
 ### `GET /api/document-analyses/{analysisId}/source`
 
@@ -91,7 +101,10 @@ multipartの全体サイズ超過は、Document Analysis pathでは
 ## JobとWorker
 
 Job metadataは`document_analysis_jobs`に保存する。文書本体、Raw JSON、Markdown、
-Normalized JSONはPostgreSQLへ保存しない。
+Normalized JSONはPostgreSQLへ保存しない。`analysis_profile`、Analyzer ID（既存の`model_id`）、
+API versionもJob作成時のsnapshotである。`AUTO_ENTRY`のContent Understanding Jobだけは
+`completion_model_deployment_name`と`embedding_model_deployment_name`もsnapshotし、`GENERAL`では
+両方を`null`にする。
 
 Workerは`workflow.document-analysis.enabled=true`の場合に登録される。
 `workflow.document-analysis.execution-mode=disabled`ではJobをclaimしない。
@@ -227,9 +240,11 @@ beanとして生成し、Jobごとにclientを作らない。Service API version
 `ContentUnderstandingServiceVersion.V2025_11_01`を明示する。SDKのlatest既定値やpreview APIへは
 fallbackしない。
 
-Analyzerは`prebuilt-layout`を既定とし、Browserからanalyzer IDを受け取らない。Job作成時に
-Backend設定から保存した`modelId`をProvider Requestとして使う。Custom Analyzer作成・更新、
-`updateDefaults`、GPT/embedding deployment設定は実装しない。
+`GENERAL`のAnalyzerは`prebuilt-layout`であり、`AUTO_ENTRY`のAnalyzerはBackend設定から
+`enterprise_workflow_auto_entry_v2.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
+`AUTO_ENTRY`のcompletion/embedding deployment名もProvider Requestまで保持するが、Phase 1Aでは
+SDKの`modelDeployments`へ渡さない。Custom AnalyzerのCopy/Ready確認、作成・更新、`updateDefaults`、
+GPT/embedding deploymentをAnalyzerへ設定する処理はPhase 1B以降の範囲である。
 
 認証はDocument Intelligenceと同じくMicrosoft Entra IDの`DefaultAzureCredential`を使う。
 `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`が設定されている場合だけUser Assigned Managed Identity client
@@ -308,6 +323,9 @@ workflow:
       model-id: prebuilt-layout
       api-version: 2025-11-01
       analysis-timeout: 25m
+      auto-entry-analyzer-id: enterprise_workflow_auto_entry_v2.1
+      auto-entry-completion-model-deployment-name: auto-entry-gpt-5-2
+      auto-entry-embedding-model-deployment-name: auto-entry-text-embedding-3-large
 ```
 
 ローカルComposeでは`enabled=true`、`execution-mode=fake`、両Provider enabled、
@@ -327,6 +345,12 @@ Azureでは`DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT`のBlob service endpointを�
 `enabled`を整理し、`execution-mode`をruntime状態の正本へ一本化できるか検討するが、現行の環境変数と
 Bean登録条件は維持する。
 
+`CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID`、
+`CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME`、
+`CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME`は`AUTO_ENTRY` Jobのsnapshot元である。
+いずれもsecretではなく、stagingではTerraformが作成したdeployment名をBackendへ渡す。runtime controlの
+値はAzure model deployment resourceの作成有無を制御しない。
+
 ## 監査
 
 成功時に次の監査を記録する。
@@ -335,6 +359,6 @@ Bean登録条件は維持する。
 - `DOCUMENT_ANALYSIS_SOURCE_ACCESSED`
 - `DOCUMENT_ANALYSIS_RESULT_ACCESSED`
 
-metadataは`analysisId`、`provider`、`contentType`、`fileSize`、`sha256`、`resultKind`などの
+metadataは`analysisId`、`provider`、`profile`、`contentType`、`fileSize`、`sha256`、`resultKind`などの
 安全な値に限定する。文書本文、Markdown、Raw JSON、original filename、email、token、
 credentialは監査へ保存しない。

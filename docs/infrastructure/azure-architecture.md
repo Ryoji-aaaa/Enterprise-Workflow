@@ -46,8 +46,11 @@ Microsoft Foundry用の`AIServices` resource、専用Storage Account、Private E
 Terraformで作成する。Document Intelligenceは`FormRecognizer`、Foundryは`AIServices`で、どちらも
 SKUは`S0`、custom subdomainを設定し、local authenticationとpublic network accessを無効化する。
 Document Intelligenceは`prebuilt-layout`とAPI `2024-11-30`、Content Understandingは
-`prebuilt-layout`とAPI `2025-11-01`を使う。Foundry model deployment、GPT deployment、embedding
-deployment、Custom Analyzerは作成しない。
+`prebuilt-layout`とAPI `2025-11-01`を使う。自動入力PoC Phase 1Aではstagingだけ、Foundry child resourceに
+`auto-entry-gpt-5-2`（`gpt-5.2`、`2025-12-11`）と
+`auto-entry-text-embedding-3-large`（`text-embedding-3-large`、`1`）を`GlobalStandard` capacity 150、
+`NoAutoUpgrade`で作成する。productionにはこのmodel deploymentを作成しない。Custom AnalyzerのCopy/Ready、
+AnalyzerへのGPT/embedding deployment設定、`updateDefaults`は作成しない。
 
 Document Analysis用Storage Accountは経費証憑用Storage Accountと分離し、
 `document-analysis-input`と`document-analysis-result`の2つの非公開containerだけを持つ。Shared Key、

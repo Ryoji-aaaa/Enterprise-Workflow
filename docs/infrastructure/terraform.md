@@ -32,6 +32,20 @@ Document Analysis Azure mode用のresourceはworkloadではなくfoundationと�
 - AI resourceとcontainer scopeのRBAC
 - Private Endpoint専用subnet、Private Endpoint、Private DNS zone、VNet link
 
+Content Understandingの自動入力PoC Phase 1Aでは、`environment == "staging"`のときだけ
+Foundry (`AIServices`) のchild resourceとして次のmodel deploymentを作成する。runtime controlの
+`document_analysis_enabled`、`document_intelligence_enabled`、`content_understanding_enabled`は、これらの
+resourceの作成有無を制御しない。
+
+| deployment name | model | version | SKU | capacity | version upgrade |
+| --- | --- | --- | --- | --- | --- |
+| `auto-entry-gpt-5-2` | `gpt-5.2` | `2025-12-11` | `GlobalStandard` | 150 | `NoAutoUpgrade` |
+| `auto-entry-text-embedding-3-large` | `text-embedding-3-large` | `1` | `GlobalStandard` | 150 | `NoAutoUpgrade` |
+
+productionではPhase 1Aのmodel deploymentを作成しない。Custom AnalyzerのCopy/Ready確認と
+Analyzerへのmodel deployment設定もTerraformでは行わない。stagingのBackendにはTerraform resource参照から
+Analyzer IDと2つのdeployment名だけを渡し、model名・version・capacityをBrowserや環境変数へ渡さない。
+
 resource名はGitHub Environment variableまたは`terraform.tfvars`から渡す。
 staging/productionでresourceを共有しない。例は次のとおりで、実値はglobal uniqueな名前にする。
 
@@ -52,7 +66,8 @@ productionの`private_endpoint_subnet_prefixes`既定値は`["10.50.3.0/24"]`で
 client secret、Storage key、connection string、SASはTerraform、Key Vault、Container App環境変数へ
 登録しない。
 Document Analysisのretention cleanup intervalとbatch sizeはapplication既定値を使うため、Terraform
-variableとして追加しない。
+variableとして追加しない。`CONTENT_UNDERSTANDING_AUTO_ENTRY_*`はsecretではなく、stagingのみBackendへ
+渡す設定値であり、GitHub Environment variableやKey Vault secretとして追加しない。
 
 環境rootは確認用にDocument Intelligence、Foundry、Document Analysis Storage、専用identityの名前、
 endpoint、client IDをoutputする。key、connection string、token、SASはoutputしない。
@@ -66,8 +81,8 @@ make verify-infra
 このターゲットは`terraform fmt -check`、bootstrap・staging・production各rootの
 `terraform init -backend=false`と`validate`に加え、Backend probe、内部Backend URL、
 staging限定の手動seed Job名とproduction guard、経費証憑container・identity・RBAC境界、
-Document Analysis Azure resource・UAMI・RBAC・Private Endpoint・Private DNS・Backend環境変数境界を
-検証する。
+Document Analysis Azure resource・UAMI・RBAC・Private Endpoint・Private DNS・Backend環境変数境界と、
+staging限定model deploymentの固定model/version/SKU/capacityを検証する。
 各rootへ`.terraform/`を生成するが、
 Azureへのlogin、plan、applyは行わない。Terraformにも`-no-color`を渡すため、CIログへANSI
 制御文字を出力しない。
