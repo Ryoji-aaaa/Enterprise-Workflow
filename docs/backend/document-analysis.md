@@ -244,26 +244,30 @@ fallbackしない。
 
 `GENERAL`のAnalyzerは`prebuilt-layout`であり、`AUTO_ENTRY`のAnalyzerはBackend設定から
 `enterprise_workflow_auto_entry_v2.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
-`AUTO_ENTRY`のcompletion/embedding deployment名もProvider Requestまで保持するが、Phase 1Aでは
-SDKの`modelDeployments`へ渡さない。Custom AnalyzerのCopy/Ready確認、作成・更新、`updateDefaults`、
-GPT/embedding deploymentをAnalyzerへ設定する処理はPhase 1B以降の範囲である。
+`AUTO_ENTRY`のcompletion/embedding deployment名もJobとProvider Requestへsnapshotし、SDKの
+`modelDeployments`へ`completion: auto-entry-gpt-5-2`、
+`embedding: auto-entry-text-embedding-3-large`として渡す。resource defaultsの`updateDefaults`、
+Custom AnalyzerのCopy/Ready確認、作成・更新は行わない。
 
 認証はDocument Intelligenceと同じくMicrosoft Entra IDの`DefaultAzureCredential`を使う。
 `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`が設定されている場合だけUser Assigned Managed Identity client
 IDとして渡し、空の場合はローカルのdeveloper credential chainを許容する。API Key、client
 secret、AzureKeyCredentialはContent Understanding認証として使用しない。
 
-分析要求では入力Blobを`BinaryData.fromStream`で渡し、typed
+`GENERAL`の分析要求では入力Blobをraw bytesの`BinaryData`で渡し、typed
 `beginAnalyzeBinary(modelId, binaryData, null, contentType, ProcessingLocation.GEOGRAPHY)`を使う。
+`AUTO_ENTRY`ではraw bytesと検証済みMIMEを1件の`AnalysisInput`へ設定し、
+`beginAnalyze(modelId, inputs, modelDeployments, ProcessingLocation.GEOGRAPHY)`を使う。
 `contentType`は検証済みの`application/pdf`、`image/jpeg`、`image/png`をそのまま渡す。
 `ProcessingLocation.GEOGRAPHY`を明示し、service defaultのGLOBALへ依存しない。DATA_ZONEやGLOBALを
 UI/APIへ露出しない。LROは同期Pollerで待機し、`content-understanding.analysis-timeout`を有限timeout
 として使う。既定は25分で、`processing-timeout`より短い値だけを許可する。
 
-同SDKの公開5引数overloadの第3引数は`ContentRange`であり、`null`はstring encodingを意味しない。このoverloadは
-SDK内部で`stringEncoding=utf16`を設定するため、GA API `2025-11-01`、`processingLocation=geography`、
-PDF MIMEとともにwire contract testで固定する。binary overloadのSDK contractは
-`prebuilt-layout:analyzeBinary` pathを使うため、RESTのURL input用`:analyze` pathへ置き換えない。
+同SDKの公開5引数binary overloadの第3引数は`ContentRange`であり、`null`はstring encodingを意味しない。
+`GENERAL`と`AUTO_ENTRY`のtyped overloadはSDK内部で`stringEncoding=utf16`を設定するため、GA API
+`2025-11-01`、`processingLocation=geography`、入力MIME、AUTO_ENTRYの`AnalysisInput`と
+`modelDeployments`をwire contract testで固定する。GENERALのbinary overloadは
+`prebuilt-layout:analyzeBinary` path、AUTO_ENTRYのtyped inputはCustom Analyzerの`:analyze` pathを使う。
 
 成功時は`AnalysisResult.contents`の各`DocumentContent`をNormalized V1の`documents[]`へ変換する。
 `DocumentContent.markdown`をそのまま`documents[n].markdown`へ保存し、BackendでMarkdownを再構築せず、
@@ -272,7 +276,21 @@ Paragraphの`role`はAzureの`SemanticRole`値を使い、nullの場合は`conte
 offset/lengthとして扱う。`DocumentSource.parse`でsource文字列を解釈し、最初のsegmentのpage numberと
 polygonをNormalized V1へ写す。独自正規表現でsourceをparseしない。Table cellは
 `COLUMN_HEADER`だけ`columnHeader`へ変換し、それ以外はV1互換の`content`へ丸める。confidenceは
-捏造せず`null`にする。prebuilt-layout専用のため`fields`は空objectとする。
+捏造せず`null`にする。`GENERAL`の`fields`は従来どおり空objectとする。
+
+`AUTO_ENTRY`も外側の`DocumentAnalysisViewV1.schemaVersion=1`を維持し、各documentの
+`fields.autoEntry`へ`schemaVersion="2.1"`、native page coordinatesの`pages`、再帰的な`fields`を格納する。
+pageは`pageNumber`、`width`、`height`、`unit`、`angleDegrees`を保持する。fieldは`type`、`value`、
+`confidence`、全`DocumentSource`の`pageNumber`と`polygon`を保持し、rawの`D(...)`文字列をFrontend契約へ
+出さない。numberは`BigDecimal.valueOf`相当で変換し、`new BigDecimal(double)`は使わない。
+
+valueの有無はconfidenceから推測しない。valueなしは`null`のまま保持し、`0`、空文字、空array、空objectへ
+変換しない。`TaxBreakdown[].CategoryNotation`は帳票上の表記をそのまま保持し、`Category`との意味判定や
+税額・符号・合計の補正は行わない。これらの業務validationとreview判定はPhase 1B-Bの責務である。
+
+Studioから取得したacceptance fixtureの`stringEncoding=codePoint`はNormalizer入力として維持する。一方、
+Java SDKの実request/result contractは`utf16`であり、wire testとProvider validationで固定する。fixtureの
+encodingを理由にproduct codeを`codePoint`へ変更しない。
 
 Warningsは`AnalysisResult.getWarnings()`から安全な`code`だけをNormalized V1へ入れ、Azure warning
 message本文を複製しない。Metricsの`pageCount`は返却された`DocumentContent.pages`数の合計、
@@ -287,7 +305,7 @@ Provider errorは安全なerror codeへ分類する。400/413/415/422は
 `CONTENT_UNDERSTANDING_ANALYSIS_FAILED`で`FAILED`へ遷移する。polling timeoutやpolling中のnetwork
 failureなど、Azureが要求を受理した後の最終状態が不明な場合は
 `CONTENT_UNDERSTANDING_OPERATION_STATE_UNKNOWN`で`FAILED_RECOVERY_REQUIRED`にし、同じJobから新しい
-`beginAnalyzeBinary`を自動実行しない。成功operationの結果が不整合な場合は
+分析要求を自動実行しない。成功operationの結果が不整合な場合は
 `CONTENT_UNDERSTANDING_RESULT_INVALID`で`FAILED_RECOVERY_REQUIRED`にする。Azure response bodyは
 `error_message`やログへ保存しない。
 
@@ -358,6 +376,8 @@ Bean登録条件は維持する。
 `enterprise_workflow_auto_entry_v2.1` の受入基準は
 `backend/src/test/resources/document-analysis/auto-entry/v2.1/` に固定する。Analyzer definition は
 `infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.json` が正本である。
+`scripts/check-content-understanding-auto-entry-schema.sh`はJSON、Analyzer/model/config、field一覧、exact enum、
+`CategoryNotation`、`BankTransferDestination`、secret-like valueの不在を検証し、`make verify-infra`から実行する。
 
 fixture は入力帳票、縮小済み Azure Content Understanding 結果、業務レビューの期待結果を対にして
 保持する。Azure の実行 ID、作成時刻、一時的な Analyzer ID、usage、およびページの words/lines は

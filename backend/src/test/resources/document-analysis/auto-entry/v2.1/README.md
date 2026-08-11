@@ -20,7 +20,8 @@ These fixtures define the acceptance baseline for
 `azure-results/` は Azure Content Understanding の実測結果を、回帰用に縮小したものとする。
 `id`、`status`、`createdAt`、一時的な `projectAnalyzer_*`、usage、Markdown、paragraph、table、
 `pages.words` / `pages.lines` は保存しない。抽出値、confidence、source、spans、ページ番号と寸法、
-unit は残す。`source` の polygon は、将来の source parser 回帰で使用する。
+unitは残す。`contents[].kind=document`はJava SDKのtyped `DocumentContent`として読み込むために残す。
+`source` の polygon は、source parser回帰で使用する。
 
 `expected/` は Azure 応答の完全一致を求める golden file ではない。入力帳票、縮小済み Azure
 結果、Normalizer、Spring の業務レビューを通したときに維持すべき、帳票種別・税区分表記・
