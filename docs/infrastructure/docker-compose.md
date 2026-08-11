@@ -9,6 +9,25 @@
 アプリケーション依存のNode.js、Java、Mavenなどはホストへ導入せず、
 各コンテナ内で固定する。
 
+## Frontend開発時の自動再読込
+
+通常のComposeの`frontend`はproduction runtimeではなく、`development` stageの
+`next dev`を起動する。`./frontend/src`と`./frontend/public`をコンテナへbind mountしているため、
+`frontend/src/`以下を上書き保存するとNext.jsのFast Refreshが反映する。依存関係はimage内に
+保持するため、ホストの`node_modules`を利用しない。
+
+この構成へ更新した後、またはFrontendの依存関係を変更した後は、次の順で開発用イメージと
+依存関係を更新する。
+
+```bash
+docker compose build frontend
+docker compose up -d --force-recreate frontend
+```
+
+通常のソースコード編集ではコンテナの再起動やimageの再buildは不要である。`next dev`の
+初回compile完了後にブラウザを開き、保存後の表示が変わらない場合は`docker compose logs -f frontend`
+で再compileのログを確認する。
+
 ## サービス
 
 | サービス | イメージまたはビルド | 公開ポート | 現在の責務 |

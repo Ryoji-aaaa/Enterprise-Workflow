@@ -4,6 +4,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      target: development
       args:
         NODE_VERSION: ${NODE_VERSION:-24.18.0}
     environment:
@@ -35,6 +36,9 @@ services:
         condition: service_healthy
     ports:
       - "${FRONTEND_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./frontend/src:/workspace/src
+      - ./frontend/public:/workspace/public
     networks:
       - public-network
       - application-network
