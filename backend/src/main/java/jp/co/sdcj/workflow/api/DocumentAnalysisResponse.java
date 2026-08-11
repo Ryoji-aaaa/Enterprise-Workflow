@@ -4,12 +4,14 @@ import java.time.Instant;
 import java.util.UUID;
 
 import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
 
 public record DocumentAnalysisResponse(
         UUID id,
         DocumentAnalysisProviderType provider,
+        DocumentAnalysisProfile profile,
         String modelId,
         String providerApiVersion,
         int normalizedSchemaVersion,
@@ -29,6 +31,7 @@ public record DocumentAnalysisResponse(
         return new DocumentAnalysisResponse(
                 job.getId(),
                 job.getProvider(),
+                job.getAnalysisProfile(),
                 job.getModelId(),
                 job.getProviderApiVersion(),
                 job.getNormalizedSchemaVersion(),

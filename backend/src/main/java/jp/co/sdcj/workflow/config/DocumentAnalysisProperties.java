@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.convert.DataSizeUnit;
 import org.springframework.util.unit.DataSize;
 import org.springframework.util.unit.DataUnit;
@@ -108,7 +109,42 @@ public record DocumentAnalysisProperties(
             String endpoint,
             @NotBlank String modelId,
             @NotBlank String apiVersion,
-            @NotNull Duration analysisTimeout) {
+            @NotNull Duration analysisTimeout,
+            String autoEntryAnalyzerId,
+            String autoEntryCompletionModelDeploymentName,
+            String autoEntryEmbeddingModelDeploymentName) {
+
+        private static final String DEFAULT_AUTO_ENTRY_ANALYZER_ID =
+                "enterprise_workflow_auto_entry_v2.1";
+        private static final String DEFAULT_AUTO_ENTRY_COMPLETION_MODEL_DEPLOYMENT_NAME =
+                "auto-entry-gpt-5-2";
+        private static final String DEFAULT_AUTO_ENTRY_EMBEDDING_MODEL_DEPLOYMENT_NAME =
+                "auto-entry-text-embedding-3-large";
+
+        @ConstructorBinding
+        public Provider {
+            autoEntryAnalyzerId = defaultIfBlank(
+                    autoEntryAnalyzerId, DEFAULT_AUTO_ENTRY_ANALYZER_ID);
+            autoEntryCompletionModelDeploymentName = defaultIfBlank(
+                    autoEntryCompletionModelDeploymentName,
+                    DEFAULT_AUTO_ENTRY_COMPLETION_MODEL_DEPLOYMENT_NAME);
+            autoEntryEmbeddingModelDeploymentName = defaultIfBlank(
+                    autoEntryEmbeddingModelDeploymentName,
+                    DEFAULT_AUTO_ENTRY_EMBEDDING_MODEL_DEPLOYMENT_NAME);
+        }
+
+        public Provider(
+                boolean enabled,
+                String endpoint,
+                String modelId,
+                String apiVersion,
+                Duration analysisTimeout) {
+            this(enabled, endpoint, modelId, apiVersion, analysisTimeout, null, null, null);
+        }
+
+        private static String defaultIfBlank(String value, String defaultValue) {
+            return value == null || value.isBlank() ? defaultValue : value;
+        }
     }
 
     public record Storage(

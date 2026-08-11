@@ -26,6 +26,15 @@ fi
 
 if [[ "$arguments" == account\ show* ]]; then
   printf 'subscription-id\n'
+elif [[ "$arguments" == cognitiveservices\ account\ deployment\ show* ]]; then
+  if [[ "$arguments" == *"--deployment-name auto-entry-gpt-5-2"* ]]; then
+    printf '%s\n' '{"properties":{"model":{"format":"OpenAI","name":"gpt-5.2","version":"2025-12-11"}},"sku":{"name":"GlobalStandard","capacity":150}}'
+  elif [[ "$arguments" == *"--deployment-name auto-entry-text-embedding-3-large"* ]]; then
+    printf '%s\n' '{"properties":{"model":{"format":"OpenAI","name":"text-embedding-3-large","version":"1"}},"sku":{"name":"GlobalStandard","capacity":150}}'
+  else
+    echo "Unexpected deployment name: ${arguments}" >&2
+    exit 92
+  fi
 elif [[ "$arguments" == cognitiveservices\ account\ show* ]]; then
   if [[ "$arguments" == *"--name di"* ]]; then
     printf '%s\n' '{"id":"/subscriptions/sub/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/di","kind":"FormRecognizer","sku":{"name":"S0"},"properties":{"disableLocalAuth":true,"publicNetworkAccess":"Disabled"}}'
@@ -87,7 +96,7 @@ elif [[ "$arguments" == network\ private-dns\ zone\ show* ]]; then
 elif [[ "$arguments" == network\ private-dns\ link\ vnet\ list* ]]; then
   printf '%s\n' '[{"virtualNetwork":{"id":"/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet-enterprise-workflow-staging"}}]'
 elif [[ "$arguments" == containerapp\ revision\ list* ]]; then
-  environment='[{"name":"WORKFLOW_DOCUMENT_ANALYSIS_ENABLED","value":"true"},{"name":"WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE","value":"azure"},{"name":"DOCUMENT_INTELLIGENCE_ENABLED","value":"true"},{"name":"CONTENT_UNDERSTANDING_ENABLED","value":"true"},{"name":"DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS","value":"false"},{"name":"AZURE_DOCUMENT_ANALYSIS_CLIENT_ID","value":"ai-client"},{"name":"DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID","value":"storage-client"},{"name":"DOCUMENT_INTELLIGENCE_ENDPOINT","value":"https://di.cognitiveservices.azure.com/"},{"name":"CONTENT_UNDERSTANDING_ENDPOINT","value":"https://cu.services.ai.azure.com/"},{"name":"DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT","value":"https://docstore.blob.core.windows.net/"},{"name":"DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME","value":"document-analysis-input"},{"name":"DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME","value":"document-analysis-result"},{"name":"AZURE_CLIENT_ID","value":"attachment-client"}]'
+  environment='[{"name":"WORKFLOW_DOCUMENT_ANALYSIS_ENABLED","value":"true"},{"name":"WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE","value":"azure"},{"name":"DOCUMENT_INTELLIGENCE_ENABLED","value":"true"},{"name":"CONTENT_UNDERSTANDING_ENABLED","value":"true"},{"name":"CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID","value":"enterprise_workflow_auto_entry_v2.1"},{"name":"CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME","value":"auto-entry-gpt-5-2"},{"name":"CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME","value":"auto-entry-text-embedding-3-large"},{"name":"DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS","value":"false"},{"name":"AZURE_DOCUMENT_ANALYSIS_CLIENT_ID","value":"ai-client"},{"name":"DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID","value":"storage-client"},{"name":"DOCUMENT_INTELLIGENCE_ENDPOINT","value":"https://di.cognitiveservices.azure.com/"},{"name":"CONTENT_UNDERSTANDING_ENDPOINT","value":"https://cu.services.ai.azure.com/"},{"name":"DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT","value":"https://docstore.blob.core.windows.net/"},{"name":"DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME","value":"document-analysis-input"},{"name":"DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME","value":"document-analysis-result"},{"name":"AZURE_CLIENT_ID","value":"attachment-client"}]'
   if [[ "${FAKE_AZ_SCENARIO:-success}" == "activation-mismatch" ]]; then
     environment="${environment/\"DOCUMENT_INTELLIGENCE_ENABLED\",\"value\":\"true\"/\"DOCUMENT_INTELLIGENCE_ENABLED\",\"value\":\"false\"}"
   fi

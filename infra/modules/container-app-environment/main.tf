@@ -14,7 +14,8 @@ resource "azurerm_subnet" "container_apps" {
   delegation {
     name = "container-apps"
     service_delegation {
-      name = "Microsoft.App/environments"
+      name    = "Microsoft.App/environments"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
     }
   }
 }
@@ -29,7 +30,8 @@ resource "azurerm_subnet" "postgres" {
   delegation {
     name = "postgres-flexible-server"
     service_delegation {
-      name = "Microsoft.DBforPostgreSQL/flexibleServers"
+      name    = "Microsoft.DBforPostgreSQL/flexibleServers"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
     }
   }
 }
@@ -60,4 +62,15 @@ resource "azurerm_container_app_environment" "this" {
   resource_group_name        = var.resource_group_name
   log_analytics_workspace_id = var.log_analytics_workspace_id
   infrastructure_subnet_id   = azurerm_subnet.container_apps.id
+
+  dynamic "workload_profile" {
+    for_each = var.enable_consumption_workload_profile ? [true] : []
+
+    content {
+      name                  = "Consumption"
+      workload_profile_type = "Consumption"
+      minimum_count         = 0
+      maximum_count         = 0
+    }
+  }
 }

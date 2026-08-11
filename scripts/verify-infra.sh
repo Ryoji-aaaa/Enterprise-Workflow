@@ -25,6 +25,8 @@ run_step "Checking expense attachment storage and identity boundaries" \
   "${SCRIPT_DIRECTORY}/check-attachment-storage.sh"
 run_step "Checking Document Analysis Azure infrastructure boundaries" \
   "${SCRIPT_DIRECTORY}/check-document-analysis-infra.sh"
+run_step "Regression testing Terraform plan safety gate" \
+  "${SCRIPT_DIRECTORY}/test-check-terraform-plan-safety.sh"
 run_step "Regression testing Document Analysis Azure verifier" \
   "${SCRIPT_DIRECTORY}/test-verify-document-analysis-azure.sh"
 run_step "Checking fail-closed Azure notification boundaries" \

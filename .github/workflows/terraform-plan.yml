@@ -11,7 +11,10 @@ on:
       - "scripts/check-backend-internal-url.sh"
       - "scripts/check-backend-probes.sh"
       - "scripts/check-document-analysis-infra.sh"
+      - "scripts/check-terraform-plan-safety.sh"
       - "scripts/test-verify-document-analysis-azure.sh"
+      - "scripts/test-check-terraform-plan-safety.sh"
+      - "scripts/fixtures/terraform-plan-safety-*.json"
       - "scripts/check-manual-seed-job-names.sh"
       - "scripts/lib/log.sh"
       - "scripts/verify-document-analysis-azure.sh"
@@ -27,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install ripgrep for infrastructure checks
+      - name: Install static validation dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ripgrep
+          sudo apt-get install --yes jq ripgrep
       - uses: hashicorp/setup-terraform@v3
       - name: Verify Terraform and infrastructure configuration
         run: make verify-infra
@@ -75,6 +78,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - name: Install jq for plan safety gate
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes jq
       - name: Select Terraform plan image tag
         run: |
           sha="$(git rev-parse HEAD)"
@@ -161,3 +168,16 @@ jobs:
         if: steps.readiness.outputs.ready == 'true'
         working-directory: infra/environments/${{ matrix.target_environment }}
         run: terraform plan -no-color -input=false -out=tfplan
+      - name: Check Terraform plan safety
+        if: steps.readiness.outputs.ready == 'true'
+        working-directory: infra/environments/${{ matrix.target_environment }}
+        run: |
+          terraform show -json tfplan > tfplan.json
+          allowed_delete_args=()
+          temporary_diagnostic_address='module.environment.azurerm_monitor_diagnostic_setting.attachment_blob_write_diagnosis[0]'
+          if jq -e --arg address "$temporary_diagnostic_address" \
+            'any(.resource_changes[]?; .address == $address and .change.actions == ["delete"])' \
+            tfplan.json >/dev/null; then
+            allowed_delete_args=(--allow-delete "$temporary_diagnostic_address")
+          fi
+          ../../../scripts/check-terraform-plan-safety.sh tfplan.json "${allowed_delete_args[@]}"

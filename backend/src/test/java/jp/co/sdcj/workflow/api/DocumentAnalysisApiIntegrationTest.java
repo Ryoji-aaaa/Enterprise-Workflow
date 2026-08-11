@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.ByteArrayInputStream;
+import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -49,6 +50,7 @@ import jp.co.sdcj.workflow.domain.SystemUser;
 import jp.co.sdcj.workflow.domain.UserExternalIdentity;
 import jp.co.sdcj.workflow.domain.UserRoleAssignment;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
+import jp.co.sdcj.workflow.repository.DocumentAnalysisJobRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.RolePermissionRepository;
 import jp.co.sdcj.workflow.repository.RoleRepository;
@@ -81,6 +83,7 @@ class DocumentAnalysisApiIntegrationTest {
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired AppUserRepository userRepository;
+    @Autowired DocumentAnalysisJobRepository documentAnalysisJobRepository;
     @Autowired UserExternalIdentityRepository identityRepository;
     @Autowired RoleRepository roleRepository;
     @Autowired PermissionRepository permissionRepository;
@@ -141,6 +144,7 @@ class DocumentAnalysisApiIntegrationTest {
                 .andExpect(status().isAccepted())
                 .andExpect(header().string("Location", containsString("/api/document-analyses/")))
                 .andExpect(jsonPath("$.status").value("QUEUED"))
+                .andExpect(jsonPath("$.profile").value("GENERAL"))
                 .andExpect(jsonPath("$.modelId").value("prebuilt-layout"))
                 .andExpect(jsonPath("$.providerApiVersion").value("2024-11-30"));
 
@@ -157,6 +161,108 @@ class DocumentAnalysisApiIntegrationTest {
                         .with(validJwt(cuUser, "cu-subject")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.provider").value("CONTENT_UNDERSTANDING"));
+    }
+
+    @Test
+    void postLocationは作成したprofileの取得URLを返す() throws Exception {
+        String generalLocation = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(pdf("general-location.pdf"))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.profile").value("GENERAL"))
+                .andReturn().getResponse().getHeader("Location");
+
+        assertThat(generalLocation).doesNotContain("?profile=");
+        mockMvc.perform(get(URI.create(generalLocation))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("GENERAL"));
+
+        String autoEntryLocation = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(profile("AUTO_ENTRY"))
+                        .file(pdf("auto-entry-location.pdf"))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"))
+                .andReturn().getResponse().getHeader("Location");
+
+        assertThat(autoEntryLocation).endsWith("?profile=AUTO_ENTRY");
+        mockMvc.perform(get(URI.create(autoEntryLocation))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"));
+    }
+
+    @Test
+    void autoEntryはContentUnderstandingだけで作成しsnapshotと履歴をprofileで分離する() throws Exception {
+        String generalResponse = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(pdf("general.pdf"))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.profile").value("GENERAL"))
+                .andExpect(jsonPath("$.modelId").value("prebuilt-layout"))
+                .andReturn().getResponse().getContentAsString();
+        UUID generalId = UUID.fromString(JsonTestSupport.stringValue(generalResponse, "id"));
+
+        String autoEntryResponse = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(profile("AUTO_ENTRY"))
+                        .file(pdf("auto-entry.pdf"))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"))
+                .andExpect(jsonPath("$.modelId")
+                        .value("enterprise_workflow_auto_entry_v2.1"))
+                .andExpect(jsonPath("$.providerApiVersion").value("2025-11-01"))
+                .andReturn().getResponse().getContentAsString();
+        UUID autoEntryId = UUID.fromString(JsonTestSupport.stringValue(autoEntryResponse, "id"));
+
+        assertThat(documentAnalysisJobRepository.findById(generalId)).get().satisfies(job -> {
+            assertThat(job.getCompletionModelDeploymentName()).isNull();
+            assertThat(job.getEmbeddingModelDeploymentName()).isNull();
+        });
+        assertThat(documentAnalysisJobRepository.findById(autoEntryId)).get().satisfies(job -> {
+            assertThat(job.getCompletionModelDeploymentName()).isEqualTo("auto-entry-gpt-5-2");
+            assertThat(job.getEmbeddingModelDeploymentName())
+                    .isEqualTo("auto-entry-text-embedding-3-large");
+        });
+
+        mockMvc.perform(get("/api/document-analyses")
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].id").value(generalId.toString()))
+                .andExpect(jsonPath("$.content[0].profile").value("GENERAL"));
+        mockMvc.perform(get("/api/document-analyses")
+                        .param("profile", "AUTO_ENTRY")
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].id").value(autoEntryId.toString()))
+                .andExpect(jsonPath("$.content[0].profile").value("AUTO_ENTRY"));
+        mockMvc.perform(get("/api/document-analyses/{id}", autoEntryId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_NOT_FOUND"));
+        mockMvc.perform(get("/api/document-analyses/{id}", autoEntryId)
+                        .param("profile", "AUTO_ENTRY")
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"));
+    }
+
+    @Test
+    void autoEntryはDocumentIntelligenceではvalidationErrorになる() throws Exception {
+        mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("DOCUMENT_INTELLIGENCE"))
+                        .file(profile("AUTO_ENTRY"))
+                        .file(pdf())
+                        .with(validJwt(diUser, "di-subject")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_PROFILE_PROVIDER_INVALID"));
     }
 
     @Test
@@ -383,6 +489,11 @@ class DocumentAnalysisApiIntegrationTest {
     private MockMultipartFile provider(String provider) {
         return new MockMultipartFile(
                 "provider", "", MediaType.TEXT_PLAIN_VALUE, provider.getBytes());
+    }
+
+    private MockMultipartFile profile(String profile) {
+        return new MockMultipartFile(
+                "profile", "", MediaType.TEXT_PLAIN_VALUE, profile.getBytes());
     }
 
     private MockMultipartFile pdf() {

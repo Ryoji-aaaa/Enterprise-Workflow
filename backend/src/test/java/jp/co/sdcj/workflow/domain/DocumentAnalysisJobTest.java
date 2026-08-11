@@ -28,6 +28,74 @@ class DocumentAnalysisJobTest {
         assertThat(job.getStatus()).isEqualTo(DocumentAnalysisStatus.QUEUED);
         assertThat(job.getAttemptCount()).isZero();
         assertThat(job.getProvider()).isEqualTo(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE);
+        assertThat(job.getAnalysisProfile()).isEqualTo(DocumentAnalysisProfile.GENERAL);
+        assertThat(job.getCompletionModelDeploymentName()).isNull();
+        assertThat(job.getEmbeddingModelDeploymentName()).isNull();
+    }
+
+    @Test
+    void autoEntryJobSnapshotsContentUnderstandingModelDeployments() {
+        DocumentAnalysisJob job = new DocumentAnalysisJob(
+                JOB_ID,
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                USER_ID,
+                "source.pdf",
+                "application/pdf",
+                10L,
+                SHA256,
+                "input/%s/source".formatted(JOB_ID),
+                "enterprise_workflow_auto_entry_v2.1",
+                "2025-11-01",
+                "auto-entry-gpt-5-2",
+                "auto-entry-text-embedding-3-large",
+                1,
+                Instant.now().plusSeconds(60),
+                AUDIT_USER_ID);
+
+        assertThat(job.getAnalysisProfile()).isEqualTo(DocumentAnalysisProfile.AUTO_ENTRY);
+        assertThat(job.getModelId()).isEqualTo("enterprise_workflow_auto_entry_v2.1");
+        assertThat(job.getCompletionModelDeploymentName()).isEqualTo("auto-entry-gpt-5-2");
+        assertThat(job.getEmbeddingModelDeploymentName())
+                .isEqualTo("auto-entry-text-embedding-3-large");
+    }
+
+    @Test
+    void autoEntryRequiresContentUnderstandingAndBothModelDeployments() {
+        assertInvalid(() -> new DocumentAnalysisJob(
+                JOB_ID,
+                DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE,
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                USER_ID,
+                "source.pdf",
+                "application/pdf",
+                10L,
+                SHA256,
+                "input/%s/source".formatted(JOB_ID),
+                "prebuilt-layout",
+                "2024-11-30",
+                "auto-entry-gpt-5-2",
+                "auto-entry-text-embedding-3-large",
+                1,
+                Instant.now().plusSeconds(60),
+                AUDIT_USER_ID));
+        assertInvalid(() -> new DocumentAnalysisJob(
+                JOB_ID,
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                USER_ID,
+                "source.pdf",
+                "application/pdf",
+                10L,
+                SHA256,
+                "input/%s/source".formatted(JOB_ID),
+                "enterprise_workflow_auto_entry_v2.1",
+                "2025-11-01",
+                null,
+                "auto-entry-text-embedding-3-large",
+                1,
+                Instant.now().plusSeconds(60),
+                AUDIT_USER_ID));
     }
 
     @Test

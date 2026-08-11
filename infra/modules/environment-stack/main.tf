@@ -22,15 +22,16 @@ module "monitoring" {
 module "container_app_environment" {
   source = "../container-app-environment"
 
-  name                             = var.container_app_environment_name
-  location                         = var.location
-  resource_group_name              = data.azurerm_resource_group.this.name
-  log_analytics_workspace_id       = module.monitoring.id
-  vnet_name                        = "vnet-enterprise-workflow-${var.environment}"
-  vnet_address_space               = var.vnet_address_space
-  infrastructure_subnet_prefixes   = var.container_apps_subnet_prefixes
-  postgres_subnet_prefixes         = var.postgres_subnet_prefixes
-  private_endpoint_subnet_prefixes = var.private_endpoint_subnet_prefixes
+  name                                = var.container_app_environment_name
+  location                            = var.location
+  resource_group_name                 = data.azurerm_resource_group.this.name
+  log_analytics_workspace_id          = module.monitoring.id
+  vnet_name                           = "vnet-enterprise-workflow-${var.environment}"
+  vnet_address_space                  = var.vnet_address_space
+  infrastructure_subnet_prefixes      = var.container_apps_subnet_prefixes
+  postgres_subnet_prefixes            = var.postgres_subnet_prefixes
+  private_endpoint_subnet_prefixes    = var.private_endpoint_subnet_prefixes
+  enable_consumption_workload_profile = var.environment == "staging"
 }
 
 module "runtime_identity" {
@@ -57,20 +58,6 @@ module "attachment_storage" {
   resource_group_name        = data.azurerm_resource_group.this.name
   container_name             = "expense-evidence"
   soft_delete_retention_days = 30
-}
-
-resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis" {
-  count = var.environment == "staging" ? 1 : 0
-
-  name = "diag-enterprise-workflow-staging-attachment-blob-write"
-
-  target_resource_id             = "${module.attachment_storage.id}/blobServices/default"
-  log_analytics_workspace_id     = module.monitoring.id
-  log_analytics_destination_type = "Dedicated"
-
-  enabled_log {
-    category = "StorageWrite"
-  }
 }
 
 resource "azurerm_role_assignment" "backend_attachment_blob" {
@@ -109,12 +96,51 @@ module "document_intelligence" {
 module "content_understanding" {
   source = "../cognitive-account"
 
-  name                       = var.content_understanding_account_name
-  location                   = var.location
-  resource_group_name        = data.azurerm_resource_group.this.name
-  kind                       = "AIServices"
-  sku_name                   = "S0"
-  project_management_enabled = false
+  name                             = var.content_understanding_account_name
+  location                         = var.location
+  resource_group_name              = data.azurerm_resource_group.this.name
+  kind                             = "AIServices"
+  sku_name                         = "S0"
+  project_management_enabled       = var.environment == "staging"
+  system_assigned_identity_enabled = var.environment == "staging"
+}
+
+resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_completion" {
+  count = var.environment == "staging" ? 1 : 0
+
+  name                   = "auto-entry-gpt-5-2"
+  cognitive_account_id   = module.content_understanding.id
+  version_upgrade_option = "NoAutoUpgrade"
+
+  model {
+    format  = "OpenAI"
+    name    = "gpt-5.2"
+    version = "2025-12-11"
+  }
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 150
+  }
+}
+
+resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_embedding" {
+  count = var.environment == "staging" ? 1 : 0
+
+  name                   = "auto-entry-text-embedding-3-large"
+  cognitive_account_id   = module.content_understanding.id
+  version_upgrade_option = "NoAutoUpgrade"
+
+  model {
+    format  = "OpenAI"
+    name    = "text-embedding-3-large"
+    version = "1"
+  }
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 150
+  }
 }
 
 module "document_analysis_storage" {
@@ -318,6 +344,7 @@ module "backend" {
   name                         = var.backend_container_app_name
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
+  workload_profile_name        = var.environment == "staging" ? "Consumption" : null
   identity_id                  = module.runtime_identity.id
   additional_identity_ids = [
     module.backend_blob_identity.id,
@@ -329,44 +356,56 @@ module "backend" {
   target_port      = 8080
   external_enabled = false
   key_vault_uri    = module.key_vault.vault_uri
-  environment_variables = merge({
-    SPRING_DATASOURCE_URL               = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
-    SPRING_DATASOURCE_USERNAME          = "workflow"
-    KEYCLOAK_ISSUER                     = local.keycloak_issuer
-    KEYCLOAK_INTERNAL_ISSUER            = local.keycloak_issuer
-    KEYCLOAK_CLIENT_ID                  = var.keycloak_client_id
-    ALLOWED_EMAIL_DOMAIN                = var.allowed_email_domain
-    WORKFLOW_DEPLOYMENT_ENVIRONMENT     = var.environment
-    WORKFLOW_SEED_ENABLED               = "false"
-    AZURE_STORAGE_BLOB_ENDPOINT         = module.attachment_storage.primary_blob_endpoint
-    AZURE_STORAGE_CONTAINER_NAME        = module.attachment_storage.container_name
-    AZURE_CLIENT_ID                     = module.backend_blob_identity.client_id
-    ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"
-    WORKFLOW_DOCUMENT_ANALYSIS_ENABLED  = tostring(var.document_analysis_enabled)
-    WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE = (
-      var.document_analysis_enabled ? "azure" : "disabled"
-    )
-    AZURE_DOCUMENT_ANALYSIS_CLIENT_ID                    = module.document_analysis_ai_identity.client_id
-    DOCUMENT_INTELLIGENCE_ENABLED                        = tostring(var.document_analysis_enabled && var.document_intelligence_enabled)
-    DOCUMENT_INTELLIGENCE_ENDPOINT                       = module.document_intelligence.endpoint
-    DOCUMENT_INTELLIGENCE_MODEL_ID                       = "prebuilt-layout"
-    DOCUMENT_INTELLIGENCE_API_VERSION                    = "2024-11-30"
-    DOCUMENT_INTELLIGENCE_ANALYSIS_TIMEOUT               = "25m"
-    CONTENT_UNDERSTANDING_ENABLED                        = tostring(var.document_analysis_enabled && var.content_understanding_enabled)
-    CONTENT_UNDERSTANDING_ENDPOINT                       = module.content_understanding.endpoint
-    CONTENT_UNDERSTANDING_ANALYZER_ID                    = "prebuilt-layout"
-    CONTENT_UNDERSTANDING_API_VERSION                    = "2025-11-01"
-    CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT               = "25m"
-    DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT              = module.document_analysis_storage.primary_blob_endpoint
-    DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID = module.document_analysis_storage_identity.client_id
-    DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME               = module.document_analysis_storage.input_container_name
-    DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME              = module.document_analysis_storage.result_container_name
-    DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
-    }, var.contract_legacy_user_columns ? tomap({}) : tomap({
+  environment_variables = merge(
+    {
+      SPRING_DATASOURCE_URL               = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
+      SPRING_DATASOURCE_USERNAME          = "workflow"
+      KEYCLOAK_ISSUER                     = local.keycloak_issuer
+      KEYCLOAK_INTERNAL_ISSUER            = local.keycloak_issuer
+      KEYCLOAK_CLIENT_ID                  = var.keycloak_client_id
+      ALLOWED_EMAIL_DOMAIN                = var.allowed_email_domain
+      WORKFLOW_DEPLOYMENT_ENVIRONMENT     = var.environment
+      WORKFLOW_SEED_ENABLED               = "false"
+      AZURE_STORAGE_BLOB_ENDPOINT         = module.attachment_storage.primary_blob_endpoint
+      AZURE_STORAGE_CONTAINER_NAME        = module.attachment_storage.container_name
+      AZURE_CLIENT_ID                     = module.backend_blob_identity.client_id
+      ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"
+      WORKFLOW_DOCUMENT_ANALYSIS_ENABLED  = tostring(var.document_analysis_enabled)
+      WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE = (
+        var.document_analysis_enabled ? "azure" : "disabled"
+      )
+      AZURE_DOCUMENT_ANALYSIS_CLIENT_ID                    = module.document_analysis_ai_identity.client_id
+      DOCUMENT_INTELLIGENCE_ENABLED                        = tostring(var.document_analysis_enabled && var.document_intelligence_enabled)
+      DOCUMENT_INTELLIGENCE_ENDPOINT                       = module.document_intelligence.endpoint
+      DOCUMENT_INTELLIGENCE_MODEL_ID                       = "prebuilt-layout"
+      DOCUMENT_INTELLIGENCE_API_VERSION                    = "2024-11-30"
+      DOCUMENT_INTELLIGENCE_ANALYSIS_TIMEOUT               = "25m"
+      CONTENT_UNDERSTANDING_ENABLED                        = tostring(var.document_analysis_enabled && var.content_understanding_enabled)
+      CONTENT_UNDERSTANDING_ENDPOINT                       = module.content_understanding.endpoint
+      CONTENT_UNDERSTANDING_ANALYZER_ID                    = "prebuilt-layout"
+      CONTENT_UNDERSTANDING_API_VERSION                    = "2025-11-01"
+      CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT               = "25m"
+      DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT              = module.document_analysis_storage.primary_blob_endpoint
+      DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID = module.document_analysis_storage_identity.client_id
+      DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME               = module.document_analysis_storage.input_container_name
+      DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME              = module.document_analysis_storage.result_container_name
+      DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
+    },
+    var.environment == "staging" ? {
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID = "enterprise_workflow_auto_entry_v2.1"
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME = (
+        azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0].name
+      )
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME = (
+        azurerm_cognitive_deployment.content_understanding_auto_entry_embedding[0].name
+      )
+    } : {},
+    var.contract_legacy_user_columns ? {} : {
       # Pin only the application-switch deployment. Once the legacy contract is
       # approved, omitting the target lets later Flyway versions apply normally.
       SPRING_FLYWAY_TARGET = "006"
-  }))
+    },
+  )
   secret_environment_variables = {
     SPRING_DATASOURCE_PASSWORD = "workflow-db-password"
   }
@@ -418,6 +457,7 @@ module "keycloak" {
   name                         = var.keycloak_container_app_name
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
+  workload_profile_name        = var.environment == "staging" ? "Consumption" : null
   identity_id                  = module.runtime_identity.id
   registry_server              = module.registry.login_server
   image                        = "${module.registry.login_server}/enterprise-workflow-keycloak:${var.image_tag}"
@@ -484,6 +524,7 @@ module "frontend" {
   name                         = var.frontend_container_app_name
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
+  workload_profile_name        = var.environment == "staging" ? "Consumption" : null
   identity_id                  = module.runtime_identity.id
   registry_server              = module.registry.login_server
   image                        = "${module.registry.login_server}/enterprise-workflow-frontend:${var.image_tag}"
@@ -547,6 +588,7 @@ resource "azurerm_container_app_job" "manual_seed" {
   container_app_environment_id = module.container_app_environment.id
   replica_timeout_in_seconds   = 1800
   replica_retry_limit          = 0
+  workload_profile_name        = "Consumption"
 
   identity {
     type         = "UserAssigned"

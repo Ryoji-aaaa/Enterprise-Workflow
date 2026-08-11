@@ -8,4 +8,12 @@ resource "azurerm_cognitive_account" "this" {
   local_auth_enabled            = false
   public_network_access_enabled = false
   project_management_enabled    = var.project_management_enabled
+
+  dynamic "identity" {
+    for_each = var.system_assigned_identity_enabled ? [true] : []
+
+    content {
+      type = "SystemAssigned"
+    }
+  }
 }

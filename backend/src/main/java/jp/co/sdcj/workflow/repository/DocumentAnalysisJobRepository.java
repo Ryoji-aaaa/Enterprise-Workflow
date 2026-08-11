@@ -16,6 +16,7 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
 import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
 
@@ -23,13 +24,30 @@ public interface DocumentAnalysisJobRepository extends JpaRepository<DocumentAna
 
     Optional<DocumentAnalysisJob> findByIdAndRequestedByUserId(UUID id, UUID requestedByUserId);
 
+    Optional<DocumentAnalysisJob> findByIdAndRequestedByUserIdAndAnalysisProfile(
+            UUID id,
+            UUID requestedByUserId,
+            DocumentAnalysisProfile analysisProfile);
+
     Page<DocumentAnalysisJob> findAllByRequestedByUserIdOrderByCreatedAtDescIdDesc(
             UUID requestedByUserId, Pageable pageable);
+
+    Page<DocumentAnalysisJob> findAllByRequestedByUserIdAndAnalysisProfileOrderByCreatedAtDescIdDesc(
+            UUID requestedByUserId,
+            DocumentAnalysisProfile analysisProfile,
+            Pageable pageable);
 
     Page<DocumentAnalysisJob> findAllByRequestedByUserIdAndProviderOrderByCreatedAtDescIdDesc(
             UUID requestedByUserId,
             DocumentAnalysisProviderType provider,
             Pageable pageable);
+
+    Page<DocumentAnalysisJob>
+            findAllByRequestedByUserIdAndProviderAndAnalysisProfileOrderByCreatedAtDescIdDesc(
+                    UUID requestedByUserId,
+                    DocumentAnalysisProviderType provider,
+                    DocumentAnalysisProfile analysisProfile,
+                    Pageable pageable);
 
     @Query(value = """
             select *

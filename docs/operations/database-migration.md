@@ -52,13 +52,16 @@ Blob endpoint、container名、client IDを設定する。Blob設定不足でBac
 `disabled`のためOutbox行と履歴APIは作動しないが、schemaとPermissionは全環境で同じmigrationを
 適用する。適用後はFlyway V013成功、Permissionが1件、SYSTEM_ADMIN mappingが1件であることを確認する。
 
-Document Analysisを含むrevisionではV014、V015を順に適用する。V014はJob metadata schemaと3つの
+Document Analysisを含むrevisionではV014、V015、V016を順に適用する。V014はJob metadata schemaと3つの
 Permissionを追加する。V015は3 Permissionを`APPLICATION_USER`へ割り当て、V014の
 `DOCUMENT_ANALYSIS_USER`からPermissionと有効な割当を除去する。有効割当を終了するときは
 `REVOKED`履歴を追記し、既存の追記専用履歴は更新・削除しない。履歴または終了済み割当が参照する環境では
 旧Role rowを`enabled=false`のDB-only tombstoneとして残し、参照がない環境では物理削除する。
-適用後はFlyway V015成功、`APPLICATION_USER`と`SYSTEM_ADMIN`への3 Permission、旧Roleの
-Permission 0件、有効割当0件を確認する。
+V016は`document_analysis_jobs`へ`analysis_profile`、`completion_model_deployment_name`、
+`embedding_model_deployment_name`を追加する。既存Jobは`GENERAL`へbackfillし、2つのdeployment名は
+nullのまま維持する。`AUTO_ENTRY`はContent Understandingと2つのnon-null deployment snapshotだけを
+許すcheck constraintで保護する。適用後はFlyway V016成功、`APPLICATION_USER`と`SYSTEM_ADMIN`への
+3 Permission、旧RoleのPermission 0件、有効割当0件を確認する。
 
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ

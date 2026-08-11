@@ -8,7 +8,9 @@ readonly STACK_FILE="${PROJECT_DIRECTORY}/infra/modules/environment-stack/main.t
 readonly STORAGE_FILE="${PROJECT_DIRECTORY}/infra/modules/blob-storage/main.tf"
 readonly CONTAINER_APP_FILE="${PROJECT_DIRECTORY}/infra/modules/container-app/main.tf"
 readonly TERRAFORM_PLAN_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/terraform-plan.yml"
+readonly STAGING_DEPLOY_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/deploy-staging.yml"
 readonly ATTACHMENT_STORAGE_VAR_MAPPING='TF_VAR_attachment_storage_account_name: ${{ vars.AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME }}'
+readonly TEMPORARY_DIAGNOSTIC_ADDRESS='module.environment.azurerm_monitor_diagnostic_setting.attachment_blob_write_diagnosis[0]'
 readonly -a ENVIRONMENT_PROVIDER_FILES=(
   "${PROJECT_DIRECTORY}/infra/environments/staging/providers.tf"
   "${PROJECT_DIRECTORY}/infra/environments/production/providers.tf"
@@ -25,17 +27,13 @@ grep -Fq 'container_access_type = "private"' "${STORAGE_FILE}"
 grep -Fq 'soft_delete_retention_days = 30' "${STACK_FILE}"
 grep -Fq 'role_definition_name = "Storage Blob Data Contributor"' "${STACK_FILE}"
 grep -Fq 'scope                = module.attachment_storage.container_scope' "${STACK_FILE}"
-diagnostic_block="$(sed -n \
-  '/resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis" {/,/^}/p' \
-  "${STACK_FILE}")"
-grep -Fq 'count = var.environment == "staging" ? 1 : 0' <<<"${diagnostic_block}"
-grep -Fq 'target_resource_id             = "${module.attachment_storage.id}/blobServices/default"' \
-  <<<"${diagnostic_block}"
-grep -Fq 'log_analytics_workspace_id     = module.monitoring.id' <<<"${diagnostic_block}"
-grep -Fq 'log_analytics_destination_type = "Dedicated"' <<<"${diagnostic_block}"
-grep -Fq 'category = "StorageWrite"' <<<"${diagnostic_block}"
-if grep -Eq 'Storage(Read|Delete)|enabled_metric|metric' <<<"${diagnostic_block}"; then
-  echo "Temporary attachment diagnosis must collect only StorageWrite logs." >&2
+if grep -Fq 'resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis"' \
+  "${STACK_FILE}"; then
+  echo "Temporary attachment Blob diagnostic setting must be removed." >&2
+  exit 1
+fi
+if grep -Fq 'StorageWrite' "${STACK_FILE}"; then
+  echo "Temporary attachment Blob StorageWrite diagnostic configuration must be removed." >&2
   exit 1
 fi
 backend_module_block="$(sed -n '/module "backend" {/,/^}/p' "${STACK_FILE}")"
@@ -73,9 +71,33 @@ done
 grep -Fq 'target_environment: staging' "${TERRAFORM_PLAN_WORKFLOW}"
 grep -Fq 'target_environment: production' "${TERRAFORM_PLAN_WORKFLOW}"
 
+for safety_workflow in "${TERRAFORM_PLAN_WORKFLOW}" "${STAGING_DEPLOY_WORKFLOW}"; do
+  workflow_name="${safety_workflow#"${PROJECT_DIRECTORY}/"}"
+  grep -Fq 'terraform show -json tfplan > tfplan.json' "${safety_workflow}"
+  grep -Fq "temporary_diagnostic_address='${TEMPORARY_DIAGNOSTIC_ADDRESS}'" "${safety_workflow}"
+  grep -Fq 'any(.resource_changes[]?; .address == $address and .change.actions == ["delete"])' \
+    "${safety_workflow}"
+  grep -Fq 'allowed_delete_args=(--allow-delete "$temporary_diagnostic_address")' \
+    "${safety_workflow}"
+  grep -Fq 'scripts/check-terraform-plan-safety.sh tfplan.json "${allowed_delete_args[@]}"' \
+    "${safety_workflow}"
+  if grep -Eq -- '--allow-delete[[:space:]]+azurerm_' "${safety_workflow}"; then
+    echo "${workflow_name} must not allow deletions by resource type." >&2
+    exit 1
+  fi
+done
+
+deploy_plan_line="$(grep -n -m1 'terraform plan -input=false -out=tfplan' "${STAGING_DEPLOY_WORKFLOW}" | cut -d: -f1)"
+deploy_show_line="$(grep -n -m1 'terraform show -json tfplan > tfplan.json' "${STAGING_DEPLOY_WORKFLOW}" | cut -d: -f1)"
+deploy_gate_line="$(grep -n -m1 'scripts/check-terraform-plan-safety.sh tfplan.json' "${STAGING_DEPLOY_WORKFLOW}" | cut -d: -f1)"
+deploy_apply_line="$(grep -n -m1 'terraform apply -input=false -auto-approve tfplan' "${STAGING_DEPLOY_WORKFLOW}" | cut -d: -f1)"
+if ((deploy_plan_line >= deploy_show_line || deploy_show_line >= deploy_gate_line || deploy_gate_line >= deploy_apply_line)); then
+  echo "deploy-staging Terraform plan safety gate must run before apply." >&2
+  exit 1
+fi
+grep -Fq 'sudo apt-get install --yes jq' "${STAGING_DEPLOY_WORKFLOW}"
+
 [[ "$(grep -Fc 'scope                = module.attachment_storage.container_scope' \
-  "${STACK_FILE}")" == "1" ]]
-[[ "$(grep -Fc 'resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis"' \
   "${STACK_FILE}")" == "1" ]]
 [[ "$(grep -Fc 'principal_id         = module.backend_blob_identity.principal_id' \
   "${STACK_FILE}")" -ge "1" ]]

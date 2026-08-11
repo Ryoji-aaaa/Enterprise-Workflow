@@ -357,11 +357,11 @@ class PostgreSqlRepositoryIT {
             Instant expiresAt) {
         jdbcTemplate.update("""
                 insert into document_analysis_jobs (
-                    id, provider, model_id, provider_api_version, normalized_schema_version,
+                    id, provider, model_id, provider_api_version, analysis_profile, normalized_schema_version,
                     status, requested_by_user_id, original_file_name, content_type,
                     file_size, sha256, input_object_name, attempt_count, lease_expires_at,
                     expires_at, created_by, created_at, updated_by, updated_at, version
-                ) values (?, 'DOCUMENT_INTELLIGENCE', 'prebuilt-layout', '2024-11-30', 1,
+                ) values (?, 'DOCUMENT_INTELLIGENCE', 'prebuilt-layout', '2024-11-30', 'GENERAL', 1,
                           ?, ?, 'source.pdf', 'application/pdf',
                           100, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
                           ?, 0, ?, coalesce(?, current_timestamp + interval '7 days'),

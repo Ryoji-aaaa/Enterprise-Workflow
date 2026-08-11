@@ -1,6 +1,10 @@
 variable "name" { type = string }
 variable "resource_group_name" { type = string }
 variable "container_app_environment_id" { type = string }
+variable "workload_profile_name" {
+  type    = string
+  default = null
+}
 variable "revision_mode" {
   type    = string
   default = "Single"

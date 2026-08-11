@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
@@ -36,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import jp.co.sdcj.workflow.config.DocumentAnalysisProperties;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderException;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRequest;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderResult;
@@ -288,6 +290,29 @@ class AzureContentUnderstandingProviderTest {
                 new ByteArrayInputStream("%PDF-1.4\n".getBytes(StandardCharsets.UTF_8)),
                 9,
                 "application/pdf");
+    }
+
+    @Test
+    void autoEntryRequiresModelDeploymentSnapshotsBeforeCallingAzure() {
+        ContentUnderstandingClient client = mock(ContentUnderstandingClient.class);
+        DocumentAnalysisProviderRequest request = new DocumentAnalysisProviderRequest(
+                ANALYSIS_ID,
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                "enterprise_workflow_auto_entry_v2.1",
+                "2025-11-01",
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                null,
+                "auto-entry-text-embedding-3-large",
+                1,
+                new ByteArrayInputStream("%PDF-1.4\n".getBytes(StandardCharsets.UTF_8)),
+                9,
+                "application/pdf");
+
+        assertThatThrownBy(() -> provider(client).analyze(request))
+                .isInstanceOfSatisfying(DocumentAnalysisProviderException.class, exception ->
+                        assertThat(exception.safeErrorCode())
+                                .isEqualTo("CONTENT_UNDERSTANDING_CONFIGURATION_ERROR"));
+        verifyNoInteractions(client);
     }
 
     private static DocumentAnalysisProperties properties() {
