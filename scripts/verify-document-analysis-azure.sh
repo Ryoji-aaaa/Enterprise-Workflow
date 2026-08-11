@@ -3,6 +3,10 @@
 # Read-only Azure Resource Manager verification for an already deployed environment.
 set -Eeuo pipefail
 
+readonly AUTO_ENTRY_ANALYZER_ID="enterprise_workflow_auto_entry_v2.1"
+readonly AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME="auto-entry-gpt-5-2"
+readonly AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME="auto-entry-text-embedding-3-large"
+
 usage() {
   cat <<'USAGE'
 Usage: verify-document-analysis-azure.sh
@@ -123,6 +127,29 @@ verify_cognitive_account() {
   printf -v "$4" '%s' "$account_id"
 }
 
+verify_cognitive_deployment() {
+  local label="$1" deployment_name="$2" expected_model_name="$3" expected_model_version="$4"
+  local deployment_json model_format model_name model_version sku_name capacity
+  az_read "${label} deployment" deployment_json \
+    az cognitiveservices account deployment show --resource-group "$AZURE_RESOURCE_GROUP" \
+    --name "$AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME" \
+    --deployment-name "$deployment_name" --output json || true
+  if [[ -z "$deployment_json" ]]; then
+    fail "${label} deployment fields" "a readable deployment" "unavailable"
+    return
+  fi
+  jq_read "${label} model format" model_format '.properties.model.format' "$deployment_json" || true
+  jq_read "${label} model name" model_name '.properties.model.name' "$deployment_json" || true
+  jq_read "${label} model version" model_version '.properties.model.version' "$deployment_json" || true
+  jq_read "${label} SKU" sku_name '.sku.name' "$deployment_json" || true
+  jq_read "${label} capacity" capacity '(.sku.capacity | tostring)' "$deployment_json" || true
+  expect "${label} model format" "OpenAI" "$model_format"
+  expect "${label} model name" "$expected_model_name" "$model_name"
+  expect "${label} model version" "$expected_model_version" "$model_version"
+  expect "${label} SKU" "GlobalStandard" "$sku_name"
+  expect "${label} capacity" "150" "$capacity"
+}
+
 verify_private_endpoint() {
   local name="$1" endpoint_json state
   az_read "private endpoint ${name}" endpoint_json \
@@ -207,6 +234,18 @@ verify_cognitive_account "Document Intelligence" \
   "$AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME" "FormRecognizer" document_intelligence_id
 verify_cognitive_account "Content Understanding" \
   "$AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME" "AIServices" content_understanding_id
+if [[ "$AZURE_ENVIRONMENT" == "staging" ]]; then
+  verify_cognitive_deployment \
+    "AUTO_ENTRY completion" \
+    "$AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME" \
+    "gpt-5.2" \
+    "2025-12-11"
+  verify_cognitive_deployment \
+    "AUTO_ENTRY embedding" \
+    "$AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME" \
+    "text-embedding-3-large" \
+    "1"
+fi
 
 storage_json=''
 storage_id=''
@@ -305,6 +344,9 @@ verify_active_backend_environment() {
     "WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure" \
     "DOCUMENT_INTELLIGENCE_ENABLED=true" \
     "CONTENT_UNDERSTANDING_ENABLED=true" \
+    "CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID=${AUTO_ENTRY_ANALYZER_ID}" \
+    "CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME=${AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME}" \
+    "CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME=${AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME}" \
     "DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false" \
     "AZURE_DOCUMENT_ANALYSIS_CLIENT_ID=${AZURE_DOCUMENT_ANALYSIS_AI_IDENTITY_CLIENT_ID}" \
     "DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID=${AZURE_DOCUMENT_ANALYSIS_STORAGE_IDENTITY_CLIENT_ID}" \

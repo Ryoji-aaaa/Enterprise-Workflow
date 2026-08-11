@@ -117,6 +117,44 @@ module "content_understanding" {
   project_management_enabled = false
 }
 
+resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_completion" {
+  count = var.environment == "staging" ? 1 : 0
+
+  name                   = "auto-entry-gpt-5-2"
+  cognitive_account_id   = module.content_understanding.id
+  version_upgrade_option = "NoAutoUpgrade"
+
+  model {
+    format  = "OpenAI"
+    name    = "gpt-5.2"
+    version = "2025-12-11"
+  }
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 150
+  }
+}
+
+resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_embedding" {
+  count = var.environment == "staging" ? 1 : 0
+
+  name                   = "auto-entry-text-embedding-3-large"
+  cognitive_account_id   = module.content_understanding.id
+  version_upgrade_option = "NoAutoUpgrade"
+
+  model {
+    format  = "OpenAI"
+    name    = "text-embedding-3-large"
+    version = "1"
+  }
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = 150
+  }
+}
+
 module "document_analysis_storage" {
   source = "../document-analysis-storage"
 
@@ -329,44 +367,56 @@ module "backend" {
   target_port      = 8080
   external_enabled = false
   key_vault_uri    = module.key_vault.vault_uri
-  environment_variables = merge({
-    SPRING_DATASOURCE_URL               = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
-    SPRING_DATASOURCE_USERNAME          = "workflow"
-    KEYCLOAK_ISSUER                     = local.keycloak_issuer
-    KEYCLOAK_INTERNAL_ISSUER            = local.keycloak_issuer
-    KEYCLOAK_CLIENT_ID                  = var.keycloak_client_id
-    ALLOWED_EMAIL_DOMAIN                = var.allowed_email_domain
-    WORKFLOW_DEPLOYMENT_ENVIRONMENT     = var.environment
-    WORKFLOW_SEED_ENABLED               = "false"
-    AZURE_STORAGE_BLOB_ENDPOINT         = module.attachment_storage.primary_blob_endpoint
-    AZURE_STORAGE_CONTAINER_NAME        = module.attachment_storage.container_name
-    AZURE_CLIENT_ID                     = module.backend_blob_identity.client_id
-    ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"
-    WORKFLOW_DOCUMENT_ANALYSIS_ENABLED  = tostring(var.document_analysis_enabled)
-    WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE = (
-      var.document_analysis_enabled ? "azure" : "disabled"
-    )
-    AZURE_DOCUMENT_ANALYSIS_CLIENT_ID                    = module.document_analysis_ai_identity.client_id
-    DOCUMENT_INTELLIGENCE_ENABLED                        = tostring(var.document_analysis_enabled && var.document_intelligence_enabled)
-    DOCUMENT_INTELLIGENCE_ENDPOINT                       = module.document_intelligence.endpoint
-    DOCUMENT_INTELLIGENCE_MODEL_ID                       = "prebuilt-layout"
-    DOCUMENT_INTELLIGENCE_API_VERSION                    = "2024-11-30"
-    DOCUMENT_INTELLIGENCE_ANALYSIS_TIMEOUT               = "25m"
-    CONTENT_UNDERSTANDING_ENABLED                        = tostring(var.document_analysis_enabled && var.content_understanding_enabled)
-    CONTENT_UNDERSTANDING_ENDPOINT                       = module.content_understanding.endpoint
-    CONTENT_UNDERSTANDING_ANALYZER_ID                    = "prebuilt-layout"
-    CONTENT_UNDERSTANDING_API_VERSION                    = "2025-11-01"
-    CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT               = "25m"
-    DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT              = module.document_analysis_storage.primary_blob_endpoint
-    DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID = module.document_analysis_storage_identity.client_id
-    DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME               = module.document_analysis_storage.input_container_name
-    DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME              = module.document_analysis_storage.result_container_name
-    DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
-    }, var.contract_legacy_user_columns ? tomap({}) : tomap({
+  environment_variables = merge(
+    {
+      SPRING_DATASOURCE_URL               = "jdbc:postgresql://${module.postgres[0].fqdn}:5432/workflow?sslmode=require"
+      SPRING_DATASOURCE_USERNAME          = "workflow"
+      KEYCLOAK_ISSUER                     = local.keycloak_issuer
+      KEYCLOAK_INTERNAL_ISSUER            = local.keycloak_issuer
+      KEYCLOAK_CLIENT_ID                  = var.keycloak_client_id
+      ALLOWED_EMAIL_DOMAIN                = var.allowed_email_domain
+      WORKFLOW_DEPLOYMENT_ENVIRONMENT     = var.environment
+      WORKFLOW_SEED_ENABLED               = "false"
+      AZURE_STORAGE_BLOB_ENDPOINT         = module.attachment_storage.primary_blob_endpoint
+      AZURE_STORAGE_CONTAINER_NAME        = module.attachment_storage.container_name
+      AZURE_CLIENT_ID                     = module.backend_blob_identity.client_id
+      ATTACHMENT_STORAGE_CREATE_CONTAINER = "false"
+      WORKFLOW_DOCUMENT_ANALYSIS_ENABLED  = tostring(var.document_analysis_enabled)
+      WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE = (
+        var.document_analysis_enabled ? "azure" : "disabled"
+      )
+      AZURE_DOCUMENT_ANALYSIS_CLIENT_ID                    = module.document_analysis_ai_identity.client_id
+      DOCUMENT_INTELLIGENCE_ENABLED                        = tostring(var.document_analysis_enabled && var.document_intelligence_enabled)
+      DOCUMENT_INTELLIGENCE_ENDPOINT                       = module.document_intelligence.endpoint
+      DOCUMENT_INTELLIGENCE_MODEL_ID                       = "prebuilt-layout"
+      DOCUMENT_INTELLIGENCE_API_VERSION                    = "2024-11-30"
+      DOCUMENT_INTELLIGENCE_ANALYSIS_TIMEOUT               = "25m"
+      CONTENT_UNDERSTANDING_ENABLED                        = tostring(var.document_analysis_enabled && var.content_understanding_enabled)
+      CONTENT_UNDERSTANDING_ENDPOINT                       = module.content_understanding.endpoint
+      CONTENT_UNDERSTANDING_ANALYZER_ID                    = "prebuilt-layout"
+      CONTENT_UNDERSTANDING_API_VERSION                    = "2025-11-01"
+      CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT               = "25m"
+      DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT              = module.document_analysis_storage.primary_blob_endpoint
+      DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID = module.document_analysis_storage_identity.client_id
+      DOCUMENT_ANALYSIS_INPUT_CONTAINER_NAME               = module.document_analysis_storage.input_container_name
+      DOCUMENT_ANALYSIS_RESULT_CONTAINER_NAME              = module.document_analysis_storage.result_container_name
+      DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
+    },
+    var.environment == "staging" ? {
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID = "enterprise_workflow_auto_entry_v2.1"
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME = (
+        azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0].name
+      )
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME = (
+        azurerm_cognitive_deployment.content_understanding_auto_entry_embedding[0].name
+      )
+    } : {},
+    var.contract_legacy_user_columns ? {} : {
       # Pin only the application-switch deployment. Once the legacy contract is
       # approved, omitting the target lets later Flyway versions apply normally.
       SPRING_FLYWAY_TARGET = "006"
-  }))
+    },
+  )
   secret_environment_variables = {
     SPRING_DATASOURCE_PASSWORD = "workflow-db-password"
   }

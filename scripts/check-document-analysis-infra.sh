@@ -35,6 +35,28 @@ grep -Fq 'custom_subdomain_name         = var.name' "${COGNITIVE_MODULE_FILE}"
 grep -Fq 'local_auth_enabled            = false' "${COGNITIVE_MODULE_FILE}"
 grep -Fq 'public_network_access_enabled = false' "${COGNITIVE_MODULE_FILE}"
 
+for deployment in completion embedding; do
+  deployment_block="$(sed -n "/resource \"azurerm_cognitive_deployment\" \"content_understanding_auto_entry_${deployment}\" {/,/^}/p" "${STACK_FILE}")"
+  grep -Fq 'count = var.environment == "staging" ? 1 : 0' <<<"${deployment_block}"
+  grep -Fq 'cognitive_account_id   = module.content_understanding.id' <<<"${deployment_block}"
+  grep -Fq 'format  = "OpenAI"' <<<"${deployment_block}"
+  grep -Fq 'version_upgrade_option = "NoAutoUpgrade"' <<<"${deployment_block}"
+  grep -Fq 'name     = "GlobalStandard"' <<<"${deployment_block}"
+  grep -Fq 'capacity = 150' <<<"${deployment_block}"
+  if grep -Fq 'document_analysis_enabled' <<<"${deployment_block}"; then
+    echo "AUTO_ENTRY model deployment provisioning must not depend on runtime controls." >&2
+    exit 1
+  fi
+done
+completion_deployment_block="$(sed -n '/resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_completion" {/,/^}/p' "${STACK_FILE}")"
+grep -Fq 'name                   = "auto-entry-gpt-5-2"' <<<"${completion_deployment_block}"
+grep -Fq 'name    = "gpt-5.2"' <<<"${completion_deployment_block}"
+grep -Fq 'version = "2025-12-11"' <<<"${completion_deployment_block}"
+embedding_deployment_block="$(sed -n '/resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_embedding" {/,/^}/p' "${STACK_FILE}")"
+grep -Fq 'name                   = "auto-entry-text-embedding-3-large"' <<<"${embedding_deployment_block}"
+grep -Fq 'name    = "text-embedding-3-large"' <<<"${embedding_deployment_block}"
+grep -Fq 'version = "1"' <<<"${embedding_deployment_block}"
+
 grep -Fq 'public_network_access_enabled   = false' "${DOCUMENT_STORAGE_MODULE_FILE}"
 grep -Fq 'shared_access_key_enabled       = false' "${DOCUMENT_STORAGE_MODULE_FILE}"
 grep -Fq 'default_to_oauth_authentication = true' "${DOCUMENT_STORAGE_MODULE_FILE}"
@@ -87,6 +109,10 @@ grep -Eq 'AZURE_CLIENT_ID[[:space:]]*=[[:space:]]*module.backend_blob_identity.c
 grep -Eq 'AZURE_DOCUMENT_ANALYSIS_CLIENT_ID[[:space:]]*=[[:space:]]*module.document_analysis_ai_identity.client_id' <<<"${backend_module_block}"
 grep -Eq 'DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID[[:space:]]*=[[:space:]]*module.document_analysis_storage_identity.client_id' <<<"${backend_module_block}"
 grep -Eq 'DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS[[:space:]]*=[[:space:]]*"false"' <<<"${backend_module_block}"
+grep -Fq 'var.environment == "staging" ? {' <<<"${backend_module_block}"
+grep -Eq 'CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID[[:space:]]*=[[:space:]]*"enterprise_workflow_auto_entry_v2.1"' <<<"${backend_module_block}"
+grep -Fq 'azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0].name' <<<"${backend_module_block}"
+grep -Fq 'azurerm_cognitive_deployment.content_understanding_auto_entry_embedding[0].name' <<<"${backend_module_block}"
 
 for container_app_module in keycloak frontend; do
   module_block="$(sed -n "/module \"${container_app_module}\" {/,/^}/p" "${STACK_FILE}")"
@@ -137,6 +163,10 @@ grep -Fq 'az storage container-rm show' "${AZURE_VERIFICATION_SCRIPT}"
 grep -Fq 'DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false' "${AZURE_VERIFICATION_SCRIPT}"
 grep -Fq 'DOCUMENT_INTELLIGENCE_ENABLED=true' "${AZURE_VERIFICATION_SCRIPT}"
 grep -Fq 'CONTENT_UNDERSTANDING_ENABLED=true' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME="auto-entry-gpt-5-2"' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME="auto-entry-text-embedding-3-large"' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq '2025-12-11' "${AZURE_VERIFICATION_SCRIPT}"
+grep -Fq 'verify_cognitive_deployment' "${AZURE_VERIFICATION_SCRIPT}"
 if grep -Eq 'az[[:space:]]+storage[[:space:]]+container[[:space:]]+show' "${AZURE_VERIFICATION_SCRIPT}"; then
   echo "Document Analysis Azure verification must not use Storage data-plane container reads." >&2
   exit 1
@@ -165,6 +195,9 @@ grep -Fq 'public-container' "${AZURE_VERIFICATION_TEST_SCRIPT}"
 grep -Fq 'top-level-private-container' "${AZURE_VERIFICATION_TEST_SCRIPT}"
 grep -Fq 'legacy-private-container' "${AZURE_VERIFICATION_TEST_SCRIPT}"
 grep -Fq 'activation-mismatch' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'cognitiveservices\ account\ deployment\ show' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'auto-entry-gpt-5-2' "${AZURE_VERIFICATION_TEST_SCRIPT}"
+grep -Fq 'auto-entry-text-embedding-3-large' "${AZURE_VERIFICATION_TEST_SCRIPT}"
 grep -Fq 'test-verify-document-analysis-azure.sh' "${PROJECT_DIRECTORY}/scripts/verify-infra.sh"
 grep -Fq 'scripts/test-verify-document-analysis-azure.sh' "${TERRAFORM_PLAN_WORKFLOW}"
 
