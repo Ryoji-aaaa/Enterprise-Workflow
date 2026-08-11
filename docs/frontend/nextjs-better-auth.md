@@ -87,8 +87,9 @@ sessionがない場合は`/login`へ戻す。Route Groupを使用するためURL
 表示する。メニューは`CurrentUserContext`の既取得情報だけを使い、開閉時にBFFへ追加リクエストを
 送らない。所属部署がない場合は`所属未設定`と表示する。
 
-`(workspace)`配下のレスポンスは`no-store`であり、logout後のブラウザ戻る操作でも認証済み画面を
-cacheから再利用しない。
+`(workspace)`配下のproductionレスポンスは`no-store`であり、logout後のブラウザ戻る操作でも
+認証済み画面をcacheから再利用しない。E2Eで使うNext.js開発サーバーは`no-cache, must-revalidate`を
+返すが、再利用前にサーバーでの再検証を強制するため同じく認証済み画面を再利用しない。
 
 `WorkspaceGate`での未登録403では`/unregistered`、その他の利用不可403では`/unavailable`へ
 遷移する。`/login`、`/unregistered`、`/unavailable`、`/api/**`、`/`はワークスペース外であり、

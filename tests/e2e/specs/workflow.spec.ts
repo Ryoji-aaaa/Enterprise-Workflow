@@ -199,6 +199,8 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await expect(userMenu.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
   await expect(userMenu.getByText(userEmail, { exact: true })).toBeVisible();
   await expect(userMenu.getByText(department?.name ?? "所属未設定", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(userMenu).toBeHidden();
   await expect(
     page.getByRole("heading", { name: "モック文字８", exact: true }),
   ).toBeVisible();
@@ -228,7 +230,11 @@ test("一般ユーザーがログインしてモックダッシュボードを�
 
   const topResponse = await page.request.get("/top");
   expect(topResponse.status()).toBe(200);
-  expect(topResponse.headers()["cache-control"]).toContain("no-store");
+  const cacheControl = topResponse.headers()["cache-control"] ?? "";
+  expect(
+    cacheControl.includes("no-store")
+      || (cacheControl.includes("no-cache") && cacheControl.includes("must-revalidate")),
+  ).toBeTruthy();
   expect(await topResponse.text()).not.toMatch(
     /accessToken|refreshToken|idToken|eyJ[A-Za-z0-9_-]+\./,
   );
