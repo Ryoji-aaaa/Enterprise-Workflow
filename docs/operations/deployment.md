@@ -64,7 +64,8 @@ AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME
 AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME
 ```
 
-activation flagは次の3つである。未設定時はworkflowで`false`として扱う。
+runtime controlは次の3つである。未設定時はworkflowで`false`として扱う。これらはFrontendの
+メニュー公開を制御するFeature Flagではなく、全体またはProviderを停止するoperational kill switchである。
 
 ```text
 WORKFLOW_DOCUMENT_ANALYSIS_ENABLED
@@ -72,14 +73,14 @@ DOCUMENT_INTELLIGENCE_ENABLED
 CONTENT_UNDERSTANDING_ENABLED
 ```
 
-stagingのDocument Analysis rolloutは二段階で行う。Phase Aでは3つのactivation flagをすべて`false`にして
+stagingのDocument Analysis rolloutは二段階で行う。Phase Aでは3つのruntime controlをすべて`false`にして
 Terraform plan/applyし、Document Intelligence、Foundry、Document Analysis Storage、2つのcontainer、
 2つの専用User Assigned Managed Identity、3つのPrivate Endpoint、Private DNS link、RBAC role
 assignmentが作成されていることを確認する。Document IntelligenceとFoundryはlocal auth disabled、
 public network disabled、Storageはshared key disabled、public network disabledであることも確認する。
 この段階ではBackendの既存機能が正常であり、Document Analysis runtimeは`disabled`である。
 
-Phase BはPhase A成功後だけ実施する。stagingの3つのactivation flagを`true`に変更し、`main`から到達可能な
+Phase BはPhase A成功後だけ実施する。stagingの3つのruntime controlを`true`に変更し、`main`から到達可能な
 同じ検証済みimage SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
 `DOCUMENT_INTELLIGENCE_ENABLED=true`、`CONTENT_UNDERSTANDING_ENABLED=true`、
 `DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false`、
@@ -95,7 +96,7 @@ public networkを一時的に有効化して回避しない。
 Private DNSはBackend Container App内部から確認する。`az containerapp exec`などでBackend revision内から
 Document Intelligence endpoint、Content Understanding endpoint、Storage blob endpointを名前解決し、
 private IPが返ることを確認する。GitHub-hosted runnerや運用端末からprivate IPへ直接接続できることは
-期待しない。public IPへ解決される場合は、activation flagを有効にしたままsmoke testへ進まない。
+期待しない。public IPへ解決される場合は、runtime controlを有効にしたままsmoke testへ進まない。
 
 RBACはAzure CLIで次を確認する。一時回避としてOwner、Contributor、Content Understanding Contributor、
 Storage Account Contributorなどを追加しない。
@@ -121,9 +122,9 @@ deploymentが0件でも分析できる。
 
 BrowserのNetwork logには`*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、
 `*.blob.core.windows.net`への直接requestが存在せず、従来どおり`/api/backend/...`だけを呼ぶことを確認する。
-productionではPlan7導入時点で`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED=false`を維持する。production activationは
+productionの通常提供では3つのruntime controlを`true`、execution modeを`azure`にする。変更は
 stagingのDocument Intelligence成功、Content Understanding成功、RBAC確認、Private DNS確認、cost/retention
-確認、検証済みimage SHA promotionの後に明示的に行う。
+確認、検証済みimage SHA promotionの後に明示的に行う。緊急停止時もFrontendのメニューは隠さない。
 
 Phase A/Phase Bのcontrol plane検査には、Azure login済みの担当者が次を使う。scriptはread-onlyであり、
 resource、role assignment、container、revisionを変更しない。input/result containerは
@@ -135,8 +136,8 @@ RBAC、Private Endpoint、Private DNS、Container Apps revisionを含むAzure re
 ./scripts/verify-document-analysis-azure.sh
 ```
 
-Phase Aでは3 flagを`false`にした新しいstaging deployの後にこの検査を実行する。Phase Bでは`main`から到達可能な
-同じ40文字SHAのまま3 flagを`true`に変更して**新しい**staging deployを実行し、trafficを受ける最新revision、Flyway、readiness、既存の
+Phase Aでは3 runtime controlを`false`にした新しいstaging deployの後にこの検査を実行する。Phase Bでは`main`から到達可能な
+同じ40文字SHAのまま3 runtime controlを`true`に変更して**新しい**staging deployを実行し、trafficを受ける最新revision、Flyway、readiness、既存の
 匿名public smokeを確認してから、次の手動workflowを起動する。Environment variable変更前のrunをrerunしない。
 
 ```bash
@@ -148,7 +149,7 @@ gh workflow run document-analysis-staging-smoke.yml --ref main -f image_sha=<40-
 [開発・staging用seedデータ](../backend/development-seed-data.md)の手順を使う。成功summaryから同一SHA、2 Provider、
 status、API version、Azure Job responseの実際のcreatedAt/completedAtをrelease recordへ転記するが、文書本文やRaw JSONは転記しない。
 
-rollbackは3 activation flagを`false`へ戻して、同じ検証済みSHAで新しいdeploy runを開始する。Azure resource、
+rollbackは3 runtime controlを`false`へ戻して、同じ検証済みSHAで新しいdeploy runを開始する。Azure resource、
 Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Jobを自動再queueしない。
 
 ## stagingの確認項目
@@ -160,7 +161,7 @@ Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。dep
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV014）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV015）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。

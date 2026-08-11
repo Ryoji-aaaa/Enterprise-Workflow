@@ -110,8 +110,9 @@ identity、Document Analysis Storage identityをattachする。既存の`AZURE_C
 client IDのまま維持し、Document Analysis AIには`AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`、Storageには
 `DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID`を渡す。API Key、client secret、Storage key、
 connection string、SASは作成しない。`document_analysis_enabled`、
-`document_intelligence_enabled`、`content_understanding_enabled`の既定値はfalseであり、resource作成ではなく
-Backend runtime activationだけを制御する。productionではPlan7導入時点でfalseを維持する。
+`document_intelligence_enabled`、`content_understanding_enabled`の既定値はfalseであり、resource作成や
+Frontend公開ではなくBackend runtimeとoperational kill switchだけを制御する。正式提供時の
+staging/productionでは検証と承認後に有効化するが、安全側のTerraform既定値は変更しない。
 
 GitHub Actionsの環境別planでは、GitHub Environment variable
 `AZURE_ATTACHMENT_STORAGE_ACCOUNT_NAME`を`TF_VAR_attachment_storage_account_name`へ渡す。

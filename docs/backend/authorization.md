@@ -30,7 +30,6 @@ AUDITOR
 ORGANIZATION_CHART_VIEWER
 USER_INFORMATION_MANAGER
 WORKFLOW_APPROVER
-DOCUMENT_ANALYSIS_USER
 ```
 
 `system_role`は組込みロールを識別するためのフラグであり、権限判定を迂回する特権フラグでは
@@ -63,21 +62,24 @@ CONTENT_UNDERSTANDING_ANALYZE
 ユーザー・所属・ロール管理、`WORKFLOW_APPROVER`は承認操作を担う。開発データでは社長と
 管理本部長へ全社スコープの`USER_INFORMATION_MANAGER`を付与する。
 
-`APPLICATION_USER`は経費申請の作成と本人参照、`WORKFLOW_APPROVER`は経費承認Permissionを
-持つ。ただし個別申請の承認には申請時に保存されたCandidateとの一致も必要である。
+`APPLICATION_USER`は経費申請の作成と本人参照に加え、Document Analysisの本人履歴参照、
+Document Intelligence分析要求、Content Understanding分析要求のPermissionを標準で持つ。
+`WORKFLOW_APPROVER`は経費承認Permissionを持つ。ただし個別申請の承認には申請時に保存された
+Candidateとの一致も必要である。
 
-`DOCUMENT_ANALYSIS_USER`はDocument Analysisの本人履歴参照、Document Intelligence分析要求、
-Content Understanding分析要求のPermissionを持つ。V014ではRoleとPermission、および
-`SYSTEM_ADMIN`と`DOCUMENT_ANALYSIS_USER`への権限割当だけを追加する。開発profileの
-`workflow.seed.user-email`には`DevelopmentUserInitializer`が`DOCUMENT_ANALYSIS_USER`を付与する。
-`APPLICATION_USER`自体へDocument Analysis Permissionは付与しない。
+V014で導入した`DOCUMENT_ANALYSIS_USER`はV015で廃止した。V015はDocument Analysisの3 Permissionを
+`APPLICATION_USER`へ付与し、旧RoleのPermissionと有効な割当を除去する。追記専用の
+`user_role_change_histories`が旧Roleを参照する環境では、履歴を破壊せず参照を維持するため、
+DBに限って`enabled=false`のtombstoneを残す。これは通常Role一覧へ表示せず、新規付与、再有効化、
+認可判定、seedには使用しない。参照がない環境では旧Role rowを物理削除する。
 
 Document AnalysisのHTTP APIは`DOCUMENT_ANALYSIS_READ_OWN`でowner scopeの参照を許可し、
 分析要求ではProviderごとに`DOCUMENT_INTELLIGENCE_ANALYZE`または
-`CONTENT_UNDERSTANDING_ANALYZE`をService層で再確認する。Plan3時点のProvider実装は
-ローカル開発用Fake Providerだけで、Azure AI Providerは未実装である。
+`CONTENT_UNDERSTANDING_ANALYZE`をService層で再確認する。ローカル開発ではFake Provider、
+Azure runtimeではManaged Identityを使うAzure AI Providerを使用する。
 
-初期対応では`SYSTEM_ADMIN`に全権限、`APPLICATION_USER`に`WORKFLOW_SUBMIT`、
+初期対応では`SYSTEM_ADMIN`に全権限、`APPLICATION_USER`に`WORKFLOW_SUBMIT`とDocument Analysisの
+3 Permission、
 `AUDITOR`に`AUDIT_LOG_READ`を付与する。その他の対応は明示的なseedまたは管理操作で追加する。
 
 ### ロール割当

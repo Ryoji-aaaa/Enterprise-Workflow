@@ -114,9 +114,10 @@ Document Analysis Azure mode用に`AZURE_DOCUMENT_INTELLIGENCE_ACCOUNT_NAME`、
 `AZURE_CONTENT_UNDERSTANDING_ACCOUNT_NAME`、
 `AZURE_DOCUMENT_ANALYSIS_STORAGE_ACCOUNT_NAME`も4 Environmentすべてへ登録する。これらはresource名であり
 secretではない。`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INTELLIGENCE_ENABLED`、
-`CONTENT_UNDERSTANDING_ENABLED`は未設定の場合workflowで`false`として扱うが、productionではPlan7導入時点で
-falseを維持する。stagingはまず3つともfalseのままfoundationをapplyし、Private Endpoint、Private DNS、
-RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再deployする。
+`CONTENT_UNDERSTANDING_ENABLED`はFrontend公開用Feature Flagではなくruntime controlであり、未設定の場合は
+workflowで`false`として扱う。stagingはまず3つともfalseのままfoundationをapplyし、Private Endpoint、
+Private DNS、RBACを確認した後だけtrueへ変更して同じ検証済みimage SHAを再deployする。正式提供する
+productionでも同じ検証と承認後にtrueとするが、安全側の未設定時falseは変更しない。
 通常CIとPRのE2EはFake Providerだけを使い、Azure AI、Foundry、Storage private endpointへlive requestを
 送らない。Azure live validationはstaging resource作成後の運用確認として分離する。
 
@@ -128,7 +129,7 @@ Azure loginより前に、`fetch-depth: 0`、`persist-credentials: false`で信�
 実行対象にできない。`latest`は受け付けない。
 
 Node依存関係とChromiumはAzure loginより前に導入する。Terraform stateとAzure CLIのread-only検査では、
-activeなFrontend/Backend revisionが同じimage tagであること、3つのactivation flag、BackendのAzure
+activeなFrontend/Backend revisionが同じimage tagであること、3つのruntime control、BackendのAzure
 execution mode、2つのDocument Analysis専用client ID、endpoint、containerが一致することを確認してから
 Azureへ分析要求を送る。container検査は`az storage container-rm show`によるMicrosoft.Storage control plane
 readだけを使い、Private Endpoint限定でpublic networkを無効にしたStorageに対してもdata plane、Shared Key、
@@ -140,6 +141,8 @@ staging Key Vaultの`development-seed-password`は、setup-node、`npm ci`、Chr
 Environment variableとして登録し、seed userが未投入の場合は[開発・staging用seedデータ](../backend/development-seed-data.md)
 の手順を実施してから再実行する。workflow自体はseed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、
 課金対象のstaging live smokeはそれぞれ別の責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
+live smokeは`/api/backend/me`でsmoke userが`APPLICATION_USER`を持ち、廃止済み
+`DOCUMENT_ANALYSIS_USER`を持たず、Document Analysisの3 Permissionを持つことも検証する。
 
 live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`workers: 1`と
 `retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。

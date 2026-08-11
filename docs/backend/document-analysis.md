@@ -6,14 +6,18 @@ Document Analysisは、Backend APIから文書ファイルを受け付け、Prov
 PostgreSQLへ保存し、Backend内WorkerがBlob Storage上の入力文書を分析して結果JSONを保存する。
 ローカル開発ではFake Providerを使い、`execution-mode=azure`ではAzure AI Document
 Intelligence AdapterとAzure AI Content Understanding Adapterを使える。Azure resource、Managed
-Identity、RBAC、Private Endpoint、Private DNSはTerraformで環境ごとに作成するが、
-staging/productionのruntime有効化はfeature flagで別管理する。productionではstaging smokeと運用確認が
-完了するまで有効化しない。
+Identity、RBAC、Private Endpoint、Private DNSはTerraformで環境ごとに作成する。
+staging/productionの有効化設定は公開可否を決めるFeature Flagではなく、Azure接続やWorkerを停止する
+runtime controlとして管理する。
 
 BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。FrontendはNext.js BFFの
 `/api/backend/document-analyses...`だけを呼び、BFFがSpring Bootの
 `/api/document-analyses...`へ転送する。画面側の仕様は
 [Frontend Document Analysis](../frontend/document-analysis.md)を参照する。
+
+`/api/me.features`のFeature Flag frameworkは将来の未公開機能用に維持するが、DI/CUの
+`documentIntelligence`と`contentUnderstanding`は返さない。現在の`features`は
+`mailNotificationHistory`だけであり、Document Analysisの利用可否はDB Permissionで表す。
 
 ## API
 
@@ -272,7 +276,8 @@ failureなど、Azureが要求を受理した後の最終状態が不明な場�
 
 ## 設定
 
-既定ではDocument Analysisは無効で、Providerも無効である。
+既定では安全側のruntime設定としてDocument AnalysisとProviderを無効にする。この既定値はUI公開を
+制御するFeature Flagではなく、Provider呼び出しとJob処理を停止するoperational kill switchである。
 
 ```yaml
 workflow:
@@ -314,6 +319,13 @@ Azureでは`DOCUMENT_ANALYSIS_STORAGE_BLOB_ENDPOINT`のBlob service endpointを�
 `WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_INTERVAL`、
 `WORKFLOW_DOCUMENT_ANALYSIS_RETENTION_CLEANUP_BATCH_SIZE`で上書きできる。Azure Terraformには個別値を
 渡さず、application既定値を使用する。
+
+`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`はDocument Analysis全体のkill switch、
+`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE`は`disabled` / `fake` / `azure`のruntime selector、
+`DOCUMENT_INTELLIGENCE_ENABLED`と`CONTENT_UNDERSTANDING_ENABLED`はProvider別runtime enablementである。
+これらを`/api/me`、メニュー、直接URLの公開判定には使用しない。正式提供構成が安定した後は、Provider別
+`enabled`を整理し、`execution-mode`をruntime状態の正本へ一本化できるか検討するが、現行の環境変数と
+Bean登録条件は維持する。
 
 ## 監査
 
