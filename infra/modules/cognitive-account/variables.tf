@@ -16,3 +16,8 @@ variable "project_management_enabled" {
   type    = bool
   default = false
 }
+
+variable "system_assigned_identity_enabled" {
+  type    = bool
+  default = false
+}

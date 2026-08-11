@@ -22,15 +22,16 @@ module "monitoring" {
 module "container_app_environment" {
   source = "../container-app-environment"
 
-  name                             = var.container_app_environment_name
-  location                         = var.location
-  resource_group_name              = data.azurerm_resource_group.this.name
-  log_analytics_workspace_id       = module.monitoring.id
-  vnet_name                        = "vnet-enterprise-workflow-${var.environment}"
-  vnet_address_space               = var.vnet_address_space
-  infrastructure_subnet_prefixes   = var.container_apps_subnet_prefixes
-  postgres_subnet_prefixes         = var.postgres_subnet_prefixes
-  private_endpoint_subnet_prefixes = var.private_endpoint_subnet_prefixes
+  name                                = var.container_app_environment_name
+  location                            = var.location
+  resource_group_name                 = data.azurerm_resource_group.this.name
+  log_analytics_workspace_id          = module.monitoring.id
+  vnet_name                           = "vnet-enterprise-workflow-${var.environment}"
+  vnet_address_space                  = var.vnet_address_space
+  infrastructure_subnet_prefixes      = var.container_apps_subnet_prefixes
+  postgres_subnet_prefixes            = var.postgres_subnet_prefixes
+  private_endpoint_subnet_prefixes    = var.private_endpoint_subnet_prefixes
+  enable_consumption_workload_profile = var.environment == "staging"
 }
 
 module "runtime_identity" {
@@ -57,20 +58,6 @@ module "attachment_storage" {
   resource_group_name        = data.azurerm_resource_group.this.name
   container_name             = "expense-evidence"
   soft_delete_retention_days = 30
-}
-
-resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis" {
-  count = var.environment == "staging" ? 1 : 0
-
-  name = "diag-enterprise-workflow-staging-attachment-blob-write"
-
-  target_resource_id             = "${module.attachment_storage.id}/blobServices/default"
-  log_analytics_workspace_id     = module.monitoring.id
-  log_analytics_destination_type = "Dedicated"
-
-  enabled_log {
-    category = "StorageWrite"
-  }
 }
 
 resource "azurerm_role_assignment" "backend_attachment_blob" {
@@ -109,12 +96,13 @@ module "document_intelligence" {
 module "content_understanding" {
   source = "../cognitive-account"
 
-  name                       = var.content_understanding_account_name
-  location                   = var.location
-  resource_group_name        = data.azurerm_resource_group.this.name
-  kind                       = "AIServices"
-  sku_name                   = "S0"
-  project_management_enabled = false
+  name                             = var.content_understanding_account_name
+  location                         = var.location
+  resource_group_name              = data.azurerm_resource_group.this.name
+  kind                             = "AIServices"
+  sku_name                         = "S0"
+  project_management_enabled       = var.environment == "staging"
+  system_assigned_identity_enabled = var.environment == "staging"
 }
 
 resource "azurerm_cognitive_deployment" "content_understanding_auto_entry_completion" {
@@ -356,6 +344,7 @@ module "backend" {
   name                         = var.backend_container_app_name
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
+  workload_profile_name        = var.environment == "staging" ? "Consumption" : null
   identity_id                  = module.runtime_identity.id
   additional_identity_ids = [
     module.backend_blob_identity.id,
@@ -468,6 +457,7 @@ module "keycloak" {
   name                         = var.keycloak_container_app_name
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
+  workload_profile_name        = var.environment == "staging" ? "Consumption" : null
   identity_id                  = module.runtime_identity.id
   registry_server              = module.registry.login_server
   image                        = "${module.registry.login_server}/enterprise-workflow-keycloak:${var.image_tag}"
@@ -534,6 +524,7 @@ module "frontend" {
   name                         = var.frontend_container_app_name
   resource_group_name          = data.azurerm_resource_group.this.name
   container_app_environment_id = module.container_app_environment.id
+  workload_profile_name        = var.environment == "staging" ? "Consumption" : null
   identity_id                  = module.runtime_identity.id
   registry_server              = module.registry.login_server
   image                        = "${module.registry.login_server}/enterprise-workflow-frontend:${var.image_tag}"
@@ -597,6 +588,7 @@ resource "azurerm_container_app_job" "manual_seed" {
   container_app_environment_id = module.container_app_environment.id
   replica_timeout_in_seconds   = 1800
   replica_retry_limit          = 0
+  workload_profile_name        = "Consumption"
 
   identity {
     type         = "UserAssigned"

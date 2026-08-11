@@ -14,6 +14,7 @@ resource "azurerm_container_app" "this" {
   resource_group_name          = var.resource_group_name
   container_app_environment_id = var.container_app_environment_id
   revision_mode                = var.revision_mode
+  workload_profile_name        = var.workload_profile_name
 
   identity {
     type         = "UserAssigned"

@@ -7,6 +7,7 @@ readonly PROJECT_DIRECTORY="$(cd -- "${SCRIPT_DIRECTORY}/.." && pwd)"
 readonly STACK_FILE="${PROJECT_DIRECTORY}/infra/modules/environment-stack/main.tf"
 readonly STACK_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/modules/environment-stack/variables.tf"
 readonly COGNITIVE_MODULE_FILE="${PROJECT_DIRECTORY}/infra/modules/cognitive-account/main.tf"
+readonly COGNITIVE_MODULE_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/modules/cognitive-account/variables.tf"
 readonly DOCUMENT_STORAGE_MODULE_FILE="${PROJECT_DIRECTORY}/infra/modules/document-analysis-storage/main.tf"
 readonly CONTAINER_APP_ENVIRONMENT_FILE="${PROJECT_DIRECTORY}/infra/modules/container-app-environment/main.tf"
 readonly STAGING_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/environments/staging/variables.tf"
@@ -22,11 +23,14 @@ readonly -a TERRAFORM_WORKFLOWS=(
   "${PROJECT_DIRECTORY}/.github/workflows/deploy-production.yml"
 )
 
-grep -Fq 'kind                       = "FormRecognizer"' "${STACK_FILE}"
-grep -Fq 'kind                       = "AIServices"' "${STACK_FILE}"
-grep -Fq 'sku_name                   = "S0"' "${STACK_FILE}"
+grep -Eq 'kind[[:space:]]*=[[:space:]]*"FormRecognizer"' "${STACK_FILE}"
+grep -Eq 'kind[[:space:]]*=[[:space:]]*"AIServices"' "${STACK_FILE}"
+grep -Eq 'sku_name[[:space:]]*=[[:space:]]*"S0"' "${STACK_FILE}"
 content_understanding_block="$(sed -n '/module "content_understanding" {/,/^}/p' "${STACK_FILE}")"
-grep -Fq 'project_management_enabled = false' <<<"${content_understanding_block}"
+grep -Eq 'project_management_enabled[[:space:]]*=[[:space:]]*var.environment == "staging"' \
+  <<<"${content_understanding_block}"
+grep -Eq 'system_assigned_identity_enabled[[:space:]]*=[[:space:]]*var.environment == "staging"' \
+  <<<"${content_understanding_block}"
 if grep -Fq 'azurerm_cognitive_account_project' "${STACK_FILE}" "${COGNITIVE_MODULE_FILE}"; then
   echo "Document Analysis infrastructure must not create a Foundry Project." >&2
   exit 1
@@ -34,6 +38,10 @@ fi
 grep -Fq 'custom_subdomain_name         = var.name' "${COGNITIVE_MODULE_FILE}"
 grep -Fq 'local_auth_enabled            = false' "${COGNITIVE_MODULE_FILE}"
 grep -Fq 'public_network_access_enabled = false' "${COGNITIVE_MODULE_FILE}"
+grep -Fq 'dynamic "identity"' "${COGNITIVE_MODULE_FILE}"
+grep -Fq 'for_each = var.system_assigned_identity_enabled ? [true] : []' "${COGNITIVE_MODULE_FILE}"
+grep -Fq 'type = "SystemAssigned"' "${COGNITIVE_MODULE_FILE}"
+grep -Fq 'variable "system_assigned_identity_enabled"' "${COGNITIVE_MODULE_VARIABLES_FILE}"
 
 for deployment in completion embedding; do
   deployment_block="$(sed -n "/resource \"azurerm_cognitive_deployment\" \"content_understanding_auto_entry_${deployment}\" {/,/^}/p" "${STACK_FILE}")"

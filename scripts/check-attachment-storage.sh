@@ -25,17 +25,13 @@ grep -Fq 'container_access_type = "private"' "${STORAGE_FILE}"
 grep -Fq 'soft_delete_retention_days = 30' "${STACK_FILE}"
 grep -Fq 'role_definition_name = "Storage Blob Data Contributor"' "${STACK_FILE}"
 grep -Fq 'scope                = module.attachment_storage.container_scope' "${STACK_FILE}"
-diagnostic_block="$(sed -n \
-  '/resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis" {/,/^}/p' \
-  "${STACK_FILE}")"
-grep -Fq 'count = var.environment == "staging" ? 1 : 0' <<<"${diagnostic_block}"
-grep -Fq 'target_resource_id             = "${module.attachment_storage.id}/blobServices/default"' \
-  <<<"${diagnostic_block}"
-grep -Fq 'log_analytics_workspace_id     = module.monitoring.id' <<<"${diagnostic_block}"
-grep -Fq 'log_analytics_destination_type = "Dedicated"' <<<"${diagnostic_block}"
-grep -Fq 'category = "StorageWrite"' <<<"${diagnostic_block}"
-if grep -Eq 'Storage(Read|Delete)|enabled_metric|metric' <<<"${diagnostic_block}"; then
-  echo "Temporary attachment diagnosis must collect only StorageWrite logs." >&2
+if grep -Fq 'resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis"' \
+  "${STACK_FILE}"; then
+  echo "Temporary attachment Blob diagnostic setting must be removed." >&2
+  exit 1
+fi
+if grep -Fq 'StorageWrite' "${STACK_FILE}"; then
+  echo "Temporary attachment Blob StorageWrite diagnostic configuration must be removed." >&2
   exit 1
 fi
 backend_module_block="$(sed -n '/module "backend" {/,/^}/p' "${STACK_FILE}")"
@@ -74,8 +70,6 @@ grep -Fq 'target_environment: staging' "${TERRAFORM_PLAN_WORKFLOW}"
 grep -Fq 'target_environment: production' "${TERRAFORM_PLAN_WORKFLOW}"
 
 [[ "$(grep -Fc 'scope                = module.attachment_storage.container_scope' \
-  "${STACK_FILE}")" == "1" ]]
-[[ "$(grep -Fc 'resource "azurerm_monitor_diagnostic_setting" "attachment_blob_write_diagnosis"' \
   "${STACK_FILE}")" == "1" ]]
 [[ "$(grep -Fc 'principal_id         = module.backend_blob_identity.principal_id' \
   "${STACK_FILE}")" -ge "1" ]]
