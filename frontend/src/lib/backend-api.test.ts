@@ -22,8 +22,6 @@ const currentUser: CurrentUser = {
   permissions: ["WORKFLOW_SUBMIT", "ORGANIZATION_CHART_READ"],
   features: {
     mailNotificationHistory: true,
-    documentIntelligence: true,
-    contentUnderstanding: true,
   },
 };
 
@@ -55,36 +53,22 @@ test("メール通知履歴はローカル機能フラグとDB権限が両方あ
   }), false);
 });
 
-test("Document Intelligenceは機能フラグとDB権限が両方ある場合だけ許可する", () => {
+test("Document IntelligenceはDB権限がある場合だけ許可する", () => {
   const permitted = {
     ...currentUser,
     permissions: [...currentUser.permissions, "DOCUMENT_INTELLIGENCE_ANALYZE"],
   };
   assert.equal(canUseDocumentIntelligence(permitted), true);
   assert.equal(canUseDocumentIntelligence(currentUser), false);
-  assert.equal(canUseDocumentIntelligence({
-    ...permitted,
-    features: {
-      ...permitted.features,
-      documentIntelligence: false,
-    },
-  }), false);
 });
 
-test("Content Understandingは機能フラグとDB権限が両方ある場合だけ許可する", () => {
+test("Content UnderstandingはDB権限がある場合だけ許可する", () => {
   const permitted = {
     ...currentUser,
     permissions: [...currentUser.permissions, "CONTENT_UNDERSTANDING_ANALYZE"],
   };
   assert.equal(canUseContentUnderstanding(permitted), true);
   assert.equal(canUseContentUnderstanding(currentUser), false);
-  assert.equal(canUseContentUnderstanding({
-    ...permitted,
-    features: {
-      ...permitted.features,
-      contentUnderstanding: false,
-    },
-  }), false);
 });
 
 function response(status: number, body?: unknown): BackendFetch {

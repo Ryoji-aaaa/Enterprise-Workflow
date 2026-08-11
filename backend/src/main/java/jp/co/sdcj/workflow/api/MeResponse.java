@@ -20,8 +20,6 @@ public record MeResponse(
     }
 
     public record FeaturesResponse(
-            boolean mailNotificationHistory,
-            boolean documentIntelligence,
-            boolean contentUnderstanding) {
+            boolean mailNotificationHistory) {
     }
 }

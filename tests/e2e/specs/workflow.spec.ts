@@ -218,11 +218,17 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(meBody).toMatchObject({
     email: userEmail,
     displayName: "開発一般ユーザー",
-    features: { mailNotificationHistory: true },
   });
+  expect(meBody.features).toEqual({ mailNotificationHistory: true });
   expect(meBody.roles).toEqual(expect.arrayContaining([
     "APPLICATION_USER",
     "ORGANIZATION_CHART_VIEWER",
+  ]));
+  expect(meBody.roles).not.toContain("DOCUMENT_ANALYSIS_USER");
+  expect(meBody.permissions).toEqual(expect.arrayContaining([
+    "DOCUMENT_ANALYSIS_READ_OWN",
+    "DOCUMENT_INTELLIGENCE_ANALYZE",
+    "CONTENT_UNDERSTANDING_ANALYZE",
   ]));
   expect(meBody).not.toHaveProperty("accessToken");
   expect(meBody).not.toHaveProperty("refreshToken");
@@ -790,15 +796,16 @@ test("一般正社員は組織図を閲覧できユーザー管理は表示さ�
   await expect(page.getByText("この情報を管理する権限がありません（403）。")).toBeVisible();
 });
 
-test("パートは組織図メニューがなく直接アクセスも403になる", async ({ page }) => {
+test("パートもDocument Analysisを利用できるが組織図は雇用区分で拒否される", async ({ page }) => {
   await login(page, partTimeEmail, partTimePassword);
 
   await expect(page).toHaveURL(/\/top$/);
   await expect(page.getByRole("link", { name: "組織図" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Document Intelligence" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Content Understanding" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Content Understanding" })).toBeVisible();
   await page.goto("/document-intelligence");
-  await expect(page.getByText("この機能は現在利用できません。")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Document Intelligence", exact: true }))
+    .toBeVisible();
   await page.goto("/organization-chart");
   await expect(page.getByText("このアカウントでは組織図を閲覧できません（403）。"))
     .toBeVisible();

@@ -206,10 +206,37 @@ class MeApiIntegrationTest {
                 "SUBMIT",
                 null,
                 SYSTEM_USER_ID));
+        Permission documentAnalysisReadOwn = permissionRepository.save(new Permission(
+                PermissionCodes.DOCUMENT_ANALYSIS_READ_OWN,
+                "Read own document analyses",
+                "DOCUMENT_ANALYSIS",
+                "READ_OWN",
+                null,
+                SYSTEM_USER_ID));
+        Permission documentIntelligenceAnalyze = permissionRepository.save(new Permission(
+                PermissionCodes.DOCUMENT_INTELLIGENCE_ANALYZE,
+                "Analyze with Document Intelligence",
+                "DOCUMENT_INTELLIGENCE",
+                "ANALYZE",
+                null,
+                SYSTEM_USER_ID));
+        Permission contentUnderstandingAnalyze = permissionRepository.save(new Permission(
+                PermissionCodes.CONTENT_UNDERSTANDING_ANALYZE,
+                "Analyze with Content Understanding",
+                "CONTENT_UNDERSTANDING",
+                "ANALYZE",
+                null,
+                SYSTEM_USER_ID));
         rolePermissionRepository.save(new RolePermission(
                 administratorRole.getId(), userRead.getId(), SYSTEM_USER_ID));
         rolePermissionRepository.save(new RolePermission(
                 applicationUserRole.getId(), workflowSubmit.getId(), SYSTEM_USER_ID));
+        rolePermissionRepository.save(new RolePermission(
+                applicationUserRole.getId(), documentAnalysisReadOwn.getId(), SYSTEM_USER_ID));
+        rolePermissionRepository.save(new RolePermission(
+                applicationUserRole.getId(), documentIntelligenceAnalyze.getId(), SYSTEM_USER_ID));
+        rolePermissionRepository.save(new RolePermission(
+                applicationUserRole.getId(), contentUnderstandingAnalyze.getId(), SYSTEM_USER_ID));
         assignRole(user, applicationUserRole, now);
         assignRole(administrator, administratorRole, now);
     }
@@ -306,10 +333,14 @@ class MeApiIntegrationTest {
                 .andExpect(jsonPath("$.employmentType").value("REGULAR_EMPLOYEE"))
                 .andExpect(jsonPath("$.department.name").value("開発部"))
                 .andExpect(jsonPath("$.roles", contains(RoleCodes.APPLICATION_USER)))
-                .andExpect(jsonPath("$.permissions", contains(PermissionCodes.WORKFLOW_SUBMIT)))
+                .andExpect(jsonPath("$.permissions", contains(
+                        PermissionCodes.CONTENT_UNDERSTANDING_ANALYZE,
+                        PermissionCodes.DOCUMENT_ANALYSIS_READ_OWN,
+                        PermissionCodes.DOCUMENT_INTELLIGENCE_ANALYZE,
+                        PermissionCodes.WORKFLOW_SUBMIT)))
                 .andExpect(jsonPath("$.features.mailNotificationHistory").value(true))
-                .andExpect(jsonPath("$.features.documentIntelligence").value(false))
-                .andExpect(jsonPath("$.features.contentUnderstanding").value(false));
+                .andExpect(jsonPath("$.features.documentIntelligence").doesNotExist())
+                .andExpect(jsonPath("$.features.contentUnderstanding").doesNotExist());
     }
 
     @Test
