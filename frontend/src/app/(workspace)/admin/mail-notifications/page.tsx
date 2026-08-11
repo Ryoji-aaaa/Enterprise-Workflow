@@ -1,11 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
 import { MailCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
@@ -87,7 +86,7 @@ export default function MailNotificationsPage() {
             <h1 className="flex items-center gap-2 text-2xl font-semibold"><MailCheck className="text-primary" />送付済メール一覧</h1>
             <p className="mt-1 text-sm text-muted-foreground">ローカル開発環境のメール通知送付履歴を確認します。</p>
           </div>
-          <Button render={<Link href="/top" />} variant="outline">トップへ戻る</Button>
+          <LinkButton href="/top" variant="outline">トップへ戻る</LinkButton>
         </div>
 
         <Card className="mb-4">
@@ -134,7 +133,7 @@ export default function MailNotificationsPage() {
                   <td className="p-3 font-medium">{item.subject}</td>
                   <td className="p-3">{item.applicationNumber ? <><span className="block">{item.applicationNumber}</span><span className="text-muted-foreground">{item.applicationTitle}</span></> : "—"}</td>
                   <td className="p-3 text-center">{item.attemptCount}</td>
-                  <td className="p-3"><Button render={<Link href={`/admin/mail-notifications/${item.notificationId}`} />} variant="outline">詳細</Button></td>
+                  <td className="p-3"><LinkButton href={`/admin/mail-notifications/${item.notificationId}`} variant="outline">詳細</LinkButton></td>
                 </tr>)}</tbody>
               </table>
             </div>

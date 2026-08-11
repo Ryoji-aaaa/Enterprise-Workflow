@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { MailOpen } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
@@ -43,7 +42,7 @@ export default function MailNotificationDetailPage() {
   }, [notificationId]);
 
   return <main className="p-4 md:p-8"><div className="mx-auto max-w-5xl">
-    <div className="mb-6 flex items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-semibold"><MailOpen className="text-primary" />メール通知詳細</h1><p className="mt-1 text-sm text-muted-foreground">送付内容と再試行情報を確認します。</p></div><Button render={<Link href="/admin/mail-notifications" />} variant="outline">一覧へ戻る</Button></div>
+    <div className="mb-6 flex items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-semibold"><MailOpen className="text-primary" />メール通知詳細</h1><p className="mt-1 text-sm text-muted-foreground">送付内容と再試行情報を確認します。</p></div><LinkButton href="/admin/mail-notifications" variant="outline">一覧へ戻る</LinkButton></div>
     {error && <Card><CardContent className="text-destructive">{error}</CardContent></Card>}
     {!error && !notification && <Card><CardContent>メール通知履歴を読み込んでいます…</CardContent></Card>}
     {notification && <div className="grid gap-4">

@@ -1,10 +1,9 @@
 "use client";
 
 import { Settings } from "lucide-react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { useCurrentUser } from "./current-user-context";
@@ -29,25 +28,21 @@ export function WorkspaceSidebar() {
           const Icon = item.icon;
           const active = isWorkspaceNavigationItemActive(pathname, item);
           return (
-            <Button
+            <LinkButton
               className={cn(
                 "h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm",
                 active
                   ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "text-sidebar-foreground/70",
               )}
+              aria-current={active ? "page" : undefined}
+              href={item.href}
               key={item.href}
-              render={(
-                <Link
-                  aria-current={active ? "page" : undefined}
-                  href={item.href}
-                />
-              )}
               variant="ghost"
             >
               <Icon className="size-4.5" />
               <span>{item.label}</span>
-            </Button>
+            </LinkButton>
           );
         })}
         {workspaceMockNavigationItems.map((item) => {

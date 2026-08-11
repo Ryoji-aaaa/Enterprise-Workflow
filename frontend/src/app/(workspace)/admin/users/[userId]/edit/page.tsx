@@ -1,11 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/components/workspace/current-user-context";
@@ -259,7 +258,7 @@ export default function EditUserPage() {
   return (
     <main className="p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-5">
-        <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">ユーザー情報編集</h1><Button render={<Link href="/admin/users" />} variant="outline">一覧へ戻る</Button></div>
+        <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">ユーザー情報編集</h1><LinkButton href="/admin/users" variant="outline">一覧へ戻る</LinkButton></div>
         {message && <p className="rounded-lg bg-primary/10 p-3 text-sm text-primary">{message}</p>}
         {error && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
         {!user && !error && <Card><CardContent>ユーザー情報を読み込んでいます…</CardContent></Card>}

@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Building2, ChevronDown, Crown, Landmark, Network, Pencil, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCurrentUser } from "@/components/workspace/current-user-context";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
@@ -82,15 +81,15 @@ function MemberSummary({
         {member.positionName && <p className="text-xs text-muted-foreground">{member.positionName}</p>}
       </div>
       {canEditUsers && (
-        <Button
+        <LinkButton
           aria-label={`${member.displayName}のユーザー情報を編集`}
-          render={<Link href={organizationChartUserEditPath(member.userId)} />}
+          href={organizationChartUserEditPath(member.userId)}
           size="sm"
           variant="outline"
         >
           <Pencil data-icon="inline-start" />
           編集
-        </Button>
+        </LinkButton>
       )}
     </div>
   );
@@ -266,7 +265,7 @@ export default function OrganizationChartPage() {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">有効な組織・所属情報を表示しています。</p>
           </div>
-          <Button render={<Link href="/top" />} variant="outline">トップへ戻る</Button>
+          <LinkButton href="/top" variant="outline">トップへ戻る</LinkButton>
         </div>
 
         {state.kind === "loading" && <Card><CardContent>組織図を読み込んでいます…</CardContent></Card>}

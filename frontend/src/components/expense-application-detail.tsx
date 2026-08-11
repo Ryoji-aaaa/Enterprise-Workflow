@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { ExpenseAttachmentSection } from "@/components/expense-attachment-section";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
@@ -89,9 +88,9 @@ export function ExpenseApplicationDetail({ applicationId, approvalView = false }
     <Card><CardHeader><CardTitle>承認経路{application.approvalRun ? `（実行 ${application.approvalRun.runNumber}）` : ""}</CardTitle></CardHeader><CardContent>{application.approvalRun ? <ol className="space-y-3">{application.approvalRun.steps.map((step) => <li className="rounded-lg border p-3" key={step.id}><div className="flex items-center justify-between gap-3"><p className="font-medium">{step.targetOrganizationUnitName} {step.type === "ACCOUNTING" ? "経理承認" : "部門長承認"}</p><Badge variant="secondary">{stepStatus[step.status] ?? step.status}</Badge></div>{step.processedBy && <p className="mt-1 text-sm text-muted-foreground">処理者: {step.processedBy}{step.processedAt ? ` / ${new Date(step.processedAt).toLocaleString("ja-JP")}` : ""}</p>}{step.comment && <p className="mt-1 text-sm">コメント: {step.comment}</p>}</li>)}</ol> : <p className="text-muted-foreground">申請後に承認経路が確定します。</p>}</CardContent></Card>
     {canShowExpenseApprovalActions(application) && <Card><CardHeader><CardTitle>承認操作</CardTitle></CardHeader><CardContent className="space-y-3"><label className="grid gap-1 text-sm">コメント（差戻し時は必須）<textarea className="min-h-24 rounded-md border bg-background p-3" onChange={(event) => setComment(event.target.value)} value={comment} /></label><div className="flex justify-end gap-3"><Button disabled={processing || !comment.trim()} onClick={() => void action(`/api/backend/expense-approvals/${application.pendingStepId}/return`, { comment })} variant="outline">差戻し</Button><Button disabled={processing} onClick={() => void action(`/api/backend/expense-approvals/${application.pendingStepId}/approve`, { comment })}>承認</Button></div></CardContent></Card>}
     <div className="flex flex-wrap justify-end gap-3">
-      {application.editable && <Button render={<Link href={`/expenses/${application.id}/edit`} />} variant="outline">編集</Button>}
+      {application.editable && <LinkButton href={`/expenses/${application.id}/edit`} variant="outline">編集</LinkButton>}
       {application.cancellable && <Button disabled={processing} onClick={() => { if (window.confirm("この申請を取り下げますか？")) void action(`/api/backend/expense-applications/${application.id}/cancel`); }} variant="outline">取下げ</Button>}
-      <Button render={<Link href={approvalView ? "/approvals" : "/expenses"} />} variant="outline">一覧へ戻る</Button>
+      <LinkButton href={approvalView ? "/approvals" : "/expenses"} variant="outline">一覧へ戻る</LinkButton>
     </div>
   </div>;
 }

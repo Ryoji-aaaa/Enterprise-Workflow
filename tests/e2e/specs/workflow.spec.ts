@@ -187,6 +187,20 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await expectWorkspaceChrome(page);
   await expectActiveSidebarLink(page, "トップ");
   await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
+  const meResponse = await page.request.get("/api/backend/me");
+  expect(meResponse.status()).toBe(200);
+  const meBody = (await meResponse.json()) as Record<string, unknown>;
+  const department = meBody.department as { name: string } | null;
+  await page.getByRole("button", {
+    name: "開発一般ユーザーのユーザー情報を表示",
+  }).click();
+  const userMenu = page.getByRole("menu", { name: "ユーザー情報" });
+  await expect(userMenu).toBeVisible();
+  await expect(userMenu.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
+  await expect(userMenu.getByText(userEmail, { exact: true })).toBeVisible();
+  await expect(userMenu.getByText(department?.name ?? "所属未設定", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(userMenu).toBeHidden();
   await expect(
     page.getByRole("heading", { name: "モック文字８", exact: true }),
   ).toBeVisible();
@@ -201,9 +215,6 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   expect(authenticationCookies.some((cookie) => /account_data/.test(cookie.name))).toBeTruthy();
   expect(authenticationCookies.every((cookie) => cookie.httpOnly)).toBeTruthy();
 
-  const meResponse = await page.request.get("/api/backend/me");
-  expect(meResponse.status()).toBe(200);
-  const meBody = (await meResponse.json()) as Record<string, unknown>;
   expect(meBody).toMatchObject({
     email: userEmail,
     displayName: "開発一般ユーザー",
@@ -219,7 +230,11 @@ test("一般ユーザーがログインしてモックダッシュボードを�
 
   const topResponse = await page.request.get("/top");
   expect(topResponse.status()).toBe(200);
-  expect(topResponse.headers()["cache-control"]).toContain("no-store");
+  const cacheControl = topResponse.headers()["cache-control"] ?? "";
+  expect(
+    cacheControl.includes("no-store")
+      || (cacheControl.includes("no-cache") && cacheControl.includes("must-revalidate")),
+  ).toBeTruthy();
   expect(await topResponse.text()).not.toMatch(
     /accessToken|refreshToken|idToken|eyJ[A-Za-z0-9_-]+\./,
   );

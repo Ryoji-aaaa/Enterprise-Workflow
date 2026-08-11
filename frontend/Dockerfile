@@ -15,6 +15,14 @@ ENV HOME=/tmp
 USER ${TEST_UID}:${TEST_GID}
 CMD ["npm", "run", "test:unit"]
 
+FROM dependencies AS development
+COPY --chown=node:node . .
+RUN mkdir -p /workspace/.next \
+    && chown node:node /workspace/.next
+ENV NEXT_TELEMETRY_DISABLED=1
+USER node
+CMD ["npm", "run", "dev"]
+
 FROM dependencies AS build
 WORKDIR /workspace
 COPY . .

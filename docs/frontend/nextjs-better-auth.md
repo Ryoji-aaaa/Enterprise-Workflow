@@ -83,8 +83,13 @@ sessionがない場合は`/login`へ戻す。Route Groupを使用するためURL
 認証済み画面間のClient-side navigationでは共通シェルが維持され、各ページが利用者権限だけを
 目的として`/api/backend/me`を重複取得しない。
 
-`(workspace)`配下のレスポンスは`no-store`であり、logout後のブラウザ戻る操作でも認証済み画面を
-cacheから再利用しない。
+共通ヘッダーの利用者領域はshadcn/uiの`Dropdown Menu`であり、アバター、表示名、email、所属部署を
+表示する。メニューは`CurrentUserContext`の既取得情報だけを使い、開閉時にBFFへ追加リクエストを
+送らない。所属部署がない場合は`所属未設定`と表示する。
+
+`(workspace)`配下のproductionレスポンスは`no-store`であり、logout後のブラウザ戻る操作でも
+認証済み画面をcacheから再利用しない。E2Eで使うNext.js開発サーバーは`no-cache, must-revalidate`を
+返すが、再利用前にサーバーでの再検証を強制するため同じく認証済み画面を再利用しない。
 
 `WorkspaceGate`での未登録403では`/unregistered`、その他の利用不可403では`/unavailable`へ
 遷移する。`/login`、`/unregistered`、`/unavailable`、`/api/**`、`/`はワークスペース外であり、
@@ -140,6 +145,7 @@ Dockerボリュームを削除せず、
 
 - frontendのlint、TypeScript、production build
 - 一般ユーザーと管理者の表示名、email、所属、業務権限
+- 一般ユーザーがヘッダーのユーザー情報メニューを開き、表示名、email、所属部署を確認できること
 - 未登録ユーザーの403と専用画面
 - 利用不可画面に内部情報が含まれないこと
 - Keycloak Authorization Code Flowによる3ユーザーのログイン
