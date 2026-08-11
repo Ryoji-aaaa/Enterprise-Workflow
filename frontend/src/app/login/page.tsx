@@ -53,7 +53,7 @@ export default async function LoginPage({
           </p>
         </div>
         <p className="relative text-xs text-primary-foreground/60">
-          社内利用専用
+          社内利用専用(検証用モック)
         </p>
       </section>
 
@@ -81,8 +81,9 @@ export default async function LoginPage({
             <CardContent>
               {sessionExpired ? (
                 <Alert className="mb-4">
-                  <AlertDescription>
-                    セッションの有効期限が切れました。再度ログインしてください。
+                  <AlertDescription className="text-red-600">
+                    セッションの有効期限が切れました。<br/>
+                    再度ログインしてください。
                   </AlertDescription>
                 </Alert>
               ) : null}
