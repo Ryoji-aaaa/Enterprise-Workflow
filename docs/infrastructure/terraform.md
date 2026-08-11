@@ -46,6 +46,11 @@ productionではPhase 1Aのmodel deploymentを作成しない。Custom Analyzer�
 Analyzerへのmodel deployment設定もTerraformでは行わない。stagingのBackendにはTerraform resource参照から
 Analyzer IDと2つのdeployment名だけを渡し、model名・version・capacityをBrowserや環境変数へ渡さない。
 
+stagingで既存のContent Understanding Foundry accountを管理する場合、既存値に合わせて
+`project_management_enabled=true`とSystem Assigned Managed IdentityをTerraformに明示する。public networkと
+local authenticationは引き続き無効とする。これによりaccount、Private Endpoint、Content Understanding Reader
+RBACの置換を避ける。productionにPhase 1A固有の設定は追加しない。
+
 resource名はGitHub Environment variableまたは`terraform.tfvars`から渡す。
 staging/productionでresourceを共有しない。例は次のとおりで、実値はglobal uniqueな名前にする。
 
@@ -86,6 +91,15 @@ staging限定model deploymentの固定model/version/SKU/capacityを検証する�
 各rootへ`.terraform/`を生成するが、
 Azureへのlogin、plan、applyは行わない。Terraformにも`-no-color`を渡すため、CIログへANSI
 制御文字を出力しない。
+
+## PR planの安全ゲート
+
+環境別`terraform plan -out=tfplan`の後、PR workflowは`terraform show -json tfplan`を
+`scripts/check-terraform-plan-safety.sh`へ渡す。deleteまたはreplaceを含むplanは失敗とし、Cognitive Account、
+Storage Account/container、Container Apps Environment、VNet/subnet、Private Endpoint、Private DNS zone、
+PostgreSQL、Key Vaultを少なくとも保護対象として表示する。今回の一時Attachment Blob Diagnostic Settingの削除だけは
+完全修飾resource addressによる一時allowlistを使える。型全体の例外は使わず、削除完了後のplanに対象deleteがなければ
+allowlistは渡さない。通常のmodel deployment作成とContainer Appのin-place image/environment更新は許可される。
 
 旧`make terraform-check`は移行用の警告付きエイリアスである。文書、CI、新しい手順では
 `make verify-infra`を使用する。

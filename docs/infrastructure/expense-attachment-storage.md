@@ -38,24 +38,16 @@ Blob clientはservice endpointまたはconnection stringを先に解決し、そ
 `AZURE_STORAGE_CONTAINER_NAME`を設定する。service endpointの末尾`/`をcontainerなしの`$root`として
 再解釈させないため、この設定順を維持する。
 
-## staging障害調査中の一時診断
+## staging障害調査用診断の終了
 
-Expense Attachment uploadの`InvalidUri`調査中に限り、stagingのBlob ServiceへTerraform管理の
-Diagnostic Settingを一時的に設定し、`StorageWrite`だけを既存Log Analytics workspaceへ
-resource-specific形式で送信する。`StorageRead`、`StorageDelete`、metricsは収集せず、productionには
-Diagnostic Settingを作成しない。Azure platform diagnostic logの`Uri`と`ObjectKey`は、通常の
-application運用ログに対する禁止事項の期間限定例外として扱う。
+Expense Attachment uploadの`InvalidUri`調査で使用したstaging Blob Serviceの一時
+Diagnostic Settingは削除する。恒久Terraform構成にはDiagnostic Settingおよび`StorageWrite`の
+diagnostic設定を含めず、静的検証もこれらが再追加されないことを確認する。
 
-診断期間中もBackend application logへURI、object名、headers全体、body、ファイル内容、metadata、
-credential、例外messageを追加しない。Backend Blob HTTP policyは失敗したrequestのmethod、HTTP status、
-`x-ms-client-request-id`だけを記録し、既存のstorage failure logと`StorageBlobLogs.ClientRequestId`を
-照合する。Azure Storage側の`Uri`と`ObjectKey`のraw値は調査担当者だけが確認し、chat、報告書、Git、
-ドキュメントへ転記しない。
-
-診断は承認済みの短い再現期間に限定し、必要な記録を取得後は別のTerraform変更でDiagnostic Settingを
-削除する。削除後も取り込み済みログは即時消去されず、Log Analyticsの保持期間に従い、現在の設定では
-最大30日残り得る。Diagnostic Settingの追加・削除は通常のPR、environment別plan、staging deploy経路で
-行い、Portalや直接の`terraform apply`では変更しない。
+この削除はDiagnostic Settingだけが対象であり、Storage Account、`expense-evidence` container、Blob、
+既にLog Analyticsへ取り込まれたログは削除しない。取り込み済みログはLog Analyticsの保持期間に従って
+保持される。将来、承認済みの短期間の調査が必要になった場合も、専用PR、環境別plan、staging deploy経路で
+一時設定を管理し、調査完了後に削除する。Portalや直接の`terraform apply`では変更しない。
 
 ## 作成・削除と復旧
 
