@@ -25,6 +25,7 @@ readonly MIGRATION_SECTIONS=(
   "V001 upgrade and expand-contract migration"
   "Contract migration reconciliation safeguards"
   "PostgreSQL database constraints"
+  "V014 Document Analysis authorization upgrade"
   "Fresh migration and startup idempotency"
 )
 CURRENT_MIGRATION_SECTION=""
@@ -193,7 +194,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V014 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V015 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -223,7 +224,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V014 schema.
+# validates the complete V015 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -654,8 +655,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 14 THEN
-        RAISE EXCEPTION 'expected 14 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 15 THEN
+        RAISE EXCEPTION 'expected 15 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -723,7 +724,7 @@ BEGIN
         FROM role_permissions mapping
         JOIN roles role ON role.id = mapping.role_id
         JOIN permissions permission ON permission.id = mapping.permission_id
-        WHERE role.role_code IN ('SYSTEM_ADMIN', 'DOCUMENT_ANALYSIS_USER')
+        WHERE role.role_code IN ('SYSTEM_ADMIN', 'APPLICATION_USER')
           AND permission.permission_code IN (
               'DOCUMENT_ANALYSIS_READ_OWN',
               'DOCUMENT_INTELLIGENCE_ANALYZE',
@@ -731,17 +732,9 @@ BEGIN
         RAISE EXCEPTION 'document analysis role-permission mapping is invalid';
     END IF;
     IF EXISTS (
-        SELECT 1
-        FROM role_permissions mapping
-        JOIN roles role ON role.id = mapping.role_id
-        JOIN permissions permission ON permission.id = mapping.permission_id
-        WHERE role.role_code = 'APPLICATION_USER'
-          AND permission.permission_code IN (
-              'DOCUMENT_ANALYSIS_READ_OWN',
-              'DOCUMENT_INTELLIGENCE_ANALYZE',
-              'CONTENT_UNDERSTANDING_ANALYZE')
+        SELECT 1 FROM roles WHERE role_code = 'DOCUMENT_ANALYSIS_USER'
     ) THEN
-        RAISE EXCEPTION 'APPLICATION_USER must not receive document analysis permissions';
+        RAISE EXCEPTION 'unreferenced DOCUMENT_ANALYSIS_USER role was not removed';
     END IF;
 END;
 $$;
@@ -998,6 +991,131 @@ set -e
 
 docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 
+# Exercise the supported in-place V014 upgrade with an existing active legacy
+# role assignment and immutable assignment history. V015 must preserve history,
+# revoke the active assignment, and retain only a disabled DB tombstone.
+migration_section "V014 Document Analysis authorization upgrade"
+create_database workflow_v014_upgrade
+start_backend workflow_v014_upgrade 014 none
+docker rm --force "${BACKEND_CONTAINER}" >/dev/null
+workflow_psql workflow_v014_upgrade <<'SQL' >/dev/null
+INSERT INTO app_users (
+    id, email, display_name, employment_type, account_status,
+    valid_from, created_by, updated_by
+) VALUES (
+    'f1000000-0000-0000-0000-000000000001',
+    'v014.document.user@sdcj.co.jp',
+    'V014 Document User',
+    'REGULAR_EMPLOYEE',
+    'ACTIVE',
+    CURRENT_TIMESTAMP - INTERVAL '30 days',
+    workflow_system_user_id(),
+    workflow_system_user_id()
+);
+
+INSERT INTO user_role_assignments (
+    id, user_id, role_id, organization_unit_id, valid_from, valid_until,
+    assignment_reason, assigned_by, created_by, updated_by
+)
+SELECT
+    'f1000000-0000-0000-0000-000000000002',
+    'f1000000-0000-0000-0000-000000000001',
+    role.id,
+    NULL,
+    CURRENT_TIMESTAMP - INTERVAL '10 days',
+    NULL,
+    'Existing V014 assignment',
+    workflow_system_user_id(),
+    workflow_system_user_id(),
+    workflow_system_user_id()
+FROM roles role
+WHERE role.role_code = 'DOCUMENT_ANALYSIS_USER';
+
+INSERT INTO user_role_change_histories (
+    id, user_id, role_id, organization_unit_id, change_type,
+    previous_valid_until, new_valid_until, reason, changed_by,
+    changed_at, source, request_id
+)
+SELECT
+    'f1000000-0000-0000-0000-000000000003',
+    'f1000000-0000-0000-0000-000000000001',
+    role.id,
+    NULL,
+    'ASSIGNED',
+    NULL,
+    NULL,
+    'Existing immutable V014 history',
+    workflow_system_user_id(),
+    CURRENT_TIMESTAMP - INTERVAL '10 days',
+    'SYSTEM',
+    NULL
+FROM roles role
+WHERE role.role_code = 'DOCUMENT_ANALYSIS_USER';
+SQL
+start_backend workflow_v014_upgrade
+workflow_psql workflow_v014_upgrade <<'SQL' >/dev/null
+DO $$
+DECLARE
+    retired_role_id UUID;
+BEGIN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 15 THEN
+        RAISE EXCEPTION 'V014 database did not upgrade through V015';
+    END IF;
+    IF (SELECT count(*)
+        FROM role_permissions mapping
+        JOIN roles role ON role.id = mapping.role_id
+        JOIN permissions permission ON permission.id = mapping.permission_id
+        WHERE role.role_code IN ('APPLICATION_USER', 'SYSTEM_ADMIN')
+          AND permission.permission_code IN (
+              'DOCUMENT_ANALYSIS_READ_OWN',
+              'DOCUMENT_INTELLIGENCE_ANALYZE',
+              'CONTENT_UNDERSTANDING_ANALYZE')) <> 6 THEN
+        RAISE EXCEPTION 'V015 did not promote Document Analysis permissions';
+    END IF;
+    SELECT id INTO retired_role_id
+    FROM roles
+    WHERE role_code = 'DOCUMENT_ANALYSIS_USER'
+      AND NOT enabled;
+    IF retired_role_id IS NULL THEN
+        RAISE EXCEPTION 'audit-referenced retired role tombstone is missing or enabled';
+    END IF;
+    IF EXISTS (SELECT 1 FROM role_permissions WHERE role_id = retired_role_id) THEN
+        RAISE EXCEPTION 'retired role retained permissions';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM user_role_assignments
+        WHERE role_id = retired_role_id
+          AND valid_from <= CURRENT_TIMESTAMP
+          AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP)
+    ) THEN
+        RAISE EXCEPTION 'retired role retained an active assignment';
+    END IF;
+    IF (SELECT count(*) FROM user_role_change_histories
+        WHERE role_id = retired_role_id) <> 2
+       OR NOT EXISTS (
+           SELECT 1 FROM user_role_change_histories
+           WHERE id = 'f1000000-0000-0000-0000-000000000003'
+             AND reason = 'Existing immutable V014 history'
+       )
+       OR NOT EXISTS (
+           SELECT 1 FROM user_role_change_histories
+           WHERE role_id = retired_role_id
+             AND change_type = 'REVOKED'
+             AND source = 'MIGRATION'
+       ) THEN
+        RAISE EXCEPTION 'V015 did not preserve and extend immutable role history';
+    END IF;
+    BEGIN
+        UPDATE roles SET enabled = TRUE WHERE id = retired_role_id;
+        RAISE EXCEPTION 'retired role was re-enabled';
+    EXCEPTION WHEN check_violation THEN
+        NULL;
+    END;
+END;
+$$;
+SQL
+docker rm --force "${BACKEND_CONTAINER}" >/dev/null
+
 # A completely empty database must also migrate, validate against Hibernate,
 # and remain unchanged on a second application startup.
 migration_section "Fresh migration and startup idempotency"
@@ -1006,7 +1124,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 14 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 15 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -1021,7 +1139,7 @@ BEGIN
         WHERE id = '00000000-0000-0000-0000-000000000001') <> 'SYSTEM' THEN
         RAISE EXCEPTION 'fresh database SYSTEM employment type is invalid';
     END IF;
-    IF (SELECT count(*) FROM roles) <> 10 OR (SELECT count(*) FROM permissions) <> 21 THEN
+    IF (SELECT count(*) FROM roles) <> 9 OR (SELECT count(*) FROM permissions) <> 21 THEN
         RAISE EXCEPTION 'fresh database authorization seeds are invalid';
     END IF;
     IF (SELECT count(*) FROM information_schema.tables
@@ -1092,7 +1210,7 @@ BEGIN
         FROM role_permissions mapping
         JOIN roles role ON role.id = mapping.role_id
         JOIN permissions permission ON permission.id = mapping.permission_id
-        WHERE role.role_code IN ('SYSTEM_ADMIN', 'DOCUMENT_ANALYSIS_USER')
+        WHERE role.role_code IN ('SYSTEM_ADMIN', 'APPLICATION_USER')
           AND permission.permission_code IN (
               'DOCUMENT_ANALYSIS_READ_OWN',
               'DOCUMENT_INTELLIGENCE_ANALYZE',
@@ -1100,17 +1218,9 @@ BEGIN
         RAISE EXCEPTION 'document analysis permissions were not assigned';
     END IF;
     IF EXISTS (
-        SELECT 1
-        FROM role_permissions mapping
-        JOIN roles role ON role.id = mapping.role_id
-        JOIN permissions permission ON permission.id = mapping.permission_id
-        WHERE role.role_code = 'APPLICATION_USER'
-          AND permission.permission_code IN (
-              'DOCUMENT_ANALYSIS_READ_OWN',
-              'DOCUMENT_INTELLIGENCE_ANALYZE',
-              'CONTENT_UNDERSTANDING_ANALYZE')
+        SELECT 1 FROM roles WHERE role_code = 'DOCUMENT_ANALYSIS_USER'
     ) THEN
-        RAISE EXCEPTION 'APPLICATION_USER must not receive document analysis permissions';
+        RAISE EXCEPTION 'fresh database retained the retired Document Analysis role';
     END IF;
     IF (SELECT count(*)
         FROM role_permissions mapping
@@ -1179,9 +1289,9 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 14
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 15
        OR (SELECT count(*) FROM app_users) <> 1
-       OR (SELECT count(*) FROM roles) <> 10
+       OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 21
        OR (SELECT count(*) FROM audit_logs
            WHERE action_type = 'MIGRATE_EXISTING_USER_DATA') <> 1 THEN
