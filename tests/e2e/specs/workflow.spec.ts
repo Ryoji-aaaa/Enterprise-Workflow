@@ -768,6 +768,8 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
 
 test("一般正社員は組織図を閲覧できユーザー管理は表示されない", async ({ page }) => {
   await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+  await expectWorkspaceChrome(page);
 
   const meResponse = await page.request.get("/api/backend/me");
   expect(meResponse.status()).toBe(200);
