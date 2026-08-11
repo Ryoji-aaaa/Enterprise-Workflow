@@ -60,9 +60,13 @@ public class DocumentAnalysisController {
         AppUser user = current(authentication);
         DocumentAnalysisResponse response = DocumentAnalysisResponse.from(
                 service.create(parseProvider(provider), parseProfile(profile), file, user));
+        ServletUriComponentsBuilder location = ServletUriComponentsBuilder.fromCurrentRequest();
+        location.path("/{analysisId}");
+        if (response.profile() == DocumentAnalysisProfile.AUTO_ENTRY) {
+            location.queryParam("profile", DocumentAnalysisProfile.AUTO_ENTRY);
+        }
         return ResponseEntity.accepted()
-                .location(ServletUriComponentsBuilder.fromCurrentRequest()
-                        .path("/{analysisId}")
+                .location(location
                         .buildAndExpand(response.id())
                         .toUri())
                 .body(response);

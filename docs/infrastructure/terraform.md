@@ -92,14 +92,28 @@ staging限定model deploymentの固定model/version/SKU/capacityを検証する�
 Azureへのlogin、plan、applyは行わない。Terraformにも`-no-color`を渡すため、CIログへANSI
 制御文字を出力しない。
 
-## PR planの安全ゲート
+## PR/deploy planの安全ゲート
 
-環境別`terraform plan -out=tfplan`の後、PR workflowは`terraform show -json tfplan`を
-`scripts/check-terraform-plan-safety.sh`へ渡す。deleteまたはreplaceを含むplanは失敗とし、Cognitive Account、
+環境別`terraform plan -out=tfplan`の後、`terraform-plan.yml`と`deploy-staging.yml`は
+`terraform show -json tfplan`を`scripts/check-terraform-plan-safety.sh`へ渡す。deleteまたはreplaceを含むplanは失敗とし、Cognitive Account、
 Storage Account/container、Container Apps Environment、VNet/subnet、Private Endpoint、Private DNS zone、
 PostgreSQL、Key Vaultを少なくとも保護対象として表示する。今回の一時Attachment Blob Diagnostic Settingの削除だけは
 完全修飾resource addressによる一時allowlistを使える。型全体の例外は使わず、削除完了後のplanに対象deleteがなければ
-allowlistは渡さない。通常のmodel deployment作成とContainer Appのin-place image/environment更新は許可される。
+allowlistは渡さない。`deploy-staging.yml`は安全ゲート成功後だけ同じ`tfplan`をapplyする。通常のmodel deployment作成と
+Container Appのin-place image/environment更新は許可される。
+
+## staging-planとstagingのruntime control整合
+
+merge前に担当者がGitHub Environmentの`staging-plan`で次の3値を`true`へ変更し、実`staging`と一致させる。
+
+```text
+WORKFLOW_DOCUMENT_ANALYSIS_ENABLED=true
+DOCUMENT_INTELLIGENCE_ENABLED=true
+CONTENT_UNDERSTANDING_ENABLED=true
+```
+
+Environment variable変更後はPR Terraform planを再実行し、Backend Container Appの3値に`true`から`false`への
+差分がないことをacceptance conditionとする。Environment variableはTerraformやworkflowから変更しない。
 
 旧`make terraform-check`は移行用の警告付きエイリアスである。文書、CI、新しい手順では
 `make verify-infra`を使用する。

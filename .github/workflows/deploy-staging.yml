@@ -46,6 +46,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Install jq for Terraform plan safety gate
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes jq
       - name: Select immutable image tag
         run: |
           sha="$(git rev-parse HEAD)"
@@ -133,16 +137,26 @@ jobs:
           done
       - uses: hashicorp/setup-terraform@v3
         if: steps.readiness.outputs.ready == 'true'
-      - name: Terraform init, plan, and apply
+      - name: Terraform init, plan safety gate, and apply
         if: steps.readiness.outputs.ready == 'true'
         working-directory: infra/environments/staging
         run: |
+          set -Eeuo pipefail
           terraform init \
             -backend-config="resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ vars.TF_STATE_CONTAINER }}" \
             -backend-config="key=${{ vars.TF_STATE_KEY }}"
           terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > tfplan.json
+          allowed_delete_args=()
+          temporary_diagnostic_address='module.environment.azurerm_monitor_diagnostic_setting.attachment_blob_write_diagnosis[0]'
+          if jq -e --arg address "$temporary_diagnostic_address" \
+            'any(.resource_changes[]?; .address == $address and .change.actions == ["delete"])' \
+            tfplan.json >/dev/null; then
+            allowed_delete_args=(--allow-delete "$temporary_diagnostic_address")
+          fi
+          ../../../scripts/check-terraform-plan-safety.sh tfplan.json "${allowed_delete_args[@]}"
           terraform apply -input=false -auto-approve tfplan
           if [[ "$TF_VAR_provision_workloads" == "true" ]]; then
             echo "FRONTEND_URL=$(terraform output -raw frontend_url)" >> "$GITHUB_ENV"

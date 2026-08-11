@@ -38,7 +38,9 @@ credentialはBrowserから受け取らず、Backend設定から決定する。
 Custom Analyzer `enterprise_workflow_auto_entry_v2.1`をJobへsnapshotする。BrowserはAnalyzer ID、
 completion model deployment、embedding model deployment、API versionを指定または上書きできない。
 
-成功時は`202 Accepted`を返し、`Location`に`/api/document-analyses/{analysisId}`を設定する。
+成功時は`202 Accepted`を返し、`GENERAL`の`Location`は既存互換の
+`/api/document-analyses/{analysisId}`とする。`AUTO_ENTRY`はprofileを省略すると`GENERAL`として読まれるため、
+`Location`を`/api/document-analyses/{analysisId}?profile=AUTO_ENTRY`として、そのままGETできるURLを返す。
 Jobは`QUEUED`で作成される。
 
 Provider別の権限はService層で再確認する。

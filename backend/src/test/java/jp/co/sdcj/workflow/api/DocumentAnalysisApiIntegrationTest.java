@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.ByteArrayInputStream;
+import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -160,6 +161,38 @@ class DocumentAnalysisApiIntegrationTest {
                         .with(validJwt(cuUser, "cu-subject")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.provider").value("CONTENT_UNDERSTANDING"));
+    }
+
+    @Test
+    void postLocationは作成したprofileの取得URLを返す() throws Exception {
+        String generalLocation = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(pdf("general-location.pdf"))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.profile").value("GENERAL"))
+                .andReturn().getResponse().getHeader("Location");
+
+        assertThat(generalLocation).doesNotContain("?profile=");
+        mockMvc.perform(get(URI.create(generalLocation))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("GENERAL"));
+
+        String autoEntryLocation = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(profile("AUTO_ENTRY"))
+                        .file(pdf("auto-entry-location.pdf"))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"))
+                .andReturn().getResponse().getHeader("Location");
+
+        assertThat(autoEntryLocation).endsWith("?profile=AUTO_ENTRY");
+        mockMvc.perform(get(URI.create(autoEntryLocation))
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"));
     }
 
     @Test
