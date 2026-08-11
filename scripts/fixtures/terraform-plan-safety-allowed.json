@@ -1,0 +1,22 @@
+{
+  "resource_changes": [
+    {
+      "address": "module.environment.azurerm_monitor_diagnostic_setting.attachment_blob_write_diagnosis[0]",
+      "mode": "managed",
+      "type": "azurerm_monitor_diagnostic_setting",
+      "change": { "actions": ["delete"] }
+    },
+    {
+      "address": "module.environment.azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0]",
+      "mode": "managed",
+      "type": "azurerm_cognitive_deployment",
+      "change": { "actions": ["create"] }
+    },
+    {
+      "address": "module.environment.module.backend[0].azurerm_container_app.this",
+      "mode": "managed",
+      "type": "azurerm_container_app",
+      "change": { "actions": ["update"] }
+    }
+  ]
+}

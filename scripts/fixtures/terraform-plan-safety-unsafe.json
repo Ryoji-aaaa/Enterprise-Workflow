@@ -1,0 +1,16 @@
+{
+  "resource_changes": [
+    {
+      "address": "module.environment.module.content_understanding.azurerm_cognitive_account.this",
+      "mode": "managed",
+      "type": "azurerm_cognitive_account",
+      "change": { "actions": ["delete", "create"] }
+    },
+    {
+      "address": "module.environment.module.attachment_storage.azurerm_storage_account.this",
+      "mode": "managed",
+      "type": "azurerm_storage_account",
+      "change": { "actions": ["delete"] }
+    }
+  ]
+}
