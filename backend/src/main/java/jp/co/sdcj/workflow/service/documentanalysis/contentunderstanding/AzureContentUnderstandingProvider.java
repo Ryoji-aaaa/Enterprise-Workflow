@@ -220,6 +220,7 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
                     request.provider(),
                     request.modelId(),
                     request.providerApiVersion(),
+                    request.analysisProfile(),
                     result,
                     durationMilliseconds);
         } catch (RuntimeException exception) {

@@ -6,6 +6,7 @@
   "warnings": [],
   "contents": [
     {
+      "kind": "document",
       "fields": {
         "DocumentType": {
           "type": "string",
