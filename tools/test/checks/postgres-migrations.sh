@@ -194,7 +194,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V015 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V016 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -224,7 +224,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V015 schema.
+# validates the complete V016 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -655,8 +655,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 15 THEN
-        RAISE EXCEPTION 'expected 15 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 16 THEN
+        RAISE EXCEPTION 'expected 16 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -993,7 +993,8 @@ docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 
 # Exercise the supported in-place V014 upgrade with an existing active legacy
 # role assignment and immutable assignment history. V015 must preserve history,
-# revoke the active assignment, and retain only a disabled DB tombstone.
+# revoke the active assignment, and retain only a disabled DB tombstone. V016
+# must backfill its existing Job as GENERAL.
 migration_section "V014 Document Analysis authorization upgrade"
 create_database workflow_v014_upgrade
 start_backend workflow_v014_upgrade 014 none
@@ -1051,6 +1052,29 @@ SELECT
     NULL
 FROM roles role
 WHERE role.role_code = 'DOCUMENT_ANALYSIS_USER';
+
+INSERT INTO document_analysis_jobs (
+    id, provider, model_id, provider_api_version, normalized_schema_version,
+    status, requested_by_user_id, original_file_name, content_type, file_size,
+    sha256, input_object_name, attempt_count, expires_at, created_by, updated_by
+) VALUES (
+    'f1000000-0000-0000-0000-000000000004',
+    'CONTENT_UNDERSTANDING',
+    'prebuilt-layout',
+    '2025-11-01',
+    1,
+    'QUEUED',
+    'f1000000-0000-0000-0000-000000000001',
+    'existing-v014.pdf',
+    'application/pdf',
+    100,
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    'input/f1000000-0000-0000-0000-000000000004/source',
+    0,
+    CURRENT_TIMESTAMP + INTERVAL '7 days',
+    workflow_system_user_id(),
+    workflow_system_user_id()
+);
 SQL
 start_backend workflow_v014_upgrade
 workflow_psql workflow_v014_upgrade <<'SQL' >/dev/null
@@ -1058,8 +1082,8 @@ DO $$
 DECLARE
     retired_role_id UUID;
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 15 THEN
-        RAISE EXCEPTION 'V014 database did not upgrade through V015';
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 16 THEN
+        RAISE EXCEPTION 'V014 database did not upgrade through V016';
     END IF;
     IF (SELECT count(*)
         FROM role_permissions mapping
@@ -1089,6 +1113,20 @@ BEGIN
           AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP)
     ) THEN
         RAISE EXCEPTION 'retired role retained an active assignment';
+    END IF;
+    IF (SELECT analysis_profile
+        FROM document_analysis_jobs
+        WHERE id = 'f1000000-0000-0000-0000-000000000004') <> 'GENERAL'
+       OR EXISTS (
+           SELECT 1
+           FROM document_analysis_jobs
+           WHERE id = 'f1000000-0000-0000-0000-000000000004'
+             AND (
+                 completion_model_deployment_name IS NOT NULL
+                 OR embedding_model_deployment_name IS NOT NULL
+             )
+       ) THEN
+        RAISE EXCEPTION 'V016 did not backfill the existing Document Analysis job as GENERAL';
     END IF;
     IF (SELECT count(*) FROM user_role_change_histories
         WHERE role_id = retired_role_id) <> 2
@@ -1124,7 +1162,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 15 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 16 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -1289,7 +1327,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 15
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 16
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 21

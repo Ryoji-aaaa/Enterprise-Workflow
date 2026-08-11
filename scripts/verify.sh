@@ -266,7 +266,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V012__backfill_access_request_notification_queue.sql',
     'V013__add_mail_notification_read_permission.sql',
     'V014__create_document_analysis_schema.sql',
-    'V015__promote_document_analysis_to_application_user.sql'
+    'V015__promote_document_analysis_to_application_user.sql',
+    'V016__add_document_analysis_profiles.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -275,9 +276,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "15:15" ]] || {
+  [[ "${migration_summary}" == "16:16" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "15 total migrations:15 successful checksummed migrations" "${migration_summary}"
+      "16 total migrations:16 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(

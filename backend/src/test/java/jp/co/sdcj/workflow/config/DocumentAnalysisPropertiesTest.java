@@ -60,6 +60,46 @@ class DocumentAnalysisPropertiesTest {
     }
 
     @Test
+    void contentUnderstandingAutoEntrySettingsCanBeOverridden() {
+        contextRunner
+                .withPropertyValues(
+                        "workflow.document-analysis.enabled=false",
+                        "workflow.document-analysis.content-understanding.auto-entry-analyzer-id="
+                                + "custom-analyzer",
+                        "workflow.document-analysis.content-understanding."
+                                + "auto-entry-completion-model-deployment-name=completion-deployment",
+                        "workflow.document-analysis.content-understanding."
+                                + "auto-entry-embedding-model-deployment-name=embedding-deployment")
+                .run(context -> {
+                    DocumentAnalysisProperties.Provider contentUnderstanding = context
+                            .getBean(DocumentAnalysisProperties.class)
+                            .contentUnderstanding();
+                    assertThat(contentUnderstanding.autoEntryAnalyzerId()).isEqualTo("custom-analyzer");
+                    assertThat(contentUnderstanding.autoEntryCompletionModelDeploymentName())
+                            .isEqualTo("completion-deployment");
+                    assertThat(contentUnderstanding.autoEntryEmbeddingModelDeploymentName())
+                            .isEqualTo("embedding-deployment");
+                });
+    }
+
+    @Test
+    void contentUnderstandingAutoEntrySettingsHaveSafeDefaults() {
+        contextRunner
+                .withPropertyValues("workflow.document-analysis.enabled=false")
+                .run(context -> {
+                    DocumentAnalysisProperties.Provider contentUnderstanding = context
+                            .getBean(DocumentAnalysisProperties.class)
+                            .contentUnderstanding();
+                    assertThat(contentUnderstanding.autoEntryAnalyzerId())
+                            .isEqualTo("enterprise_workflow_auto_entry_v2.1");
+                    assertThat(contentUnderstanding.autoEntryCompletionModelDeploymentName())
+                            .isEqualTo("auto-entry-gpt-5-2");
+                    assertThat(contentUnderstanding.autoEntryEmbeddingModelDeploymentName())
+                            .isEqualTo("auto-entry-text-embedding-3-large");
+                });
+    }
+
+    @Test
     void enabledAcceptsConnectionString() {
         contextRunner
                 .withPropertyValues(

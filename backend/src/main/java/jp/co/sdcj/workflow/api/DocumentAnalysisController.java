@@ -27,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import jp.co.sdcj.workflow.domain.AppUser;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisService;
@@ -53,11 +54,12 @@ public class DocumentAnalysisController {
     @PreAuthorize("@permissionAuthorizer.hasAnyPermission(authentication, 'DOCUMENT_INTELLIGENCE_ANALYZE', 'CONTENT_UNDERSTANDING_ANALYZE')")
     public ResponseEntity<DocumentAnalysisResponse> create(
             @RequestPart("provider") String provider,
+            @RequestPart(value = "profile", required = false) String profile,
             @RequestPart(value = "file", required = false) MultipartFile file,
             Authentication authentication) {
         AppUser user = current(authentication);
         DocumentAnalysisResponse response = DocumentAnalysisResponse.from(
-                service.create(parseProvider(provider), file, user));
+                service.create(parseProvider(provider), parseProfile(profile), file, user));
         return ResponseEntity.accepted()
                 .location(ServletUriComponentsBuilder.fromCurrentRequest()
                         .path("/{analysisId}")
@@ -70,10 +72,12 @@ public class DocumentAnalysisController {
     @PreAuthorize("@permissionAuthorizer.hasPermission(authentication, 'DOCUMENT_ANALYSIS_READ_OWN')")
     public PageResponse<DocumentAnalysisResponse> mine(
             @RequestParam(required = false) DocumentAnalysisProviderType provider,
+            @RequestParam(required = false) String profile,
             @PageableDefault(size = 20) Pageable pageable,
             Authentication authentication) {
         return PageResponse.from(service.listMine(
                 provider,
+                parseProfile(profile),
                 current(authentication),
                 bounded(pageable)).map(DocumentAnalysisResponse::from));
     }
@@ -82,17 +86,20 @@ public class DocumentAnalysisController {
     @PreAuthorize("@permissionAuthorizer.hasPermission(authentication, 'DOCUMENT_ANALYSIS_READ_OWN')")
     public DocumentAnalysisResponse get(
             @PathVariable UUID analysisId,
+            @RequestParam(required = false) String profile,
             Authentication authentication) {
-        return DocumentAnalysisResponse.from(service.getMine(analysisId, current(authentication)));
+        return DocumentAnalysisResponse.from(service.getMine(
+                analysisId, parseProfile(profile), current(authentication)));
     }
 
     @GetMapping("/{analysisId}/source")
     @PreAuthorize("@permissionAuthorizer.hasPermission(authentication, 'DOCUMENT_ANALYSIS_READ_OWN')")
     public ResponseEntity<InputStreamResource> source(
             @PathVariable UUID analysisId,
+            @RequestParam(required = false) String profile,
             Authentication authentication) {
         OpenedDocumentAnalysisContent opened = service.openSource(
-                analysisId, current(authentication));
+                analysisId, parseProfile(profile), current(authentication));
         ContentDisposition disposition = ContentDisposition
                 .builder("inline")
                 .filename(opened.fileName(), StandardCharsets.UTF_8)
@@ -108,16 +115,19 @@ public class DocumentAnalysisController {
     @PreAuthorize("@permissionAuthorizer.hasPermission(authentication, 'DOCUMENT_ANALYSIS_READ_OWN')")
     public ResponseEntity<InputStreamResource> view(
             @PathVariable UUID analysisId,
+            @RequestParam(required = false) String profile,
             Authentication authentication) {
-        return json(service.openView(analysisId, current(authentication)));
+        return json(service.openView(analysisId, parseProfile(profile), current(authentication)));
     }
 
     @GetMapping("/{analysisId}/raw-result")
     @PreAuthorize("@permissionAuthorizer.hasPermission(authentication, 'DOCUMENT_ANALYSIS_READ_OWN')")
     public ResponseEntity<InputStreamResource> rawResult(
             @PathVariable UUID analysisId,
+            @RequestParam(required = false) String profile,
             Authentication authentication) {
-        return json(service.openRawResult(analysisId, current(authentication)));
+        return json(service.openRawResult(
+                analysisId, parseProfile(profile), current(authentication)));
     }
 
     private ResponseEntity<InputStreamResource> json(OpenedDocumentAnalysisContent opened) {
@@ -145,6 +155,20 @@ public class DocumentAnalysisController {
                     HttpStatus.BAD_REQUEST,
                     "DOCUMENT_ANALYSIS_PROVIDER_REQUIRED",
                     "分析Providerを指定してください。");
+        }
+    }
+
+    private static DocumentAnalysisProfile parseProfile(String profile) {
+        if (profile == null || profile.isBlank()) {
+            return DocumentAnalysisProfile.GENERAL;
+        }
+        try {
+            return DocumentAnalysisProfile.valueOf(profile);
+        } catch (RuntimeException exception) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "DOCUMENT_ANALYSIS_PROFILE_INVALID",
+                    "分析Profileが不正です。");
         }
     }
 

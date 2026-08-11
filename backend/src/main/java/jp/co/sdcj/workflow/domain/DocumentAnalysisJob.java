@@ -42,6 +42,16 @@ public class DocumentAnalysisJob extends AuditedEntity {
     @Column(name = "provider_api_version", nullable = false, length = 50)
     private String providerApiVersion;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_profile", nullable = false, length = 40)
+    private DocumentAnalysisProfile analysisProfile;
+
+    @Column(name = "completion_model_deployment_name", length = 200)
+    private String completionModelDeploymentName;
+
+    @Column(name = "embedding_model_deployment_name", length = 200)
+    private String embeddingModelDeploymentName;
+
     @Column(name = "normalized_schema_version", nullable = false)
     private int normalizedSchemaVersion;
 
@@ -114,6 +124,42 @@ public class DocumentAnalysisJob extends AuditedEntity {
             int normalizedSchemaVersion,
             Instant expiresAt,
             UUID auditUserId) {
+        this(
+                id,
+                provider,
+                DocumentAnalysisProfile.GENERAL,
+                requestedByUserId,
+                originalFileName,
+                contentType,
+                fileSize,
+                sha256,
+                inputObjectName,
+                modelId,
+                providerApiVersion,
+                null,
+                null,
+                normalizedSchemaVersion,
+                expiresAt,
+                auditUserId);
+    }
+
+    public DocumentAnalysisJob(
+            UUID id,
+            DocumentAnalysisProviderType provider,
+            DocumentAnalysisProfile analysisProfile,
+            UUID requestedByUserId,
+            String originalFileName,
+            String contentType,
+            long fileSize,
+            String sha256,
+            String inputObjectName,
+            String modelId,
+            String providerApiVersion,
+            String completionModelDeploymentName,
+            String embeddingModelDeploymentName,
+            int normalizedSchemaVersion,
+            Instant expiresAt,
+            UUID auditUserId) {
         super(id, auditUserId);
         this.provider = Objects.requireNonNull(provider, "provider");
         this.requestedByUserId = Objects.requireNonNull(requestedByUserId, "requestedByUserId");
@@ -127,6 +173,12 @@ public class DocumentAnalysisJob extends AuditedEntity {
         this.inputObjectName = required(inputObjectName, "inputObjectName");
         this.modelId = required(modelId, "modelId");
         this.providerApiVersion = required(providerApiVersion, "providerApiVersion");
+        this.analysisProfile = Objects.requireNonNull(analysisProfile, "analysisProfile");
+        this.completionModelDeploymentName = deploymentName(
+                completionModelDeploymentName, "completionModelDeploymentName");
+        this.embeddingModelDeploymentName = deploymentName(
+                embeddingModelDeploymentName, "embeddingModelDeploymentName");
+        validateProfileSnapshot();
         if (normalizedSchemaVersion < 1) {
             throw new IllegalArgumentException("normalizedSchemaVersion must be at least 1");
         }
@@ -149,6 +201,25 @@ public class DocumentAnalysisJob extends AuditedEntity {
             throw new IllegalArgumentException("sha256 must be 64 lowercase hexadecimal characters");
         }
         return requiredValue;
+    }
+
+    private static String deploymentName(String value, String name) {
+        return value == null ? null : required(value, name);
+    }
+
+    private void validateProfileSnapshot() {
+        if (analysisProfile == DocumentAnalysisProfile.GENERAL
+                && (completionModelDeploymentName != null || embeddingModelDeploymentName != null)) {
+            throw new IllegalArgumentException(
+                    "GENERAL jobs must not have model deployment snapshots");
+        }
+        if (analysisProfile == DocumentAnalysisProfile.AUTO_ENTRY
+                && (provider != DocumentAnalysisProviderType.CONTENT_UNDERSTANDING
+                || completionModelDeploymentName == null
+                || embeddingModelDeploymentName == null)) {
+            throw new IllegalArgumentException(
+                    "AUTO_ENTRY jobs require Content Understanding model deployment snapshots");
+        }
     }
 
     public void claim(Instant now, java.time.Duration processingTimeout) {
@@ -260,6 +331,9 @@ public class DocumentAnalysisJob extends AuditedEntity {
     public DocumentAnalysisProviderType getProvider() { return provider; }
     public String getModelId() { return modelId; }
     public String getProviderApiVersion() { return providerApiVersion; }
+    public DocumentAnalysisProfile getAnalysisProfile() { return analysisProfile; }
+    public String getCompletionModelDeploymentName() { return completionModelDeploymentName; }
+    public String getEmbeddingModelDeploymentName() { return embeddingModelDeploymentName; }
     public int getNormalizedSchemaVersion() { return normalizedSchemaVersion; }
     public DocumentAnalysisStatus getStatus() { return status; }
     public UUID getRequestedByUserId() { return requestedByUserId; }

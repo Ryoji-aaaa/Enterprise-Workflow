@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
 import jp.co.sdcj.workflow.domain.SystemUser;
@@ -71,6 +72,33 @@ class DocumentAnalysisJobRepositoryIntegrationTest {
                 PageRequest.of(0, 10)).getContent())
                 .extracting(DocumentAnalysisJob::getId)
                 .containsExactly(newer.getId());
+    }
+
+    @Test
+    void historiesCanBeFilteredByProfile() throws Exception {
+        AppUser owner = saveUser("document.profile@sdcj.co.jp");
+        DocumentAnalysisJob general = repository.saveAndFlush(newJob(
+                owner.getId(), DocumentAnalysisProviderType.CONTENT_UNDERSTANDING));
+        Thread.sleep(5);
+        DocumentAnalysisJob autoEntry = repository.saveAndFlush(autoEntryJob(owner.getId()));
+
+        assertThat(repository
+                .findAllByRequestedByUserIdAndAnalysisProfileOrderByCreatedAtDescIdDesc(
+                        owner.getId(), DocumentAnalysisProfile.GENERAL, PageRequest.of(0, 10))
+                .getContent())
+                .extracting(DocumentAnalysisJob::getId)
+                .containsExactly(general.getId());
+        assertThat(repository
+                .findAllByRequestedByUserIdAndProviderAndAnalysisProfileOrderByCreatedAtDescIdDesc(
+                        owner.getId(),
+                        DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                        DocumentAnalysisProfile.AUTO_ENTRY,
+                        PageRequest.of(0, 10))
+                .getContent())
+                .extracting(DocumentAnalysisJob::getId)
+                .containsExactly(autoEntry.getId());
+        assertThat(repository.findByIdAndRequestedByUserIdAndAnalysisProfile(
+                autoEntry.getId(), owner.getId(), DocumentAnalysisProfile.GENERAL)).isEmpty();
     }
 
     @Test
@@ -155,6 +183,27 @@ class DocumentAnalysisJobRepositoryIntegrationTest {
                 "2024-11-30",
                 1,
                 expiresAt,
+                SystemUser.ID);
+    }
+
+    private DocumentAnalysisJob autoEntryJob(UUID ownerId) {
+        UUID jobId = UUID.randomUUID();
+        return new DocumentAnalysisJob(
+                jobId,
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                ownerId,
+                "source.pdf",
+                "application/pdf",
+                100L,
+                SHA256,
+                DocumentAnalysisObjectNames.input(jobId),
+                "enterprise_workflow_auto_entry_v2.1",
+                "2025-11-01",
+                "auto-entry-gpt-5-2",
+                "auto-entry-text-embedding-3-large",
+                1,
+                NOW.plus(7, ChronoUnit.DAYS),
                 SystemUser.ID);
     }
 }

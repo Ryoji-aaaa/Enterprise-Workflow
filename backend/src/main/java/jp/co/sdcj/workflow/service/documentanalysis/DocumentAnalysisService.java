@@ -21,6 +21,7 @@ import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.config.DocumentAnalysisProperties;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
@@ -80,7 +81,16 @@ public class DocumentAnalysisService {
             DocumentAnalysisProviderType provider,
             MultipartFile file,
             AppUser user) {
+        return create(provider, DocumentAnalysisProfile.GENERAL, file, user);
+    }
+
+    public DocumentAnalysisJob create(
+            DocumentAnalysisProviderType provider,
+            DocumentAnalysisProfile profile,
+            MultipartFile file,
+            AppUser user) {
         requireProvider(provider, user);
+        requireProfile(provider, profile);
         ValidatedDocumentAnalysisFile validated = fileInspector.inspect(file);
         UUID analysisId = UUID.randomUUID();
         String inputObjectName = DocumentAnalysisObjectNames.input(analysisId);
@@ -95,18 +105,21 @@ public class DocumentAnalysisService {
                 appUserRepository.findByIdForUpdate(user.getId())
                         .orElseThrow(() -> notFound());
                 enforceAbuseLimits(user);
-                DocumentAnalysisProperties.Provider providerConfig = providerConfig(provider);
+                DocumentAnalysisSnapshot snapshot = snapshot(provider, profile);
                 DocumentAnalysisJob job = new DocumentAnalysisJob(
                         analysisId,
                         provider,
+                        profile,
                         user.getId(),
                         validated.originalFileName(),
                         validated.contentType(),
                         validated.fileSize(),
                         validated.sha256(),
                         inputObjectName,
-                        providerConfig.modelId(),
-                        providerConfig.apiVersion(),
+                        snapshot.modelId(),
+                        snapshot.providerApiVersion(),
+                        snapshot.completionModelDeploymentName(),
+                        snapshot.embeddingModelDeploymentName(),
                         NORMALIZED_SCHEMA_VERSION,
                         Instant.now().plus(properties.retention()),
                         user.getId());
@@ -135,22 +148,45 @@ public class DocumentAnalysisService {
             DocumentAnalysisProviderType provider,
             AppUser user,
             Pageable pageable) {
+        return listMine(provider, DocumentAnalysisProfile.GENERAL, user, pageable);
+    }
+
+    public Page<DocumentAnalysisJob> listMine(
+            DocumentAnalysisProviderType provider,
+            DocumentAnalysisProfile profile,
+            AppUser user,
+            Pageable pageable) {
         return transactionTemplate.execute(status -> provider == null
-                ? jobRepository.findAllByRequestedByUserIdOrderByCreatedAtDescIdDesc(
-                        user.getId(), pageable)
-                : jobRepository.findAllByRequestedByUserIdAndProviderOrderByCreatedAtDescIdDesc(
-                        user.getId(), provider, pageable));
+                ? jobRepository.findAllByRequestedByUserIdAndAnalysisProfileOrderByCreatedAtDescIdDesc(
+                        user.getId(), profile, pageable)
+                : jobRepository
+                        .findAllByRequestedByUserIdAndProviderAndAnalysisProfileOrderByCreatedAtDescIdDesc(
+                                user.getId(), provider, profile, pageable));
     }
 
     public DocumentAnalysisJob getMine(UUID analysisId, AppUser user) {
+        return getMine(analysisId, DocumentAnalysisProfile.GENERAL, user);
+    }
+
+    public DocumentAnalysisJob getMine(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user) {
         return transactionTemplate.execute(status -> jobRepository
-                .findByIdAndRequestedByUserId(analysisId, user.getId())
+                .findByIdAndRequestedByUserIdAndAnalysisProfile(analysisId, user.getId(), profile)
                 .orElseThrow(() -> notFound()));
     }
 
     public OpenedDocumentAnalysisContent openSource(UUID analysisId, AppUser user) {
+        return openSource(analysisId, DocumentAnalysisProfile.GENERAL, user);
+    }
+
+    public OpenedDocumentAnalysisContent openSource(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user) {
         try {
-            DocumentAnalysisReadMetadata metadata = sourceMetadata(analysisId, user);
+            DocumentAnalysisReadMetadata metadata = sourceMetadata(analysisId, profile, user);
             StoredDocumentAnalysisContent content = storage.loadInput(metadata.objectName());
             if (content.length() != metadata.fileSize()) {
                 closeQuietly(content);
@@ -169,21 +205,46 @@ public class DocumentAnalysisService {
     }
 
     public OpenedDocumentAnalysisContent openView(UUID analysisId, AppUser user) {
-        return openResult(analysisId, user, "view", DocumentAnalysisJob::getNormalizedResultObjectName);
+        return openView(analysisId, DocumentAnalysisProfile.GENERAL, user);
+    }
+
+    public OpenedDocumentAnalysisContent openView(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user) {
+        return openResult(
+                analysisId,
+                profile,
+                user,
+                "view",
+                DocumentAnalysisJob::getNormalizedResultObjectName);
     }
 
     public OpenedDocumentAnalysisContent openRawResult(UUID analysisId, AppUser user) {
-        return openResult(analysisId, user, "raw", DocumentAnalysisJob::getRawResultObjectName);
+        return openRawResult(analysisId, DocumentAnalysisProfile.GENERAL, user);
+    }
+
+    public OpenedDocumentAnalysisContent openRawResult(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user) {
+        return openResult(
+                analysisId,
+                profile,
+                user,
+                "raw",
+                DocumentAnalysisJob::getRawResultObjectName);
     }
 
     private OpenedDocumentAnalysisContent openResult(
             UUID analysisId,
+            DocumentAnalysisProfile profile,
             AppUser user,
             String resultKind,
             java.util.function.Function<DocumentAnalysisJob, String> objectName) {
         try {
             DocumentAnalysisReadMetadata metadata = resultMetadata(
-                    analysisId, user, resultKind, objectName);
+                    analysisId, profile, user, resultKind, objectName);
             StoredDocumentAnalysisContent content = storage.loadResult(metadata.objectName());
             if (!JSON_CONTENT_TYPE.equalsIgnoreCase(content.contentType())) {
                 closeQuietly(content);
@@ -201,9 +262,12 @@ public class DocumentAnalysisService {
         }
     }
 
-    private DocumentAnalysisReadMetadata sourceMetadata(UUID analysisId, AppUser user) {
+    private DocumentAnalysisReadMetadata sourceMetadata(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user) {
         DocumentAnalysisReadMetadata metadata = transactionTemplate.execute(status -> {
-            DocumentAnalysisJob job = ownUnexpired(analysisId, user);
+            DocumentAnalysisJob job = ownUnexpired(analysisId, profile, user);
             return DocumentAnalysisReadMetadata.source(job);
         });
         if (metadata == null) {
@@ -214,11 +278,12 @@ public class DocumentAnalysisService {
 
     private DocumentAnalysisReadMetadata resultMetadata(
             UUID analysisId,
+            DocumentAnalysisProfile profile,
             AppUser user,
             String resultKind,
             java.util.function.Function<DocumentAnalysisJob, String> objectName) {
         DocumentAnalysisReadMetadata metadata = transactionTemplate.execute(status -> {
-            DocumentAnalysisJob job = ownUnexpired(analysisId, user);
+            DocumentAnalysisJob job = ownUnexpired(analysisId, profile, user);
             if (job.getStatus() != DocumentAnalysisStatus.SUCCEEDED) {
                 throw new ApiException(
                         HttpStatus.CONFLICT,
@@ -233,9 +298,12 @@ public class DocumentAnalysisService {
         return metadata;
     }
 
-    private DocumentAnalysisJob ownUnexpired(UUID analysisId, AppUser user) {
+    private DocumentAnalysisJob ownUnexpired(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user) {
         DocumentAnalysisJob job = jobRepository
-                .findByIdAndRequestedByUserId(analysisId, user.getId())
+                .findByIdAndRequestedByUserIdAndAnalysisProfile(analysisId, user.getId(), profile)
                 .orElseThrow(() -> notFound());
         if (!job.getExpiresAt().isAfter(Instant.now())) {
             throw new ApiException(
@@ -300,6 +368,39 @@ public class DocumentAnalysisService {
         };
     }
 
+    private DocumentAnalysisSnapshot snapshot(
+            DocumentAnalysisProviderType provider,
+            DocumentAnalysisProfile profile) {
+        DocumentAnalysisProperties.Provider providerConfig = providerConfig(provider);
+        if (profile == DocumentAnalysisProfile.GENERAL) {
+            return new DocumentAnalysisSnapshot(
+                    providerConfig.modelId(), providerConfig.apiVersion(), null, null);
+        }
+        return new DocumentAnalysisSnapshot(
+                providerConfig.autoEntryAnalyzerId(),
+                providerConfig.apiVersion(),
+                providerConfig.autoEntryCompletionModelDeploymentName(),
+                providerConfig.autoEntryEmbeddingModelDeploymentName());
+    }
+
+    private static void requireProfile(
+            DocumentAnalysisProviderType provider,
+            DocumentAnalysisProfile profile) {
+        if (profile == null) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "DOCUMENT_ANALYSIS_PROFILE_INVALID",
+                    "分析Profileが不正です。");
+        }
+        if (profile == DocumentAnalysisProfile.AUTO_ENTRY
+                && provider != DocumentAnalysisProviderType.CONTENT_UNDERSTANDING) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "DOCUMENT_ANALYSIS_PROFILE_PROVIDER_INVALID",
+                    "AUTO_ENTRYはContent Understandingでのみ利用できます。");
+        }
+    }
+
     private void enforceAbuseLimits(AppUser user) {
         long active = jobRepository.countByRequestedByUserIdAndStatusIn(
                 user.getId(), ACTIVE_STATUSES);
@@ -331,6 +432,7 @@ public class DocumentAnalysisService {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("analysisId", job.getId());
         data.put("provider", job.getProvider());
+        data.put("profile", job.getAnalysisProfile());
         data.put("contentType", job.getContentType());
         data.put("fileSize", job.getFileSize());
         data.put("sha256", job.getSha256());
@@ -357,6 +459,13 @@ public class DocumentAnalysisService {
         } catch (IOException ignored) {
             // The storage validation failure is the primary failure.
         }
+    }
+
+    private record DocumentAnalysisSnapshot(
+            String modelId,
+            String providerApiVersion,
+            String completionModelDeploymentName,
+            String embeddingModelDeploymentName) {
     }
 
     private record DocumentAnalysisReadMetadata(

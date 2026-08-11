@@ -26,6 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 import jp.co.sdcj.workflow.config.ContentUnderstandingConfiguration;
 import jp.co.sdcj.workflow.config.DocumentAnalysisProperties;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProvider;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderException;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRequest;
@@ -145,8 +146,22 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
                     null,
                     null);
         }
+        if (request.analysisProfile() == DocumentAnalysisProfile.AUTO_ENTRY
+                && (!hasText(request.completionModelDeploymentName())
+                || !hasText(request.embeddingModelDeploymentName()))) {
+            throw providerException(
+                    CONFIGURATION_ERROR,
+                    "Content Understanding configuration is invalid.",
+                    false,
+                    null,
+                    null);
+        }
         ContentUnderstandingConfiguration.requireSupportedApiVersion(
                 properties.contentUnderstanding().apiVersion());
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private void validateResult(
