@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCurrentUser } from "@/components/workspace/current-user-context";
 import type { CurrentUser } from "@/lib/backend-api";
@@ -79,7 +78,7 @@ export default function AdminUsersPage() {
             <h1 className="flex items-center gap-2 text-2xl font-semibold"><Users className="size-6 text-primary" />ユーザー管理</h1>
             <p className="mt-1 text-sm text-muted-foreground">ユーザーの状態、所属、役職、ロールを管理します。</p>
           </div>
-          <Button render={<Link href="/top" />} variant="outline">トップへ戻る</Button>
+          <LinkButton href="/top" variant="outline">トップへ戻る</LinkButton>
         </div>
         {error && <Card><CardContent className="text-destructive">{error}</CardContent></Card>}
         {!error && !users && <Card><CardContent>ユーザーを読み込んでいます…</CardContent></Card>}
@@ -103,7 +102,7 @@ export default function AdminUsersPage() {
                             : "未所属"}
                         </td>
                         <td className="p-3">
-                          {canUpdate ? <Button render={<Link href={`/admin/users/${user.id}/edit`} />} variant="outline">編集</Button> : <span className="text-muted-foreground">参照のみ</span>}
+                          {canUpdate ? <LinkButton href={`/admin/users/${user.id}/edit`} variant="outline">編集</LinkButton> : <span className="text-muted-foreground">参照のみ</span>}
                         </td>
                       </tr>
                     ))}

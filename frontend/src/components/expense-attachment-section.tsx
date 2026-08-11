@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Download, ExternalLink, Paperclip, Trash2, Upload } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { AnchorButton, Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
@@ -174,19 +174,21 @@ export function ExpenseAttachmentSection({
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {attachment.previewable ? (
-                      <Button
-                        render={<a href={contentPath} rel="noopener noreferrer" target="_blank" />}
+                      <AnchorButton
+                        href={contentPath}
+                        rel="noopener noreferrer"
+                        target="_blank"
                         variant="outline"
                       >
                         <ExternalLink />プレビュー
-                      </Button>
+                      </AnchorButton>
                     ) : null}
-                    <Button
-                      render={<a href={`${contentPath}?download=true`} />}
+                    <AnchorButton
+                      href={`${contentPath}?download=true`}
                       variant="outline"
                     >
                       <Download />ダウンロード
-                    </Button>
+                    </AnchorButton>
                     {editable && attachment.deletable ? (
                       <Button
                         disabled={processing}

@@ -1,12 +1,11 @@
 "use client";
 
 import { Bell, ChevronDown, CircleHelp, Search } from "lucide-react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { LogoutForm } from "@/components/logout-form";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { WorkflowLogo } from "@/components/workflow-logo";
@@ -41,22 +40,18 @@ export function WorkspaceHeader() {
           const Icon = item.icon;
           const active = isWorkspaceNavigationItemActive(pathname, item);
           return (
-            <Button
+            <LinkButton
               aria-label={item.label}
               className={cn(active && "bg-muted text-foreground")}
+              aria-current={active ? "page" : undefined}
+              href={item.href}
               key={item.href}
-              render={(
-                <Link
-                  aria-current={active ? "page" : undefined}
-                  href={item.href}
-                />
-              )}
               size="icon-lg"
               title={item.label}
               variant="ghost"
             >
               <Icon />
-            </Button>
+            </LinkButton>
           );
         })}
       </nav>
