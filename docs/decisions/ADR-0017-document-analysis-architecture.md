@@ -28,8 +28,9 @@ staleな`RUNNING`やProvider状態不明、result contract failureは`FAILED_REC
 
 Azure modeではDocument Analysis専用のAI User Assigned Managed IdentityとStorage User Assigned Managed
 Identityを使う。Document Intelligence、Foundry、Document Analysis StorageはPrivate EndpointとPrivate
-DNSでBackendからだけ到達させ、local auth、shared key、public network accessを無効にする。productionは
-staging検証が終わるまでfeature flagをfalseに保つ。
+DNSでBackendからだけ到達させ、local auth、shared key、public network accessを無効にする。Azure Providerの
+runtime controlはstaging検証が終わるまで無効にし、正式提供後もoperational kill switchとして維持する。
+Frontendの公開可否には使用しない。
 
 ## Rationale
 

@@ -27,8 +27,6 @@ const currentUser: CurrentUser = {
   ],
   features: {
     mailNotificationHistory: true,
-    documentIntelligence: true,
-    contentUnderstanding: true,
   },
 };
 
@@ -117,27 +115,13 @@ test("送付済メール一覧は機能フラグとDB権限の両方を満たす
   }).some((value) => value.href === "/admin/mail-notifications"), false);
 });
 
-test("Document Analysisは機能フラグとDB権限の両方を満たす場合だけ表示する", () => {
+test("Document AnalysisはProviderごとのDB権限を満たす場合だけ表示する", () => {
   assert.equal(getVisibleWorkspaceNavigationItems(currentUser).some((value) => value.href === "/document-intelligence"), true);
   assert.equal(getVisibleWorkspaceNavigationItems(currentUser).some((value) => value.href === "/content-understanding"), true);
   assert.equal(getVisibleWorkspaceNavigationItems({
     ...currentUser,
-    features: {
-      ...currentUser.features,
-      documentIntelligence: false,
-    },
-  }).some((value) => value.href === "/document-intelligence"), false);
-  assert.equal(getVisibleWorkspaceNavigationItems({
-    ...currentUser,
     permissions: currentUser.permissions.filter((value) => value !== "DOCUMENT_INTELLIGENCE_ANALYZE"),
   }).some((value) => value.href === "/document-intelligence"), false);
-  assert.equal(getVisibleWorkspaceNavigationItems({
-    ...currentUser,
-    features: {
-      ...currentUser.features,
-      contentUnderstanding: false,
-    },
-  }).some((value) => value.href === "/content-understanding"), false);
   assert.equal(getVisibleWorkspaceNavigationItems({
     ...currentUser,
     permissions: currentUser.permissions.filter((value) => value !== "CONTENT_UNDERSTANDING_ANALYZE"),

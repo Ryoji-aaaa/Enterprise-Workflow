@@ -265,7 +265,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V011__create_notification_outbox.sql',
     'V012__backfill_access_request_notification_queue.sql',
     'V013__add_mail_notification_read_permission.sql',
-    'V014__create_document_analysis_schema.sql'
+    'V014__create_document_analysis_schema.sql',
+    'V015__promote_document_analysis_to_application_user.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -274,9 +275,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "14:14" ]] || {
+  [[ "${migration_summary}" == "15:15" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "14 total migrations:14 successful checksummed migrations" "${migration_summary}"
+      "15 total migrations:15 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(
@@ -336,9 +337,9 @@ SELECT
       AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP));
 SQL
   )"
-  [[ "${development_organization_summary}" == "69:39:7:71:185" ]] || {
+  [[ "${development_organization_summary}" == "69:39:7:71:184" ]] || {
     fail_check "Development organization seed data does not match." \
-      "users:units:positions:assignments:roles = 69:39:7:71:185" \
+      "users:units:positions:assignments:roles = 69:39:7:71:184" \
       "${development_organization_summary}"
   }
 

@@ -18,8 +18,6 @@ export type CurrentUser = {
   permissions: string[];
   features: {
     mailNotificationHistory: boolean;
-    documentIntelligence: boolean;
-    contentUnderstanding: boolean;
   };
 };
 
@@ -35,13 +33,11 @@ export function canViewMailNotificationHistory(user: CurrentUser): boolean {
 }
 
 export function canUseDocumentIntelligence(user: CurrentUser): boolean {
-  return user.features?.documentIntelligence === true
-    && user.permissions.includes("DOCUMENT_INTELLIGENCE_ANALYZE");
+  return user.permissions.includes("DOCUMENT_INTELLIGENCE_ANALYZE");
 }
 
 export function canUseContentUnderstanding(user: CurrentUser): boolean {
-  return user.features?.contentUnderstanding === true
-    && user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE");
+  return user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE");
 }
 
 export type BackendApiResult =

@@ -73,9 +73,10 @@ BackendからのAzure AI/Blob呼び出しはPrivate Endpoint経由で行い、Br
 通信する。
 
 Document Analysis runtimeは`WORKFLOW_DOCUMENT_ANALYSIS_ENABLED`、`DOCUMENT_INTELLIGENCE_ENABLED`、
-`CONTENT_UNDERSTANDING_ENABLED`で有効化する。productionではPlan7導入だけでruntimeを有効化せず、
-stagingのDocument Intelligence、Content Understanding、Private DNS、RBAC、cost、retention確認後に
-明示的に切り替える。
+`CONTENT_UNDERSTANDING_ENABLED`で有効化する。これらはFrontend公開用Feature Flagではなく、全体または
+Providerを運用上停止するruntime controlである。通常提供時は3つを有効にし、
+`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`とする。stagingのDocument Intelligence、Content
+Understanding、Private DNS、RBAC、cost、retention確認前には有効化しない。
 application retention cleanupはBackendの既定値で1時間ごと、最大50件ずつ実行し、期限切れJobの
 input/result Blobだけを削除してPostgreSQL metadataを`EXPIRED`として残す。Azure Storageの7日soft
 deleteは誤削除復旧windowであり、application retentionの代替ではない。

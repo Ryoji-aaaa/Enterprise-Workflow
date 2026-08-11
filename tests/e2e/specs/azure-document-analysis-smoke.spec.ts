@@ -93,16 +93,25 @@ async function requireDocumentAnalysisCapabilities(page: Page): Promise<void> {
   requireCondition(response.status() === 200, "Document Analysis capabilities request failed.");
   const user = (await response.json()) as {
     permissions?: string[];
-    features?: { documentIntelligence?: boolean; contentUnderstanding?: boolean };
+    roles?: string[];
+    features?: Record<string, unknown>;
   };
   requireCondition(
-    user.features?.documentIntelligence === true && user.features.contentUnderstanding === true,
-    "Document Analysis capabilities are not enabled.",
+    user.roles?.includes("APPLICATION_USER")
+      && !user.roles.includes("DOCUMENT_ANALYSIS_USER"),
+    "The smoke user must use APPLICATION_USER without the retired Document Analysis role.",
   );
   requireCondition(
-    user.permissions?.includes("DOCUMENT_INTELLIGENCE_ANALYZE")
+    user.permissions?.includes("DOCUMENT_ANALYSIS_READ_OWN")
+      && user.permissions.includes("DOCUMENT_INTELLIGENCE_ANALYZE")
       && user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE"),
     "Document Analysis permissions are unavailable.",
+  );
+  requireCondition(
+    user.features !== undefined
+      && !("documentIntelligence" in user.features)
+      && !("contentUnderstanding" in user.features),
+    "Document Analysis must not be exposed as a feature flag.",
   );
 }
 

@@ -10,17 +10,21 @@ BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。すべ
 Next.js BFFの`/api/backend/document-analyses...`を経由し、BFFがSpring Bootの
 `/api/document-analyses...`へ転送する。
 
-## Featureと権限
+## 正式機能と権限
 
-メニュー表示と直接URL表示は、`/api/backend/me`のfeature flagとDB Permissionの両方で制御する。
+Document IntelligenceとContent Understandingは正式機能である。メニュー表示と直接URL表示は、
+`/api/backend/me`のDB Permissionだけで制御する。
 
-| 画面 | Feature | Permission |
-| --- | --- | --- |
-| Document Intelligence | `features.documentIntelligence` | `DOCUMENT_INTELLIGENCE_ANALYZE` |
-| Content Understanding | `features.contentUnderstanding` | `CONTENT_UNDERSTANDING_ANALYZE` |
+| 画面 | Permission |
+| --- | --- |
+| Document Intelligence | `DOCUMENT_INTELLIGENCE_ANALYZE` |
+| Content Understanding | `CONTENT_UNDERSTANDING_ANALYZE` |
 
-どちらか一方でも不足する場合はメニューへ表示せず、直接URLを開いてもWorkbenchを操作可能状態で
-表示しない。この制御はUX目的であり、Backend APIの認可が最終防御である。
+対象Permissionが不足する場合はメニューへ表示せず、直接URLを開いてもWorkbenchを操作可能状態で
+表示しない。この制御はUX目的であり、Backend APIの認可が最終防御である。Azure Providerのruntime
+enablementや全体kill switchはFrontend公開判定に使用しない。
+`CurrentUser.features`の仕組み自体は将来の未公開機能に備えて維持し、現在は
+`mailNotificationHistory`だけを受け取る。
 
 ## BFF
 
@@ -96,6 +100,6 @@ SASはBrowserへ渡さない。
 Document IntelligenceとContent Understandingの両方を処理できる。Fake Providerは外部networkへ
 接続せず、Raw resultに`source=backend-fake-provider`を含む。
 
-staging/productionでは後続工程までDocument Analysis featureが無効であるため、
-`features.documentIntelligence=false`、`features.contentUnderstanding=false`となり、メニューは
-表示されない。
+staging/productionでも`APPLICATION_USER`のPermissionにより両メニューを表示する。通常提供時のBackendは
+`execution-mode=azure`を使用する。運用上runtimeを停止した場合も正式機能としてのメニューは維持し、
+Backendの安全なエラーを表示する。
