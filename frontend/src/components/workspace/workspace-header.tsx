@@ -6,6 +6,11 @@ import { usePathname } from "next/navigation";
 import { LogoutForm } from "@/components/logout-form";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, LinkButton } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { WorkflowLogo } from "@/components/workflow-logo";
@@ -88,22 +93,50 @@ export function WorkspaceHeader() {
           className="mx-1 hidden h-7 sm:block"
           orientation="vertical"
         />
-        <div className="flex min-w-0 items-center gap-2 rounded-lg py-1 pl-1 pr-2">
-          <Avatar>
-            <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="hidden min-w-0 text-left sm:block">
-            <p className="max-w-36 truncate text-sm font-medium">
-              {user.displayName}
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              サンプル文字列２
-            </p>
-          </div>
-          <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`${user.displayName}のユーザー情報を表示`}
+            className="flex min-w-0 items-center gap-2 rounded-lg py-1 pl-1 pr-2 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <Avatar>
+              <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="hidden min-w-0 text-left sm:block">
+              <p className="max-w-36 truncate text-sm font-medium">
+                {user.displayName}
+              </p>
+              <p className="max-w-36 truncate text-[11px] text-muted-foreground">
+                {user.department?.name ?? "所属未設定"}
+              </p>
+            </div>
+            <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            aria-label="ユーザー情報"
+            className="w-80 p-3"
+          >
+            <div className="flex items-center gap-3">
+              <Avatar size="lg">
+                <AvatarFallback className="bg-primary/10 font-semibold text-primary">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{user.displayName}</p>
+                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              </div>
+            </div>
+            <div className="mt-3 border-t pt-3">
+              <p className="text-xs text-muted-foreground">所属部署</p>
+              <p className="mt-1 text-sm font-medium">
+                {user.department?.name ?? "所属未設定"}
+              </p>
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <LogoutForm compact />
       </div>
     </header>
