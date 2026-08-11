@@ -1,0 +1,876 @@
+{
+  "fixtureSchemaVersion": 1,
+  "analyzerId": "enterprise_workflow_auto_entry_v2.1",
+  "apiVersion": "2025-11-01",
+  "stringEncoding": "codePoint",
+  "warnings": [],
+  "contents": [
+    {
+      "fields": {
+        "DocumentType": {
+          "type": "string",
+          "valueString": "INVOICE",
+          "spans": [
+            {
+              "offset": 2,
+              "length": 3
+            },
+            {
+              "offset": 48,
+              "length": 15
+            },
+            {
+              "offset": 65,
+              "length": 2
+            },
+            {
+              "offset": 68,
+              "length": 7
+            },
+            {
+              "offset": 693,
+              "length": 2
+            },
+            {
+              "offset": 716,
+              "length": 6
+            }
+          ],
+          "confidence": 0.876,
+          "source": "D(1,479.0140,109.5190,636.5000,111.0047,635.9860,165.4810,478.5000,163.9953);D(1,406.0000,426.0000,700.0000,426.0000,700.0000,450.0000,406.0000,450.0000);D(1,352.0000,501.0000,427.0000,502.0000,427.0000,540.0000,352.0000,541.0000);D(1,620.0000,502.0000,767.3333,503.3394,766.9969,540.3363,619.6637,538.9969);D(1,697.0000,1073.0000,739.0000,1073.0000,739.0000,1095.0000,697.0000,1096.0000);D(1,845.0000,1075.0000,913.0000,1075.0000,913.0000,1096.0000,845.0000,1096.0000)"
+        },
+        "DocumentNumber": {
+          "type": "string",
+          "valueString": "001",
+          "spans": [
+            {
+              "offset": 26,
+              "length": 3
+            }
+          ],
+          "confidence": 0.988,
+          "source": "D(1,811.0000,233.0000,865.0000,233.0000,865.0000,255.0000,811.0000,255.0000)"
+        },
+        "IssueDate": {
+          "type": "date",
+          "valueDate": "2020-03-21",
+          "spans": [
+            {
+              "offset": 11,
+              "length": 10
+            }
+          ],
+          "confidence": 0.953,
+          "source": "D(1,813.0000,207.0000,1012.0000,207.0000,1012.0000,230.0000,813.0000,230.0000)"
+        },
+        "IssuerTaxRegistrationNumber": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "RecipientName": {
+          "type": "string",
+          "valueString": "あいうえお株式会社",
+          "spans": [
+            {
+              "offset": 34,
+              "length": 9
+            }
+          ],
+          "confidence": 0.927,
+          "source": "D(1,336.0000,312.0000,664.0000,312.0000,664.0000,353.0000,336.0000,353.0000)"
+        },
+        "RecipientDepartment": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "RecipientContactPerson": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "RecipientPostalCode": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "RecipientAddress": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "IssuerName": {
+          "type": "string",
+          "valueString": "かきくけこ商事株式会社",
+          "spans": [
+            {
+              "offset": 878,
+              "length": 11
+            }
+          ],
+          "confidence": 0.875,
+          "source": "D(1,159.0000,1262.0000,384.0000,1262.0000,384.0000,1284.0000,159.0000,1284.0000)"
+        },
+        "IssuerDepartment": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "IssuerContactPerson": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "IssuerPostalCode": {
+          "type": "string",
+          "valueString": "〒123-4567",
+          "spans": [
+            {
+              "offset": 890,
+              "length": 9
+            }
+          ],
+          "confidence": 0.857,
+          "source": "D(1,161.0000,1289.0000,339.0000,1289.0000,339.0000,1310.0000,161.0000,1310.0000)"
+        },
+        "IssuerAddress": {
+          "type": "string",
+          "valueString": "東京都中央区中央1-2-3",
+          "spans": [
+            {
+              "offset": 900,
+              "length": 13
+            }
+          ],
+          "confidence": 0.862,
+          "source": "D(1,160.0000,1315.0000,401.0000,1315.0000,401.0000,1338.0000,160.0000,1338.0000)"
+        },
+        "IssuerPhoneNumber": {
+          "type": "string",
+          "valueString": "03-3456-7890",
+          "spans": [
+            {
+              "offset": 921,
+              "length": 12
+            }
+          ],
+          "confidence": 0.922,
+          "source": "D(1,204.0000,1341.0000,420.0000,1341.0000,420.0000,1363.0000,204.0000,1363.0000)"
+        },
+        "IssuerEmail": {
+          "type": "string",
+          "valueString": "kaisya@kaisya.com",
+          "spans": [
+            {
+              "offset": 939,
+              "length": 17
+            }
+          ],
+          "confidence": 0.983,
+          "source": "D(1,246.0000,1369.0000,411.0000,1370.0000,411.0000,1391.0000,246.0000,1390.0000)"
+        },
+        "Subject": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "CurrencyCode": {
+          "type": "string",
+          "valueString": "JPY",
+          "spans": [
+            {
+              "offset": 65,
+              "length": 2
+            },
+            {
+              "offset": 68,
+              "length": 7
+            },
+            {
+              "offset": 161,
+              "length": 9
+            },
+            {
+              "offset": 180,
+              "length": 7
+            },
+            {
+              "offset": 605,
+              "length": 1
+            },
+            {
+              "offset": 705,
+              "length": 1
+            },
+            {
+              "offset": 745,
+              "length": 28
+            }
+          ],
+          "confidence": 0.875,
+          "source": "D(1,352.0000,501.0000,427.0000,502.0000,427.0000,540.0000,352.0000,541.0000);D(1,620.0000,502.0000,767.3333,503.3394,766.9969,540.3363,619.6637,538.9969);D(1,676.0000,721.0000,794.0000,721.0000,794.0000,742.0000,676.0000,742.0000);D(1,820.0000,722.0000,913.0000,722.0000,913.0000,742.0000,820.0000,742.0000);D(1,820.0000,995.0000,833.0000,995.0000,833.0000,1016.0000,820.0000,1016.0000);D(1,820.0000,1076.0000,833.0000,1075.0000,833.0000,1096.0000,820.0000,1097.0000);D(1,159.0000,1116.0000,717.0000,1116.0000,717.0000,1139.0000,159.0000,1139.0000)"
+        },
+        "LineItems": {
+          "type": "array",
+          "valueArray": [
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目1",
+                  "spans": [
+                    {
+                      "offset": 148,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.793,
+                  "source": "D(1,202.1877,717.6215,255.1908,720.5662,253.8400,744.8800,200.8369,741.9354)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 1,
+                  "spans": [
+                    {
+                      "offset": 161,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.563,
+                  "source": "D(1,676.0000,721.0000,684.0000,721.0000,684.0000,741.0000,676.0000,741.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 165,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.821,
+                  "source": "D(1,740.0000,722.0000,794.0000,722.0000,794.0000,742.0000,740.0000,742.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 182,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.856,
+                  "source": "D(1,860.0000,722.0000,913.0000,722.0000,913.0000,742.0000,860.0000,742.0000)"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目2",
+                  "spans": [
+                    {
+                      "offset": 208,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.851,
+                  "source": "D(1,203.0783,758.9645,256.8449,761.0325,255.9601,784.0369,202.1935,781.9690)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 2,
+                  "spans": [
+                    {
+                      "offset": 221,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.576,
+                  "source": "D(1,674.0000,762.0000,686.0000,762.0000,686.0000,782.0000,674.0000,782.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 225,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.856,
+                  "source": "D(1,740.0000,763.0000,796.0000,763.0000,796.0000,782.0000,740.0000,782.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 2000,
+                  "spans": [
+                    {
+                      "offset": 242,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.892,
+                  "source": "D(1,857.0000,763.0000,913.0000,763.0000,913.0000,782.0000,857.0000,782.0000)"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目3",
+                  "spans": [
+                    {
+                      "offset": 268,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.86,
+                  "source": "D(1,202.2412,795.8647,257.6059,800.1235,255.7588,824.1353,200.3941,819.8765)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 3,
+                  "spans": [
+                    {
+                      "offset": 281,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.674,
+                  "source": "D(1,674.0000,799.0000,687.0000,799.0000,687.0000,821.0000,674.0000,821.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 285,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.815,
+                  "source": "D(1,741.0000,799.0000,796.0000,800.0000,796.0000,821.0000,741.0000,820.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 3000,
+                  "spans": [
+                    {
+                      "offset": 302,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.823,
+                  "source": "D(1,857.0000,799.0000,913.0000,799.0000,913.0000,820.0000,857.0000,820.0000)"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目4",
+                  "spans": [
+                    {
+                      "offset": 328,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.822,
+                  "source": "D(1,202.0124,834.5409,256.5401,836.0146,255.9606,857.4584,201.4328,855.9847)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 4,
+                  "spans": [
+                    {
+                      "offset": 341,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.537,
+                  "source": "D(1,675.0000,838.0000,687.0000,838.0000,687.0000,858.0000,675.0000,858.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 348,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.808,
+                  "source": "D(1,741.0000,838.0000,796.0000,838.0000,796.0000,859.0000,741.0000,858.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 4000,
+                  "spans": [
+                    {
+                      "offset": 365,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.849,
+                  "source": "D(1,857.0000,839.0000,912.0000,838.0000,912.0000,858.0000,857.0000,859.0000)"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目5",
+                  "spans": [
+                    {
+                      "offset": 391,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.781,
+                  "source": "D(1,202.0000,876.0000,257.0000,876.0000,257.0000,897.0000,202.0000,897.0000)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 5,
+                  "spans": [
+                    {
+                      "offset": 404,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.537,
+                  "source": "D(1,675.0000,877.0000,688.0000,877.0000,688.0000,896.0000,675.0000,897.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 408,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.809,
+                  "source": "D(1,743.0000,878.0000,795.0000,877.0000,795.0000,897.0000,743.0000,897.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 5000,
+                  "spans": [
+                    {
+                      "offset": 425,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.84,
+                  "source": "D(1,857.0000,877.0000,913.0000,877.0000,913.0000,898.0000,857.0000,898.0000)"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目6",
+                  "spans": [
+                    {
+                      "offset": 451,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.795,
+                  "source": "D(1,202.0000,915.0000,257.0000,915.0000,257.0000,936.0000,202.0000,936.0000)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 6,
+                  "spans": [
+                    {
+                      "offset": 464,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.661,
+                  "source": "D(1,676.0000,916.0000,688.0000,916.0000,688.0000,936.0000,676.0000,936.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 471,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.808,
+                  "source": "D(1,741.0000,917.0000,796.0000,916.0000,796.0000,936.0000,741.0000,936.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 6000,
+                  "spans": [
+                    {
+                      "offset": 488,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.856,
+                  "source": "D(1,857.0000,916.0000,912.0000,916.0000,912.0000,937.0000,857.0000,937.0000)"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "valueObject": {
+                "ItemDate": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ProductCode": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "ItemDescription": {
+                  "type": "string",
+                  "valueString": "項目7",
+                  "spans": [
+                    {
+                      "offset": 514,
+                      "length": 3
+                    }
+                  ],
+                  "confidence": 0.731,
+                  "source": "D(1,202.0000,953.0000,256.0000,953.0000,256.0000,975.0000,202.0000,975.0000)"
+                },
+                "Quantity": {
+                  "type": "number",
+                  "valueNumber": 7,
+                  "spans": [
+                    {
+                      "offset": 527,
+                      "length": 1
+                    }
+                  ],
+                  "confidence": 0.583,
+                  "source": "D(1,674.0000,955.0000,686.0000,954.0000,686.0000,975.0000,674.0000,975.0000)"
+                },
+                "Unit": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "UnitPriceAmount": {
+                  "type": "number",
+                  "valueNumber": 1000,
+                  "spans": [
+                    {
+                      "offset": 531,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.823,
+                  "source": "D(1,741.0000,954.0000,796.0000,955.0000,796.0000,976.0000,741.0000,974.0000)"
+                },
+                "TaxIndicator": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "TaxRatePercent": {
+                  "type": "number",
+                  "confidence": 0.927
+                },
+                "TaxCategory": {
+                  "type": "string",
+                  "confidence": 0.856
+                },
+                "LineAmount": {
+                  "type": "number",
+                  "valueNumber": 7000,
+                  "spans": [
+                    {
+                      "offset": 548,
+                      "length": 5
+                    }
+                  ],
+                  "confidence": 0.822,
+                  "source": "D(1,857.0000,954.0000,913.0000,954.0000,913.0000,975.0000,857.0000,974.0000)"
+                }
+              }
+            }
+          ]
+        },
+        "SubtotalAmount": {
+          "type": "number",
+          "valueNumber": 28000,
+          "spans": [
+            {
+              "offset": 616,
+              "length": 6
+            }
+          ],
+          "confidence": 0.956,
+          "source": "D(1,845.0000,995.0000,913.0000,995.0000,913.0000,1016.0000,845.0000,1016.0000)"
+        },
+        "TaxAmount": {
+          "type": "number",
+          "valueNumber": 2800,
+          "spans": [
+            {
+              "offset": 667,
+              "length": 5
+            }
+          ],
+          "confidence": 0.959,
+          "source": "D(1,856.0000,1035.0000,913.0000,1035.0000,913.0000,1057.0000,856.0000,1057.0000)"
+        },
+        "TaxBreakdown": {
+          "type": "array"
+        },
+        "Adjustments": {
+          "type": "array"
+        },
+        "TotalAmount": {
+          "type": "number",
+          "valueNumber": 30800,
+          "spans": [
+            {
+              "offset": 716,
+              "length": 6
+            }
+          ],
+          "confidence": 0.957,
+          "source": "D(1,845.0000,1075.0000,913.0000,1075.0000,913.0000,1096.0000,845.0000,1096.0000)"
+        },
+        "TaxInclusionNotation": {
+          "type": "string",
+          "confidence": 0.837
+        },
+        "PaymentDueDate": {
+          "type": "date",
+          "valueDate": "2020-04-25",
+          "spans": [
+            {
+              "offset": 846,
+              "length": 10
+            }
+          ],
+          "confidence": 0.882,
+          "source": "D(1,281.0000,1216.0000,478.0000,1216.0000,478.0000,1238.0000,281.0000,1238.0000)"
+        },
+        "BankTransferDestination": {
+          "type": "object",
+          "valueObject": {
+            "BankName": {
+              "type": "string",
+              "valueString": "さしすせそ銀行",
+              "spans": [
+                {
+                  "offset": 749,
+                  "length": 7
+                }
+              ],
+              "confidence": 0.949,
+              "source": "D(1,235.0000,1116.0000,373.0000,1116.0000,373.0000,1139.0000,235.0000,1139.0000)"
+            },
+            "BranchName": {
+              "type": "string",
+              "valueString": "たちつて支店",
+              "spans": [
+                {
+                  "offset": 757,
+                  "length": 6
+                }
+              ],
+              "confidence": 0.958,
+              "source": "D(1,394.0000,1116.0000,515.0000,1116.0000,515.0000,1139.0000,394.0000,1139.0000)"
+            },
+            "AccountType": {
+              "type": "string",
+              "valueString": "普通",
+              "spans": [
+                {
+                  "offset": 764,
+                  "length": 2
+                }
+              ],
+              "confidence": 0.962,
+              "source": "D(1,535.0000,1116.0000,576.0000,1117.0000,576.0000,1139.0000,535.0000,1139.0000)"
+            },
+            "AccountNumber": {
+              "type": "string",
+              "valueString": "1234567",
+              "spans": [
+                {
+                  "offset": 766,
+                  "length": 7
+                }
+              ],
+              "confidence": 0.981,
+              "source": "D(1,583.0000,1117.0000,717.0000,1117.0000,717.0000,1139.0000,583.0000,1139.0000)"
+            },
+            "AccountHolderName": {
+              "type": "string",
+              "confidence": 0.614
+            }
+          }
+        }
+      },
+      "unit": "pixel",
+      "pages": [
+        {
+          "pageNumber": 1,
+          "width": 1195,
+          "height": 1533
+        }
+      ]
+    }
+  ]
+}

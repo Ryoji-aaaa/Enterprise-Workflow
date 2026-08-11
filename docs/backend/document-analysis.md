@@ -353,6 +353,22 @@ Bean登録条件は維持する。
 いずれもsecretではなく、stagingではTerraformが作成したdeployment名をBackendへ渡す。runtime controlの
 値はAzure model deployment resourceの作成有無を制御しない。
 
+## AUTO_ENTRY acceptance fixture
+
+`enterprise_workflow_auto_entry_v2.1` の受入基準は
+`backend/src/test/resources/document-analysis/auto-entry/v2.1/` に固定する。Analyzer definition は
+`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.json` が正本である。
+
+fixture は入力帳票、縮小済み Azure Content Understanding 結果、業務レビューの期待結果を対にして
+保持する。Azure の実行 ID、作成時刻、一時的な Analyzer ID、usage、およびページの words/lines は
+比較対象に含めない。一方で fields、confidence、source、spans、unit、ページ番号・寸法は、抽出と
+source polygon の回帰に必要なため保持する。Content Understanding の生成出力を byte-for-byte で
+比較せず、`expected/` に記録した帳票種別、税区分表記、業務上の検出結果を受入条件として評価する。
+
+帳票と Azure 結果には、再配布が許可された合成・匿名化済みデータだけを使用する。実取引情報、
+実在個人の連絡先、実銀行口座、credential、SAS、private Blob URL を fixture に追加してはならない。
+詳細な命名規則と追加時の確認事項は fixture の `README.md` を参照する。
+
 ## 監査
 
 成功時に次の監査を記録する。

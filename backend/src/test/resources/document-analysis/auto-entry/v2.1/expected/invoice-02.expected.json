@@ -1,0 +1,11 @@
+{
+  "fixtureSchemaVersion": 1,
+  "documentType": "INVOICE",
+  "requiredTaxBreakdownCategoryNotations": [
+    "軽減8%対象額",
+    "10%対象額"
+  ],
+  "expectedFindings": [
+    "TAX_BREAKDOWN_INCONSISTENT"
+  ]
+}

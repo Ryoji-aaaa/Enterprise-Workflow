@@ -1,0 +1,6 @@
+{
+  "fixtureSchemaVersion": 1,
+  "documentType": "INVOICE",
+  "requiredTaxBreakdownCategoryNotations": [],
+  "expectedFindings": []
+}

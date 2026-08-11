@@ -1,0 +1,9 @@
+{
+  "fixtureSchemaVersion": 1,
+  "documentType": "INVOICE",
+  "requiredTaxBreakdownCategoryNotations": [
+    "10%対象計",
+    "8%対象計(*)"
+  ],
+  "expectedFindings": []
+}
