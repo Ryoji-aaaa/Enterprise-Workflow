@@ -116,7 +116,7 @@ class DocumentAnalysisAzureSdkWireContractTest {
         assertThat(request.getHttpMethod()).isEqualTo(HttpMethod.POST);
         assertThat(request.getUrl().getPath()).isEqualTo(
                 "/contentunderstanding/analyzers/"
-                        + "enterprise_workflow_auto_entry_v2.1:analyze");
+                        + "enterprise_workflow_auto_entry_v2.1.1:analyze");
         assertThat(request.getUrl().getQuery())
                 .contains("api-version=2025-11-01")
                 .contains("stringEncoding=utf16")
@@ -158,7 +158,7 @@ class DocumentAnalysisAzureSdkWireContractTest {
         return new DocumentAnalysisProviderRequest(
                 UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
                 DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 DocumentAnalysisProperties.CONTENT_UNDERSTANDING_API_VERSION,
                 DocumentAnalysisProfile.AUTO_ENTRY,
                 "auto-entry-gpt-5-2",

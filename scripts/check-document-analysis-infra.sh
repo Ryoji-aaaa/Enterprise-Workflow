@@ -118,7 +118,7 @@ grep -Eq 'AZURE_DOCUMENT_ANALYSIS_CLIENT_ID[[:space:]]*=[[:space:]]*module.docum
 grep -Eq 'DOCUMENT_ANALYSIS_STORAGE_MANAGED_IDENTITY_CLIENT_ID[[:space:]]*=[[:space:]]*module.document_analysis_storage_identity.client_id' <<<"${backend_module_block}"
 grep -Eq 'DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS[[:space:]]*=[[:space:]]*"false"' <<<"${backend_module_block}"
 grep -Fq 'var.environment == "staging" ? {' <<<"${backend_module_block}"
-grep -Eq 'CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID[[:space:]]*=[[:space:]]*"enterprise_workflow_auto_entry_v2.1"' <<<"${backend_module_block}"
+grep -Eq 'CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID[[:space:]]*=[[:space:]]*"enterprise_workflow_auto_entry_v2.1.1"' <<<"${backend_module_block}"
 grep -Fq 'azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0].name' <<<"${backend_module_block}"
 grep -Fq 'azurerm_cognitive_deployment.content_understanding_auto_entry_embedding[0].name' <<<"${backend_module_block}"
 

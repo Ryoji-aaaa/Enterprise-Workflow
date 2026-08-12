@@ -35,7 +35,7 @@ Base pathは`/api/document-analyses`である。Controllerは
 credentialはBrowserから受け取らず、Backend設定から決定する。
 
 `GENERAL`はContent Understandingの`prebuilt-layout`を使う。`AUTO_ENTRY`はBackend設定の
-Custom Analyzer `enterprise_workflow_auto_entry_v2.1`をJobへsnapshotする。BrowserはAnalyzer ID、
+Custom Analyzer `enterprise_workflow_auto_entry_v2.1.1`をJobへsnapshotする。BrowserはAnalyzer ID、
 completion model deployment、embedding model deployment、API versionを指定または上書きできない。
 
 成功時は`202 Accepted`を返し、`GENERAL`の`Location`は既存互換の
@@ -264,7 +264,12 @@ beanとして生成し、Jobごとにclientを作らない。Service API version
 fallbackしない。
 
 `GENERAL`のAnalyzerは`prebuilt-layout`であり、`AUTO_ENTRY`のAnalyzerはBackend設定から
-`enterprise_workflow_auto_entry_v2.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
+`enterprise_workflow_auto_entry_v2.1.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
+`v2.1.1`は`v2.1`を履歴として保持したまま追加したAnalyzer patchであり、
+`TaxBreakdown`の同一税率別集計行・列・ブロック内での対応付けと
+`CategoryNotation`の原文抽出の安定性だけを改善する。field構造、型、enum、model、
+processing location、およびNormalized AUTO_ENTRY contractは変更しない。
+`CategoryNotation`を`Category`や金額から推測生成・補正・正規化しない。
 `AUTO_ENTRY`のcompletion/embedding deployment名もJobとProvider Requestへsnapshotし、SDKの
 `modelDeployments`へ`gpt-5.2: auto-entry-gpt-5-2`、
 `text-embedding-3-large: auto-entry-text-embedding-3-large`として渡す。Analyzer definitionの
@@ -441,7 +446,7 @@ workflow:
       model-id: prebuilt-layout
       api-version: 2025-11-01
       analysis-timeout: 25m
-      auto-entry-analyzer-id: enterprise_workflow_auto_entry_v2.1
+      auto-entry-analyzer-id: enterprise_workflow_auto_entry_v2.1.1
       auto-entry-completion-model-deployment-name: auto-entry-gpt-5-2
       auto-entry-embedding-model-deployment-name: auto-entry-text-embedding-3-large
 ```
@@ -473,11 +478,20 @@ Azure Analyzer、Provider request、保存済み抽出値には影響しない�
 
 ## AUTO_ENTRY acceptance fixture
 
-`enterprise_workflow_auto_entry_v2.1` の受入基準は
-`backend/src/test/resources/document-analysis/auto-entry/v2.1/` に固定する。Analyzer definition は
-`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.json` が正本である。
-`scripts/check-content-understanding-auto-entry-schema.sh`はJSON、Analyzer/model/config、field一覧、exact enum、
-`CategoryNotation`、`BankTransferDestination`、secret-like valueの不在を検証し、`make verify-infra`から実行する。
+Normalized AUTO_ENTRY v2.1の受入基準は
+`backend/src/test/resources/document-analysis/auto-entry/v2.1/` に固定する。この`v2.1`は
+`fields.autoEntry.schemaVersion="2.1"`を表すcontract versionであり、runtime Analyzerのpatch versionでは
+ない。Analyzerを`enterprise_workflow_auto_entry_v2.1.1`へ更新してもdirectoryをrenameしない。
+
+runtime Analyzer definitionの正本は
+`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.1.json`である。
+`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.json`は削除・上書きせず、履歴として保持する。
+`scripts/check-content-understanding-auto-entry-schema.sh`は新旧definitionのJSON、Analyzer/model/config、
+field構造、型、method、exact enum、processing locationを比較し、差分をAnalyzer IDと
+`TaxBreakdown`関連の3つのdescriptionだけに限定する。また、`CategoryNotation`が
+`method=extract`のままであること、旧definitionの不変性、新旧definitionにsecret-like valueが
+存在しないことを検証し、
+`make verify-infra`から実行する。
 
 fixture は入力帳票、縮小済み Azure Content Understanding 結果、業務レビューの期待結果を対にして
 保持する。Azure の実行 ID、作成時刻、一時的な Analyzer ID、usage、およびページの words/lines は

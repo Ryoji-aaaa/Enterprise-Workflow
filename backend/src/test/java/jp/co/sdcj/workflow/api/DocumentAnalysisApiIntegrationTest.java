@@ -216,7 +216,7 @@ class DocumentAnalysisApiIntegrationTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.profile").value("AUTO_ENTRY"))
                 .andExpect(jsonPath("$.modelId")
-                        .value("enterprise_workflow_auto_entry_v2.1"))
+                        .value("enterprise_workflow_auto_entry_v2.1.1"))
                 .andExpect(jsonPath("$.providerApiVersion").value("2025-11-01"))
                 .andReturn().getResponse().getContentAsString();
         UUID autoEntryId = UUID.fromString(JsonTestSupport.stringValue(autoEntryResponse, "id"));

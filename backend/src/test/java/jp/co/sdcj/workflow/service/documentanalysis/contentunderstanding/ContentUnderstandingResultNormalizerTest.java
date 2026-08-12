@@ -132,7 +132,7 @@ class ContentUnderstandingResultNormalizerTest {
     void normalizesAutoEntryPrimitiveNestedMissingAndSourceValues() throws Exception {
         AnalysisResult result = analysisResult("""
                 {
-                  "analyzerId": "enterprise_workflow_auto_entry_v2.1",
+                  "analyzerId": "enterprise_workflow_auto_entry_v2.1.1",
                   "apiVersion": "2025-11-01",
                   "stringEncoding": "utf16",
                   "contents": [
@@ -215,7 +215,7 @@ class ContentUnderstandingResultNormalizerTest {
     void normalizesJsonFieldsAsProviderNeutralSerializableValues() throws Exception {
         AnalysisResult result = analysisResult("""
                 {
-                  "analyzerId": "enterprise_workflow_auto_entry_v2.1",
+                  "analyzerId": "enterprise_workflow_auto_entry_v2.1.1",
                   "apiVersion": "2025-11-01",
                   "stringEncoding": "utf16",
                   "contents": [
@@ -348,7 +348,7 @@ class ContentUnderstandingResultNormalizerTest {
         return new ContentUnderstandingResultNormalizer().normalize(
                 ANALYSIS_ID,
                 DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 DocumentAnalysisProfile.AUTO_ENTRY,
                 result,

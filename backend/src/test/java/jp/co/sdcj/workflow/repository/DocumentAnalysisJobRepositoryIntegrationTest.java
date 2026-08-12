@@ -198,7 +198,7 @@ class DocumentAnalysisJobRepositoryIntegrationTest {
                 100L,
                 SHA256,
                 DocumentAnalysisObjectNames.input(jobId),
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 "auto-entry-gpt-5-2",
                 "auto-entry-text-embedding-3-large",

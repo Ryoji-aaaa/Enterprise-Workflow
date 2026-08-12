@@ -91,7 +91,7 @@ class DocumentAnalysisPropertiesTest {
                             .getBean(DocumentAnalysisProperties.class)
                             .contentUnderstanding();
                     assertThat(contentUnderstanding.autoEntryAnalyzerId())
-                            .isEqualTo("enterprise_workflow_auto_entry_v2.1");
+                            .isEqualTo("enterprise_workflow_auto_entry_v2.1.1");
                     assertThat(contentUnderstanding.autoEntryCompletionModelDeploymentName())
                             .isEqualTo("auto-entry-gpt-5-2");
                     assertThat(contentUnderstanding.autoEntryEmbeddingModelDeploymentName())
