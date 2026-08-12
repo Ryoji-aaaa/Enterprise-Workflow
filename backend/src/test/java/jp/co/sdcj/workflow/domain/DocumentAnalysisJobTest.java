@@ -45,7 +45,7 @@ class DocumentAnalysisJobTest {
                 10L,
                 SHA256,
                 "input/%s/source".formatted(JOB_ID),
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 "auto-entry-gpt-5-2",
                 "auto-entry-text-embedding-3-large",
@@ -54,7 +54,7 @@ class DocumentAnalysisJobTest {
                 AUDIT_USER_ID);
 
         assertThat(job.getAnalysisProfile()).isEqualTo(DocumentAnalysisProfile.AUTO_ENTRY);
-        assertThat(job.getModelId()).isEqualTo("enterprise_workflow_auto_entry_v2.1");
+        assertThat(job.getModelId()).isEqualTo("enterprise_workflow_auto_entry_v2.1.1");
         assertThat(job.getCompletionModelDeploymentName()).isEqualTo("auto-entry-gpt-5-2");
         assertThat(job.getEmbeddingModelDeploymentName())
                 .isEqualTo("auto-entry-text-embedding-3-large");
@@ -89,7 +89,7 @@ class DocumentAnalysisJobTest {
                 10L,
                 SHA256,
                 "input/%s/source".formatted(JOB_ID),
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 null,
                 "auto-entry-text-embedding-3-large",

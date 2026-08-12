@@ -236,6 +236,35 @@ public class DocumentAnalysisService {
                 DocumentAnalysisJob::getRawResultObjectName);
     }
 
+    public byte[] readAutoEntryView(UUID analysisId, AppUser user) {
+        try {
+            DocumentAnalysisReadMetadata metadata = resultMetadata(
+                    analysisId,
+                    DocumentAnalysisProfile.AUTO_ENTRY,
+                    user,
+                    "auto-entry-review",
+                    DocumentAnalysisJob::getNormalizedResultObjectName,
+                    DocumentAnalysisProviderType.CONTENT_UNDERSTANDING);
+            StoredDocumentAnalysisContent content = loadJsonResult(metadata);
+            byte[] bytes;
+            try (var stream = content.stream()) {
+                bytes = stream.readAllBytes();
+            }
+            if (bytes.length != content.length()) {
+                throw new DocumentAnalysisStorageException(
+                        new IllegalStateException("Stored result length mismatch"));
+            }
+            recordAccessAudit(
+                    user,
+                    "DOCUMENT_ANALYSIS_RESULT_ACCESSED",
+                    analysisId,
+                    metadata.auditData());
+            return bytes;
+        } catch (DocumentAnalysisStorageException | IOException exception) {
+            throw storageUnavailable();
+        }
+    }
+
     private OpenedDocumentAnalysisContent openResult(
             UUID analysisId,
             DocumentAnalysisProfile profile,
@@ -245,12 +274,7 @@ public class DocumentAnalysisService {
         try {
             DocumentAnalysisReadMetadata metadata = resultMetadata(
                     analysisId, profile, user, resultKind, objectName);
-            StoredDocumentAnalysisContent content = storage.loadResult(metadata.objectName());
-            if (!JSON_CONTENT_TYPE.equalsIgnoreCase(content.contentType())) {
-                closeQuietly(content);
-                throw new DocumentAnalysisStorageException(
-                        new IllegalStateException("Stored result content type mismatch"));
-            }
+            StoredDocumentAnalysisContent content = loadJsonResult(metadata);
             recordAccessAudit(
                     user,
                     "DOCUMENT_ANALYSIS_RESULT_ACCESSED",
@@ -282,8 +306,19 @@ public class DocumentAnalysisService {
             AppUser user,
             String resultKind,
             java.util.function.Function<DocumentAnalysisJob, String> objectName) {
+        return resultMetadata(analysisId, profile, user, resultKind, objectName, null);
+    }
+
+    private DocumentAnalysisReadMetadata resultMetadata(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user,
+            String resultKind,
+            java.util.function.Function<DocumentAnalysisJob, String> objectName,
+            DocumentAnalysisProviderType requiredProvider) {
         DocumentAnalysisReadMetadata metadata = transactionTemplate.execute(status -> {
-            DocumentAnalysisJob job = ownUnexpired(analysisId, profile, user);
+            DocumentAnalysisJob job = ownUnexpired(
+                    analysisId, profile, user, requiredProvider);
             if (job.getStatus() != DocumentAnalysisStatus.SUCCEEDED) {
                 throw new ApiException(
                         HttpStatus.CONFLICT,
@@ -302,9 +337,20 @@ public class DocumentAnalysisService {
             UUID analysisId,
             DocumentAnalysisProfile profile,
             AppUser user) {
+        return ownUnexpired(analysisId, profile, user, null);
+    }
+
+    private DocumentAnalysisJob ownUnexpired(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user,
+            DocumentAnalysisProviderType requiredProvider) {
         DocumentAnalysisJob job = jobRepository
                 .findByIdAndRequestedByUserIdAndAnalysisProfile(analysisId, user.getId(), profile)
                 .orElseThrow(() -> notFound());
+        if (requiredProvider != null && job.getProvider() != requiredProvider) {
+            throw notFound();
+        }
         if (!job.getExpiresAt().isAfter(Instant.now())) {
             throw new ApiException(
                     HttpStatus.GONE,
@@ -312,6 +358,17 @@ public class DocumentAnalysisService {
                     "分析ファイルと結果の保持期限が切れています。");
         }
         return job;
+    }
+
+    private StoredDocumentAnalysisContent loadJsonResult(
+            DocumentAnalysisReadMetadata metadata) {
+        StoredDocumentAnalysisContent content = storage.loadResult(metadata.objectName());
+        if (!JSON_CONTENT_TYPE.equalsIgnoreCase(content.contentType())) {
+            closeQuietly(content);
+            throw new DocumentAnalysisStorageException(
+                    new IllegalStateException("Stored result content type mismatch"));
+        }
+        return content;
     }
 
     private void recordAccessAudit(

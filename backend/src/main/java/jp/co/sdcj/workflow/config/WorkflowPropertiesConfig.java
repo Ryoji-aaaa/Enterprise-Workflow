@@ -8,7 +8,8 @@ import org.springframework.context.annotation.Configuration;
     SecurityProperties.class,
     NotificationProperties.class,
     AttachmentProperties.class,
-    DocumentAnalysisProperties.class
+    DocumentAnalysisProperties.class,
+    AutoEntryReviewProperties.class
 })
 public class WorkflowPropertiesConfig {
 }

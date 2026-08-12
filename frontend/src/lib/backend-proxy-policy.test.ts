@@ -93,7 +93,7 @@ test("multipart boundaryを維持し添付Content-Length上限を事前検査す
   assert.equal(hasOversizedBackendProxyBody("POST", path, null), false);
 });
 
-test("Document Analysisはcollection/detail/source/view/rawのGETまたはPOSTだけを許可する", () => {
+test("Document Analysisは必要なcollection/detail/result routeだけを許可する", () => {
   const collection = "/document-analyses";
   const item = `/document-analyses/${USER_ID}`;
   assert.equal(isAllowedBackendProxyRequest("GET", collection), true);
@@ -102,11 +102,13 @@ test("Document Analysisはcollection/detail/source/view/rawのGETまたはPOST�
   assert.equal(isAllowedBackendProxyRequest("GET", `${item}/source`), true);
   assert.equal(isAllowedBackendProxyRequest("GET", `${item}/view`), true);
   assert.equal(isAllowedBackendProxyRequest("GET", `${item}/raw-result`), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${item}/auto-entry-review`), true);
 
   assert.equal(isAllowedBackendProxyRequest("DELETE", collection), false);
   assert.equal(isAllowedBackendProxyRequest("POST", item), false);
   assert.equal(isAllowedBackendProxyRequest("GET", "/document-analyses/not-a-uuid"), false);
   assert.equal(isAllowedBackendProxyRequest("GET", `${item}/retry`), false);
+  assert.equal(isAllowedBackendProxyRequest("POST", `${item}/auto-entry-review`), false);
 });
 
 test("Document Analysisはrouteごとのtimeoutとbody上限を持つ", () => {
@@ -115,6 +117,10 @@ test("Document Analysisはrouteごとのtimeoutとbody上限を持つ", () => {
   const source = getBackendProxyPolicy("GET", `/document-analyses/${USER_ID}/source`);
   const view = getBackendProxyPolicy("GET", `/document-analyses/${USER_ID}/view`);
   const raw = getBackendProxyPolicy("GET", `/document-analyses/${USER_ID}/raw-result`);
+  const review = getBackendProxyPolicy(
+    "GET",
+    `/document-analyses/${USER_ID}/auto-entry-review`,
+  );
 
   assert.equal(collectionGet?.timeoutMilliseconds, 5_000);
   assert.equal(collectionPost?.timeoutMilliseconds, 30_000);
@@ -123,6 +129,7 @@ test("Document Analysisはrouteごとのtimeoutとbody上限を持つ", () => {
   assert.equal(source?.timeoutMilliseconds, 30_000);
   assert.equal(view?.timeoutMilliseconds, 15_000);
   assert.equal(raw?.timeoutMilliseconds, 15_000);
+  assert.equal(review?.timeoutMilliseconds, 15_000);
   assert.equal(
     hasOversizedBackendProxyBody(
       "POST",

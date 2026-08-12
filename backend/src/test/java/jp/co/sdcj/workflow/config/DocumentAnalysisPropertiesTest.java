@@ -91,12 +91,33 @@ class DocumentAnalysisPropertiesTest {
                             .getBean(DocumentAnalysisProperties.class)
                             .contentUnderstanding();
                     assertThat(contentUnderstanding.autoEntryAnalyzerId())
-                            .isEqualTo("enterprise_workflow_auto_entry_v2.1");
+                            .isEqualTo("enterprise_workflow_auto_entry_v2.1.1");
                     assertThat(contentUnderstanding.autoEntryCompletionModelDeploymentName())
                             .isEqualTo("auto-entry-gpt-5-2");
                     assertThat(contentUnderstanding.autoEntryEmbeddingModelDeploymentName())
                             .isEqualTo("auto-entry-text-embedding-3-large");
                 });
+    }
+
+    @Test
+    void autoEntryReviewConfidenceThresholdHasDefaultAndCanBeOverridden() {
+        autoEntryReviewContextRunner()
+                .run(context -> assertThat(context.getBean(AutoEntryReviewProperties.class)
+                        .reviewConfidenceThreshold()).isEqualByComparingTo("0.60"));
+
+        autoEntryReviewContextRunner()
+                .withPropertyValues(
+                        "workflow.document-analysis.auto-entry.review-confidence-threshold=0.75")
+                .run(context -> assertThat(context.getBean(AutoEntryReviewProperties.class)
+                        .reviewConfidenceThreshold()).isEqualByComparingTo("0.75"));
+    }
+
+    @Test
+    void autoEntryReviewConfidenceThresholdRejectsOutOfRangeValue() {
+        autoEntryReviewContextRunner()
+                .withPropertyValues(
+                        "workflow.document-analysis.auto-entry.review-confidence-threshold=1.01")
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
@@ -358,9 +379,22 @@ class DocumentAnalysisPropertiesTest {
                 .run(context -> assertThat(context).hasFailed());
     }
 
+    private static ApplicationContextRunner autoEntryReviewContextRunner() {
+        return new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        ConfigurationPropertiesAutoConfiguration.class,
+                        ValidationAutoConfiguration.class))
+                .withUserConfiguration(AutoEntryReviewTestConfig.class);
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(DocumentAnalysisProperties.class)
     @Import(DocumentAnalysisStorageConfiguration.class)
     static class TestConfig {
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(AutoEntryReviewProperties.class)
+    static class AutoEntryReviewTestConfig {
     }
 }

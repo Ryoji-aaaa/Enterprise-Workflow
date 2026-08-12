@@ -392,7 +392,7 @@ module "backend" {
       DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
     },
     var.environment == "staging" ? {
-      CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID = "enterprise_workflow_auto_entry_v2.1"
+      CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID = "enterprise_workflow_auto_entry_v2.1.1"
       CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME = (
         azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0].name
       )

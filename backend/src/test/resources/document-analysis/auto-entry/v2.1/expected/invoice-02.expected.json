@@ -6,6 +6,9 @@
     "10%対象額"
   ],
   "expectedFindings": [
-    "TAX_BREAKDOWN_INCONSISTENT"
+    "LOW_CONFIDENCE",
+    "TAX_BREAKDOWN_INCONSISTENT",
+    "TAX_TOTAL_INCONSISTENT",
+    "PAYMENT_DUE_BEFORE_ISSUE_DATE"
   ]
 }

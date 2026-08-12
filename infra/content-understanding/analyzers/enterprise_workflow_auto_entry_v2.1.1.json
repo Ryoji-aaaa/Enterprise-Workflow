@@ -1,0 +1,361 @@
+{
+  "analyzerId": "enterprise_workflow_auto_entry_v2.1.1",
+  "description": "請求書,注文書,注文請書のためのカスタムスキーマ",
+  "createdAt": "2026-08-12T04:59:07Z",
+  "lastModifiedAt": "2026-08-12T04:59:07Z",
+  "baseAnalyzerId": "prebuilt-document",
+  "config": {
+    "returnDetails": true,
+    "enableOcr": true,
+    "enableLayout": true,
+    "enableFormula": true,
+    "enableFigureDescription": false,
+    "enableFigureAnalysis": false,
+    "chartFormat": "chartjs",
+    "tableFormat": "html",
+    "enableSegment": false,
+    "omitContent": false,
+    "segmentPerPage": false,
+    "annotationFormat": "markdown",
+    "estimateFieldSourceAndConfidence": true
+  },
+  "warnings": [],
+  "status": "ready",
+  "processingLocation": "geography",
+  "supportedModels": {
+    "completion": [
+      "gpt-4o",
+      "gpt-4o-mini",
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano",
+      "gpt-5",
+      "gpt-5-mini",
+      "gpt-5-nano",
+      "gpt-5.1",
+      "gpt-5.2",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.5"
+    ],
+    "embedding": [
+      "text-embedding-3-small",
+      "text-embedding-3-large",
+      "text-embedding-ada-002"
+    ]
+  },
+  "models": {
+    "completion": "gpt-5.2",
+    "embedding": "text-embedding-3-large"
+  },
+  "fieldSchema": {
+    "fields": {
+      "DocumentType": {
+        "type": "string",
+        "enum": [
+          "INVOICE",
+          "PURCHASE_ORDER",
+          "ORDER_CONFIRMATION",
+          "OTHER"
+        ],
+        "method": "generate",
+        "description": "文書種別を判定する。INVOICE（請求書・御請求書）、PURCHASE_ORDER（注文書・発注書）、ORDER_CONFIRMATION（注文請書）、OTHER のいずれかを返す。表題だけでなく文書全体の目的も考慮する。"
+      },
+      "DocumentNumber": {
+        "type": "string",
+        "method": "extract",
+        "description": "この文書自体の管理番号。『請求番号』『請求書番号』『注文番号』『注文書番号』『発注番号』等に対応する値を抽出する。インボイス登録番号や口座番号と混同しない。記載がない場合は生成しない。"
+      },
+      "IssueDate": {
+        "type": "date",
+        "method": "extract",
+        "description": "文書の発行日。『発行日』『発効日』『請求日』『注文日』『発注日』等に対応する日付を抽出する。支払期限・納期とは混同しない。"
+      },
+      "IssuerTaxRegistrationNumber": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元の適格請求書発行事業者登録番号。『登録番号』『インボイス登録番号』等のラベルに対応する、通常 T から始まる登録番号を抽出する。記載がない場合は生成しない。"
+      },
+      "RecipientName": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書の宛先・受領側の会社名または組織名。請求書では請求先・支払側、注文書では注文先・発注先。発行元と混同しない。『御中』『様』『殿』等の敬称は可能であれば除外して名称のみを抽出する。"
+      },
+      "RecipientDepartment": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書の宛先・受領側の部署名・部門名・課名。RecipientName に付随する宛先側の部署だけを抽出する。記載がない場合は生成しない。"
+      },
+      "RecipientContactPerson": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書の宛先・受領側の担当者個人名。RecipientName または RecipientDepartment に付随する氏名を抽出する。『様』『殿』等の敬称は可能であれば除外する。記載がない場合は生成しない。"
+      },
+      "RecipientPostalCode": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書の宛先・受領側の郵便番号。発行元の郵便番号と混同しない。記載がない場合は生成しない。"
+      },
+      "RecipientAddress": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書の宛先・受領側の住所。RecipientName と同じ宛先領域にある住所を抽出する。発行元の住所と混同しない。記載がない場合は生成しない。"
+      },
+      "IssuerName": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書を作成・発行した会社・組織の正式名称。請求書では請求元・販売元、注文書では発注元。RecipientName と混同しない。会社住所、電話番号、メール、登録番号と同じ発行元情報領域にあることが多い。ページ上部・右側だけでなく、ページ下部、フッター、PageFooter として記載される場合も必ず探索する。"
+      },
+      "IssuerDepartment": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元の担当部署・本部・部・課等の名称。IssuerName に付随する発行元側の組織名だけを抽出する。例: 法人営業部、プロダクト戦略本部、経理課。RecipientDepartment と混同しない。記載がない場合は生成しない。"
+      },
+      "IssuerContactPerson": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元の担当者個人名。IssuerName または IssuerDepartment に付随する氏名、『担当』『担当者』等に対応する氏名を抽出する。RecipientContactPerson と混同しない。記載がない場合は生成しない。"
+      },
+      "IssuerPostalCode": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元の郵便番号。IssuerName・IssuerAddress と同じ発行元情報領域から抽出する。ページ下部や PageFooter に記載される場合も探索する。記載がない場合は生成しない。"
+      },
+      "IssuerAddress": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元の所在地・住所。IssuerName、電話、メール等と同じ発行元情報領域にある住所を抽出する。複数行の住所やビル名も同一住所として結合してよい。ページ下部や PageFooter に記載される場合も探索する。RecipientAddress と混同しない。"
+      },
+      "IssuerPhoneNumber": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元の電話番号。IssuerName と同じ発行元情報領域の番号を抽出する。記載がない場合は生成しない。"
+      },
+      "IssuerEmail": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書発行元のメールアドレス。帳票上に記載された文字列を抽出し、OCRで不明確な文字を推測して補完しない。記載がない場合は生成しない。"
+      },
+      "Subject": {
+        "type": "string",
+        "method": "extract",
+        "description": "文書の件名・案件名・取引件名。『件名』等の明示ラベルに対応する値を抽出する。記載がない場合は生成しない。"
+      },
+      "CurrencyCode": {
+        "type": "string",
+        "method": "generate",
+        "description": "文書内の主要通貨を ISO 4217 の3文字コードで返す。円、￥、¥ の帳票は JPY。合理的に判定できない場合は生成しない。"
+      },
+      "LineItems": {
+        "type": "array",
+        "method": "generate",
+        "description": "商品・サービス等の通常明細を帳票上の表示順で抽出する。空行は含めない。値引き、源泉徴収、送料、手数料、端数調整等の集計上の加減算行は Adjustments に分離する。",
+        "items": {
+          "type": "object",
+          "method": "generate",
+          "properties": {
+            "ItemDate": {
+              "type": "string",
+              "method": "extract",
+              "description": "明細行に記載された取引日・利用日・納品日等の日付表記。年が省略された 10/2 のような値も、帳票上の表記のまま文字列で抽出する。記載がない場合は生成しない。"
+            },
+            "ProductCode": {
+              "type": "string",
+              "method": "extract",
+              "description": "明細行の商品コード、品番、SKU、サービスコード等。記載がある場合のみ抽出する。"
+            },
+            "ItemDescription": {
+              "type": "string",
+              "method": "extract",
+              "description": "明細行の商品名、品名、サービス名、作業内容。帳票上の名称全体を抽出する。空行や集計行、値引き・税・送料等の調整行は通常のLineItemsに含めない。"
+            },
+            "Quantity": {
+              "type": "number",
+              "method": "extract",
+              "description": "明細行の数量。整数・小数の両方を許容する。数量が記載されていない場合は生成しない。"
+            },
+            "Unit": {
+              "type": "string",
+              "method": "extract",
+              "description": "明細行の単位。例: 個、式、本、枚、時間、kg、C/S。記載がある場合のみ抽出する。"
+            },
+            "UnitPriceAmount": {
+              "type": "number",
+              "method": "extract",
+              "description": "明細行の単価。『単価』『単価(税抜)』『単価(税込)』等の列から数値を抽出する。通貨記号・桁区切りは数値値には含めない。"
+            },
+            "TaxIndicator": {
+              "type": "string",
+              "method": "extract",
+              "description": "明細行に付与された税区分の生の目印・記号・注記。例: *, ※, 軽減税率対象, 非課税。記載がない場合は生成しない。"
+            },
+            "TaxRatePercent": {
+              "type": "number",
+              "method": "generate",
+              "description": "明細行の適用税率の百分率値。明細に税率が明記されている場合、または TaxIndicator と帳票内の凡例・税率別集計との対応から一意に判定できる場合のみ生成する。10%なら10、8%なら8。確実に対応付けられない場合は生成しない。"
+            },
+            "TaxCategory": {
+              "type": "string",
+              "enum": [
+                "STANDARD",
+                "REDUCED",
+                "NON_TAXABLE",
+                "EXEMPT"
+              ],
+              "method": "generate",
+              "description": "明細行の税区分を STANDARD、REDUCED、NON_TAXABLE、EXEMPT のいずれかで返す。明細の明示記載または TaxIndicator と凡例から一意に判断できる場合のみ生成する。不明な場合は生成しない。"
+            },
+            "LineAmount": {
+              "type": "number",
+              "method": "extract",
+              "description": "明細行の金額。通常は数量×単価に対応する行単位の金額。『金額』『金額(税抜)』『金額(税込)』等の列から抽出する。"
+            }
+          }
+        }
+      },
+      "SubtotalAmount": {
+        "type": "number",
+        "method": "extract",
+        "description": "帳票に明示された最終的な税抜小計・課税対象金額合計。『小計』『税抜合計』『対象金額計(税抜き)』等に対応する値。値引き等が小計算出前に反映されている帳票では、帳票に明示された小計値をそのまま抽出し、LineItemsの単純合計で上書きしない。"
+      },
+      "TaxAmount": {
+        "type": "number",
+        "method": "extract",
+        "description": "文書全体の消費税額・税額合計。『消費税』『消費税計』『税額合計』等として明示された全体税額を優先する。税率別の個別税額を全体税額と誤認しない。記載がない場合は0を生成せず、値を生成しない。"
+      },
+      "TaxBreakdown": {
+        "type": "array",
+        "method": "generate",
+        "description": "帳票に明示された税率別の課税対象額・税額内訳。同じ税率は必ず1要素にまとめ、10%と8%が記載されている場合は10%要素と8%要素の2要素だけを抽出する。同じ税率の対象額行と、その直後または近傍にある消費税行を同じ要素へまとめる。各要素では、同じ税率別集計行・列・連続ブロックに記載された TaxRatePercent、TaxableAmount、TaxAmount、CategoryNotation を対応付ける。CategoryNotation 内に印字された 10% または 8% は明示された税率であり、TaxRatePercent にそれぞれ 10 または 8 を必ず抽出する。『10%対象額』『10%対象計』『軽減8%対象額』『8%対象計(*)』等の完全な税率別集計表記が帳票上に存在する場合は、その表記を CategoryNotation として省略せず原文どおり抽出する。TaxRatePercent または完全な CategoryNotation を抽出できない候補は TaxBreakdown 要素に含めない。数字が欠けた『%対象額』等のOCR断片、重複候補、税率が明示されない孤立した金額から追加要素を推測生成しない。",
+        "items": {
+          "type": "object",
+          "method": "generate",
+          "properties": {
+            "TaxRatePercent": {
+              "type": "number",
+              "method": "extract",
+              "description": "税率の百分率値。CategoryNotation の帳票ラベルに印字された百分率の数字を必ず抽出し、『10%対象額』『10%対象計』なら 10、『軽減8%対象額』『8%対象計(*)』なら 8 とする。ラベル内の数字と%記号が別のOCR tokenでも、同じラベル領域に印字されていれば明示された税率であり、値を省略しない。同じ税率別集計行・列・連続ブロックの TaxableAmount、TaxAmount、CategoryNotation と対応付けて抽出する。明示された百分率の数字を抽出できない候補は TaxBreakdown 要素自体に含めない。Category や金額だけから TaxRatePercent を推測生成・補正・正規化しない。"
+            },
+            "TaxableAmount": {
+              "type": "number",
+              "method": "extract",
+              "description": "当該税率に明示的に対応する課税対象額。例: 10%対象計、8%対象計、軽減8%対象額。"
+            },
+            "TaxAmount": {
+              "type": "number",
+              "method": "extract",
+              "description": "当該税率に明示的に対応する税額。TaxRatePercent と同じ税率区分の行・列にある値だけを抽出する。OCR結果に税率が存在しない区分や対応関係が不明な値から新しい税区分を生成しない。"
+            },
+            "CategoryNotation": {
+              "type": "string",
+              "method": "extract",
+              "description": "同じ TaxBreakdown 要素の TaxRatePercent、TaxableAmount、TaxAmount と同じ税率別集計行・列・連続ブロックに記載された、当該税区分を示す帳票上のラベル全体を抽出する。『10%対象額』『10%対象計』『軽減8%対象額』『8%対象計(*)』等が帳票上に存在する場合は、税率の数字、%記号、軽減表記、注記を欠落させず原文どおり抽出する。完全なラベル全体を抽出できない候補は TaxBreakdown 要素自体に含めない。『%対象額』等の不完全なOCR断片を CategoryNotation として抽出したり、その断片から別の TaxBreakdown 要素を作ったりしない。Category や金額から CategoryNotation を推測生成・補正・正規化しない。記載がない場合は生成しない。"
+            },
+            "Category": {
+              "type": "string",
+              "enum": [
+                "STANDARD",
+                "REDUCED",
+                "NON_TAXABLE",
+                "EXEMPT"
+              ],
+              "method": "generate",
+              "description": "税区分を STANDARD、REDUCED、NON_TAXABLE、EXEMPT のいずれかで返す。10%通常税率ならSTANDARD、軽減8%ならREDUCED。明示情報から判断できない場合は生成しない。"
+            }
+          }
+        }
+      },
+      "Adjustments": {
+        "type": "array",
+        "method": "generate",
+        "description": "通常明細とは別に、最終合計へ影響する値引き、割引、源泉徴収、送料、手数料、端数調整等を抽出する。金額符号をAmountに埋め込まず、Directionで加算・控除を表現する。存在しない場合は空でよい。",
+        "items": {
+          "type": "object",
+          "method": "generate",
+          "properties": {
+            "Type": {
+              "type": "string",
+              "enum": [
+                "WITHHOLDING_TAX",
+                "DISCOUNT",
+                "SHIPPING_FEE",
+                "SERVICE_FEE",
+                "ROUNDING",
+                "OTHER"
+              ],
+              "method": "generate",
+              "description": "調整項目の種類を WITHHOLDING_TAX、DISCOUNT、SHIPPING_FEE、SERVICE_FEE、ROUNDING、OTHER のいずれかで返す。『源泉徴収』『値引き』『割引』『送料』『手数料』等のラベルから判断する。"
+            },
+            "Direction": {
+              "type": "string",
+              "enum": [
+                "DEDUCTION",
+                "ADDITION",
+                "UNKNOWN"
+              ],
+              "method": "generate",
+              "description": "最終合計に対する調整方向を DEDUCTION、ADDITION、UNKNOWN のいずれかで返す。『▲』『△』『-』『値引き』『割引』『控除』『源泉徴収』は通常DEDUCTION、送料・加算手数料等で合計に加えるものはADDITION。記号・ラベル・周辺集計から判断できない場合はUNKNOWN。"
+            },
+            "Description": {
+              "type": "string",
+              "method": "extract",
+              "description": "帳票上の調整項目ラベルをそのまま抽出する。例: 源泉徴収税、値引き、送料、手数料、端数調整。"
+            },
+            "Amount": {
+              "type": "number",
+              "method": "extract",
+              "description": "調整項目として帳票に表示された金額の絶対値を数値で抽出する。『▲5,000』『-2,205』の場合も Amount は 5000、2205 とし、最終合計への加減算方向は Direction に分離する。"
+            }
+          }
+        }
+      },
+      "TotalAmount": {
+        "type": "number",
+        "method": "extract",
+        "description": "文書に明示された最終合計金額。『合計』『総合計』『合計金額』『ご請求金額』『請求金額』等の最終支払・請求額に対応する値を抽出する。税率別小計と混同しない。"
+      },
+      "TaxInclusionNotation": {
+        "type": "string",
+        "method": "extract",
+        "description": "帳票上に明示された最終合計または対象金額の税含有表現だけを抽出する。例: 税込、税込み、税抜、税抜き、税別。明示的記載がない場合は推測・生成しない。"
+      },
+      "PaymentDueDate": {
+        "type": "date",
+        "method": "extract",
+        "description": "支払いを行う期限日。『支払期限』『支払い期限』『お支払期限』『振込期限』『お振込期限』『入金期限』『支払期日』等に対応する日付を抽出する。本文だけでなくページ下部、フッター、PageFooterに記載される場合も必ず探索する。IssueDateと混同しない。"
+      },
+      "BankTransferDestination": {
+        "type": "object",
+        "method": "generate",
+        "description": "振込先口座情報。本文だけでなくページ下部、フッター、PageFooterの『振込先』『お振込先』も探索する。記載がない文書では値を生成しない。",
+        "properties": {
+          "BankName": {
+            "type": "string",
+            "method": "extract",
+            "description": "振込先銀行名。『振込先』『お振込先』等に続く銀行名を抽出する。"
+          },
+          "BranchName": {
+            "type": "string",
+            "method": "extract",
+            "description": "振込先支店名。"
+          },
+          "AccountType": {
+            "type": "string",
+            "method": "extract",
+            "description": "口座種別。例: 普通、当座。"
+          },
+          "AccountNumber": {
+            "type": "string",
+            "method": "extract",
+            "description": "振込先口座番号。"
+          },
+          "AccountHolderName": {
+            "type": "string",
+            "method": "extract",
+            "description": "振込先口座名義。記載がある場合のみ抽出する。"
+          }
+        }
+      }
+    }
+  }
+}

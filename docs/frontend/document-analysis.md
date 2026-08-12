@@ -38,7 +38,10 @@ enablementや全体kill switchはFrontend公開判定に使用しない。
 | `GET` | `/api/backend/document-analyses/{analysisId}/source` | 30秒 | binary |
 | `GET` | `/api/backend/document-analyses/{analysisId}/view` | 15秒 | JSON |
 | `GET` | `/api/backend/document-analyses/{analysisId}/raw-result` | 15秒 | JSON |
+| `GET` | `/api/backend/document-analyses/{analysisId}/auto-entry-review` | 15秒 | JSON |
 
+`auto-entry-review`は保存済みの`AUTO_ENTRY`結果をReview / Validation responseへ変換するBackend APIを
+BFF経由で取得するためのrouteであり、BrowserからAzure AI、Blob Storage、Spring Bootへ直接接続しない。
 `analysisId`はUUID形式だけを許可する。任意サブパス、retry、cancel、PUT、PATCH、DELETEは
 許可しない。`POST`のBFF request body上限はmultipart overheadを含めて11MiBであり、
 `Content-Length`と実際に読み込んだbody sizeの両方を検査する。超過時は

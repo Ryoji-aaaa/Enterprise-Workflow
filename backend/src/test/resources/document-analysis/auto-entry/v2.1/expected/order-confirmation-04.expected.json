@@ -4,5 +4,7 @@
   "requiredTaxBreakdownCategoryNotations": [
     "消 費 税 (10%)"
   ],
-  "expectedFindings": []
+  "expectedFindings": [
+    "LOW_CONFIDENCE"
+  ]
 }

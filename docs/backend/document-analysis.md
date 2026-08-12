@@ -35,7 +35,7 @@ Base pathは`/api/document-analyses`である。Controllerは
 credentialはBrowserから受け取らず、Backend設定から決定する。
 
 `GENERAL`はContent Understandingの`prebuilt-layout`を使う。`AUTO_ENTRY`はBackend設定の
-Custom Analyzer `enterprise_workflow_auto_entry_v2.1`をJobへsnapshotする。BrowserはAnalyzer ID、
+Custom Analyzer `enterprise_workflow_auto_entry_v2.1.1`をJobへsnapshotする。BrowserはAnalyzer ID、
 completion model deployment、embedding model deployment、API versionを指定または上書きできない。
 
 成功時は`202 Accepted`を返し、`GENERAL`の`Location`は既存互換の
@@ -84,6 +84,21 @@ Job metadataのowner、保持期限、status判定をDB transaction内で完了�
 
 `SUCCEEDED`かつ保持期限内のJobだけ、`result/{analysisId}/raw.json`を`application/json`で返す。
 Raw JSONはBlob Storageに保存し、PostgreSQLへ保存しない。
+
+### `GET /api/document-analyses/{analysisId}/auto-entry-review`
+
+`DOCUMENT_ANALYSIS_READ_OWN`を要求し、query parameterなしで`AUTO_ENTRY` profileを意味する。
+owner本人、`AUTO_ENTRY`、`CONTENT_UNDERSTANDING`がすべて一致するJobだけを返し、owner、profile、
+providerの不一致は`404 DOCUMENT_ANALYSIS_NOT_FOUND`へ統一する。保持期限、status、Normalized JSONの
+content typeとBlob読込は`view`と同じ既存read policyを使う。未完了は
+`409 DOCUMENT_ANALYSIS_RESULT_NOT_READY`、期限切れは`410 DOCUMENT_ANALYSIS_EXPIRED`、Blob読込失敗は
+`503 DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE`である。保存結果がAUTO_ENTRY v2.1としてparseできない場合は、
+本文やfield値を含まない`500 DOCUMENT_ANALYSIS_AUTO_ENTRY_RESULT_INVALID`を返す。
+
+レスポンスは`Cache-Control: no-store, private`、`X-Content-Type-Options: nosniff`を設定する。Azure
+endpoint、resource ID、Managed Identity、Analyzer/model deployment metadata、Raw Provider JSON、Blob URLは
+返さない。Blob I/OはDB transaction外で行い、Blob本文を最後まで正常に読み込んだ後だけ、既存の
+`DOCUMENT_ANALYSIS_RESULT_ACCESSED`を`resultKind=auto-entry-review`として別transactionで記録する。
 
 ## ファイル検証
 
@@ -185,6 +200,12 @@ Raw resultは`source=backend-fake-provider`を含むJSONである。Normalized r
 schema version 1のJSONで、発注書のMarkdown、paragraphs、tables、fields、metricsを含む。
 このV1 contractは後続のAzure Provider normalizerでも出力先になる。
 
+`AUTO_ENTRY + CONTENT_UNDERSTANDING`だけは、外側`schemaVersion=1`、
+`fields.autoEntry.schemaVersion=2.1`の合成請求書を返す。page metadata、全主要field、confidence、native
+polygon、明細、税内訳`CategoryNotation`、控除、支払期限、振込先を含み、金額は整合する。`IssuerName`だけ
+confidenceを`0.55`にして、ローカルreviewで`LOW_CONFIDENCE`を確認できる。production codeはtest fixtureを
+読み込まず、従来の`GENERAL` Fake resultは変更しない。
+
 ## Azure AI Document Intelligence Adapter
 
 `execution-mode=azure`かつ`document-intelligence.enabled=true`の場合だけ、
@@ -243,7 +264,12 @@ beanとして生成し、Jobごとにclientを作らない。Service API version
 fallbackしない。
 
 `GENERAL`のAnalyzerは`prebuilt-layout`であり、`AUTO_ENTRY`のAnalyzerはBackend設定から
-`enterprise_workflow_auto_entry_v2.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
+`enterprise_workflow_auto_entry_v2.1.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
+`v2.1.1`は`v2.1`を履歴として保持したまま追加したAnalyzer patchであり、
+`TaxBreakdown`の同一税率別集計行・列・ブロック内での対応付けと
+`CategoryNotation`の原文抽出の安定性だけを改善する。field構造、型、enum、model、
+processing location、およびNormalized AUTO_ENTRY contractは変更しない。
+`CategoryNotation`を`Category`や金額から推測生成・補正・正規化しない。
 `AUTO_ENTRY`のcompletion/embedding deployment名もJobとProvider Requestへsnapshotし、SDKの
 `modelDeployments`へ`gpt-5.2: auto-entry-gpt-5-2`、
 `text-embedding-3-large: auto-entry-text-embedding-3-large`として渡す。Analyzer definitionの
@@ -292,6 +318,12 @@ valueの有無はconfidenceから推測しない。valueなしは`null`のまま
 変換しない。`TaxBreakdown[].CategoryNotation`は帳票上の表記をそのまま保持し、`Category`との意味判定や
 税額・符号・合計の補正は行わない。これらの業務validationとreview判定はPhase 1B-Bの責務である。
 
+`enterprise_workflow_auto_entry_v2.1.1`では、同じ帳票でも`TaxBreakdown[].TaxRatePercent`が
+非決定的に`null`になることを既知のExtraction Quality limitationとして扱う。Phase 1B-Aの
+Integration / Contract Gateはこの欠落だけでは失敗にしない。Normalizerは`Category`、
+`CategoryNotation`、税額、対象額から税率を補完・推測せず、`null`を保持する。Phase 1B-Bのreview /
+validationはfieldを`MISSING`として返し、利用者が確認すべき欠落を安全に検出する。
+
 Studioから取得したacceptance fixtureの`stringEncoding=codePoint`はNormalizer入力として維持する。一方、
 Java SDKの実request/result contractは`utf16`であり、wire testとProvider validationで固定する。fixtureの
 encodingを理由にproduct codeを`codePoint`へ変更しない。
@@ -313,6 +345,77 @@ failureなど、Azureが要求を受理した後の最終状態が不明な場�
 `CONTENT_UNDERSTANDING_RESULT_INVALID`で`FAILED_RECOVERY_REQUIRED`にする。Azure response bodyは
 `error_message`やログへ保存しない。
 
+## AUTO_ENTRY Review / Validation
+
+ReviewはAzure Content UnderstandingまたはLLMを再呼出しせず、Blobに保存済みの
+`view-v1.json -> documents[0].fields.autoEntry`だけを`JsonNode`として読む。Raw Azure resultは業務判定へ
+使わない。`documents.size() == 1`と`autoEntry.schemaVersion == "2.1"`を要求し、0件、複数件、型不一致、
+不正なJSONは保存結果不正として安全に失敗させる。`Map<String,Object>`からのcastや`Double`を経由した
+会計値変換は行わない。
+
+全v2.1 fieldをcamelCaseのapplication DTOへ写し、各抽出fieldは`value`、`confidence`、`status`、
+`sources`、`findings`を持つ。配列内の明細、税内訳、調整object自身のconfidence、status、sources、findingsも
+`review` metadataとして保持する。pageのwidth、height、unit、angleDegreesとfieldのpageNumber、polygonは
+座標変換せず返す。画面座標への変換とoverlay描画はPhase 2 Frontendの責務である。
+
+statusは共通規則で決める。
+
+- `value == null`: `MISSING`。confidenceが存在してもvalueありとはみなさず、`LOW_CONFIDENCE`を重ねない。
+- valueがありfindingあり: `REVIEW`。
+- valueがありfindingなし: `OK`。
+- `0`、`false`、空文字、空array、空objectは存在するvalueであり、missingや既定値へ変換しない。
+
+confidence閾値は`workflow.document-analysis.auto-entry.review-confidence-threshold`で、既定`0.60`、範囲は
+`0.0`以上`1.0`以下である。valueがあり、non-null confidenceが閾値未満なら`LOW_CONFIDENCE`にする。
+confidenceがnullの場合は低confidenceと推定しない。
+
+enumは既知値をapplication modelで検証する。未知文字列を`OTHER`または`UNKNOWN`へ丸めず、raw文字列を
+valueへ残して`ENUM_VALUE_UNKNOWN`にする。対象はDocumentType、TaxCategory、Adjustment Type、
+Adjustment Directionである。金額、数量、単価、税率はすべて`BigDecimal`で処理し、missingを0またはJPYへ
+補完しない。
+
+決定論的findingは次のとおりである。
+
+| Finding | 判定 |
+| --- | --- |
+| `LOW_CONFIDENCE` | valueあり、confidenceあり、設定閾値未満 |
+| `ENUM_VALUE_UNKNOWN` | enumのraw文字列が既知集合外 |
+| `LINE_AMOUNT_INCONSISTENT` | quantity × unitPriceAmountとlineAmountの差が0.01以上 |
+| `TAX_BREAKDOWN_INCONSISTENT` | taxableAmount × taxRatePercent / 100と税額の差が1 monetary unit以上 |
+| `TAX_TOTAL_INCONSISTENT` | 全税内訳のTaxAmount合計とtop-level TaxAmountの差が1 monetary unit以上 |
+| `TOTAL_INCONSISTENT` | 下記候補のいずれともTotalAmountの差が1 monetary unit未満にならない |
+| `ADJUSTMENT_DIRECTION_UNKNOWN` | Directionが`UNKNOWN`または未知enum |
+| `TAX_MODE_AMBIGUOUS` | included/excluded arithmetic familyの両方またはどちらも一致しない |
+| `PAYMENT_DUE_BEFORE_ISSUE_DATE` | PaymentDueDateがIssueDateより前 |
+
+差のtoleranceはexclusiveであり、lineは`abs(diff) < 0.01`、税内訳、税合計、総合計は
+`abs(diff) < 1`を一致とする。抽出値を期待計算値へ上書きしない。
+
+Adjustmentは`rawAmount`を必ず保持する。`DEDUCTION`は`-abs(rawAmount)`、`ADDITION`は
+`+abs(rawAmount)`を`normalizedSignedAmount`へ設定する。`UNKNOWN`または未知DirectionはrawAmountをそのまま
+残してreview対象とし、rawの符号からDirectionを変更しない。
+
+TotalAmountは、必要値が存在する候補だけを使って次の4式と照合する。adjustmentsがmissing、または符号を
+正規化できない要素がある場合はadjustmentを使う候補を作らない。
+
+```text
+A = subtotal + tax
+B = subtotal + tax + normalizedAdjustments
+C = subtotal
+D = subtotal + normalizedAdjustments
+```
+
+taxModeは`TAX_INCLUDED`、`TAX_EXCLUDED`、`UNKNOWN`である。まず空白を除去した明示表記を解釈し、
+`税込`、`税込み`、`内税`をincluded、`税抜`、`税抜き`、`外税`、`税別`をexcludedとする。決定できない
+場合だけ、A/Bをexcluded family、C/Dをincluded familyとしてTotalAmountと比較する。一方だけ一致すれば
+そのmode、両方一致またはどちらも一致しなければ`UNKNOWN + TAX_MODE_AMBIGUOUS`、計算入力不足ならfindingなしの
+`UNKNOWN + MISSING`とする。
+
+summaryはAPI responseへ露出する全`AutoEntryField` wrapperを数える。top-levelのarray/object containerと、
+存在するline item、tax breakdown、adjustment、bank transfer destinationの子fieldを含む。pages、sources、
+points、配列要素の`review` metadata、`normalizedSignedAmount`、derived taxModeは数えない。このcount規則は
+帳票種別によらず同一である。
+
 ## 設定
 
 既定では安全側のruntime設定としてDocument AnalysisとProviderを無効にする。この既定値はUI公開を
@@ -333,6 +436,8 @@ workflow:
     processing-timeout: 30m
     max-active-jobs-per-user: 2
     max-requests-per-user-per-hour: 20
+    auto-entry:
+      review-confidence-threshold: 0.60
     azure:
       managed-identity-client-id: ""
     document-intelligence:
@@ -347,7 +452,7 @@ workflow:
       model-id: prebuilt-layout
       api-version: 2025-11-01
       analysis-timeout: 25m
-      auto-entry-analyzer-id: enterprise_workflow_auto_entry_v2.1
+      auto-entry-analyzer-id: enterprise_workflow_auto_entry_v2.1.1
       auto-entry-completion-model-deployment-name: auto-entry-gpt-5-2
       auto-entry-embedding-model-deployment-name: auto-entry-text-embedding-3-large
 ```
@@ -374,20 +479,40 @@ Bean登録条件は維持する。
 `CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME`は`AUTO_ENTRY` Jobのsnapshot元である。
 いずれもsecretではなく、stagingではTerraformが作成したdeployment名をBackendへ渡す。runtime controlの
 値はAzure model deployment resourceの作成有無を制御しない。
+`DOCUMENT_ANALYSIS_AUTO_ENTRY_REVIEW_CONFIDENCE_THRESHOLD`はreviewのlow-confidence判定だけを変更し、
+Azure Analyzer、Provider request、保存済み抽出値には影響しない。
 
 ## AUTO_ENTRY acceptance fixture
 
-`enterprise_workflow_auto_entry_v2.1` の受入基準は
-`backend/src/test/resources/document-analysis/auto-entry/v2.1/` に固定する。Analyzer definition は
-`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.json` が正本である。
-`scripts/check-content-understanding-auto-entry-schema.sh`はJSON、Analyzer/model/config、field一覧、exact enum、
-`CategoryNotation`、`BankTransferDestination`、secret-like valueの不在を検証し、`make verify-infra`から実行する。
+Normalized AUTO_ENTRY v2.1の受入基準は
+`backend/src/test/resources/document-analysis/auto-entry/v2.1/` に固定する。この`v2.1`は
+`fields.autoEntry.schemaVersion="2.1"`を表すcontract versionであり、runtime Analyzerのpatch versionでは
+ない。Analyzerを`enterprise_workflow_auto_entry_v2.1.1`へ更新してもdirectoryをrenameしない。
+
+runtime Analyzer definitionの正本は
+`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.1.json`である。
+`infra/content-understanding/analyzers/enterprise_workflow_auto_entry_v2.1.json`は削除・上書きせず、履歴として保持する。
+`scripts/check-content-understanding-auto-entry-schema.sh`は新旧definitionのJSON、Analyzer/model/config、
+field構造、型、method、exact enum、processing locationを比較し、差分をAnalyzer IDと
+`TaxBreakdown`関連の3つのdescriptionだけに限定する。また、`CategoryNotation`が
+`method=extract`のままであること、旧definitionの不変性、新旧definitionにsecret-like valueが
+存在しないことを検証し、
+`make verify-infra`から実行する。
+
+Phase 1B-Aの必須acceptanceは、stagingのNext.js BFFを経由する1回のIntegration / Contract smokeである。
+同一帳票のAI抽出結果が3/3で完全一致することは必須Gateではない。smokeではJobの`SUCCEEDED`、
+`modelId=enterprise_workflow_auto_entry_v2.1.1`、`providerApiVersion=2025-11-01`、外側schema version 1、
+`fields.autoEntry.schemaVersion="2.1"`、`DocumentType`、`TaxBreakdown`の構造と主要表記、confidence、sourceを
+確認する。`TaxRatePercent=null`は記録してPhase 1B-Bのreview / validationへ渡すが、それ単独ではFAILに
+せず、補完・推測もしない。
 
 fixture は入力帳票、縮小済み Azure Content Understanding 結果、業務レビューの期待結果を対にして
 保持する。Azure の実行 ID、作成時刻、一時的な Analyzer ID、usage、およびページの words/lines は
 比較対象に含めない。一方で fields、confidence、source、spans、unit、ページ番号・寸法は、抽出と
 source polygon の回帰に必要なため保持する。Content Understanding の生成出力を byte-for-byte で
 比較せず、`expected/` に記録した帳票種別、税区分表記、業務上の検出結果を受入条件として評価する。
+Phase 1B-Bではcaptured Azure resultをNormalizerへ通した保存形をReview mapperへ入力し、5帳票すべてで
+上記の決定論的findingを検証する。
 
 帳票と Azure 結果には、再配布が許可された合成・匿名化済みデータだけを使用する。実取引情報、
 実在個人の連絡先、実銀行口座、credential、SAS、private Blob URL を fixture に追加してはならない。
