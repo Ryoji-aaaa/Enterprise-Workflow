@@ -31,6 +31,7 @@ import jp.co.sdcj.workflow.config.AutoEntryReviewProperties;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFieldStatus;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFindingCode;
 import jp.co.sdcj.workflow.service.documentanalysis.contentunderstanding.ContentUnderstandingResultNormalizer;
 import jp.co.sdcj.workflow.service.documentanalysis.model.DocumentAnalysisViewV1;
 
@@ -98,6 +99,61 @@ class AutoEntryReviewMapperTest {
                 .doesNotContain("deployment")
                 .doesNotContain("endpoint")
                 .doesNotContain("rawResult");
+    }
+
+    @Test
+    void missingTaxRatesRemainMissingWithoutCategoryOrNotationInference() {
+        Map<String, Object> standard = new LinkedHashMap<>();
+        standard.put("TaxRatePercent", missingField("number", "0.88"));
+        standard.put("TaxableAmount", field("number", new BigDecimal("100000"), "0.94"));
+        standard.put("TaxAmount", field("number", new BigDecimal("12345"), "0.93"));
+        standard.put("CategoryNotation", field("string", "10%対象額", "0.92"));
+        standard.put("Category", field("string", "STANDARD", "0.91"));
+
+        Map<String, Object> reduced = new LinkedHashMap<>();
+        reduced.put("TaxRatePercent", missingField("number", "0.87"));
+        reduced.put("TaxableAmount", field("number", new BigDecimal("45000"), "0.96"));
+        reduced.put("TaxAmount", field("number", new BigDecimal("9999"), "0.95"));
+        reduced.put("CategoryNotation", field("string", "軽減8%対象額", "0.90"));
+        reduced.put("Category", field("string", "REDUCED", "0.89"));
+
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("TaxAmount", field("number", new BigDecimal("22344"), "0.97"));
+        fields.put("TaxBreakdown", field(
+                "array",
+                List.of(objectElement(standard, "0.90"), objectElement(reduced, "0.89")),
+                "0.96"));
+
+        AutoEntryReviewResponse response = mapper.map(ANALYSIS_ID, normalized(fields));
+
+        assertThat(response.document().taxBreakdown().value()).hasSize(2);
+        var standardReview = response.document().taxBreakdown().value().get(0);
+        var reducedReview = response.document().taxBreakdown().value().get(1);
+
+        assertThat(standardReview.taxRatePercent().value()).isNull();
+        assertThat(standardReview.taxRatePercent().status()).isEqualTo(AutoEntryFieldStatus.MISSING);
+        assertThat(standardReview.taxRatePercent().confidence()).isEqualByComparingTo("0.88");
+        assertThat(standardReview.taxRatePercent().sources()).hasSize(1);
+        assertThat(standardReview.category().value()).isEqualTo("STANDARD");
+        assertThat(standardReview.categoryNotation().value()).isEqualTo("10%対象額");
+        assertThat(standardReview.categoryNotation().confidence()).isEqualByComparingTo("0.92");
+        assertThat(standardReview.categoryNotation().sources()).hasSize(1);
+
+        assertThat(reducedReview.taxRatePercent().value()).isNull();
+        assertThat(reducedReview.taxRatePercent().status()).isEqualTo(AutoEntryFieldStatus.MISSING);
+        assertThat(reducedReview.taxRatePercent().confidence()).isEqualByComparingTo("0.87");
+        assertThat(reducedReview.taxRatePercent().sources()).hasSize(1);
+        assertThat(reducedReview.category().value()).isEqualTo("REDUCED");
+        assertThat(reducedReview.categoryNotation().value()).isEqualTo("軽減8%対象額");
+        assertThat(reducedReview.categoryNotation().confidence()).isEqualByComparingTo("0.90");
+        assertThat(reducedReview.categoryNotation().sources()).hasSize(1);
+
+        assertThat(standardReview.taxAmount().findings())
+                .doesNotContain(AutoEntryFindingCode.TAX_BREAKDOWN_INCONSISTENT);
+        assertThat(reducedReview.taxAmount().findings())
+                .doesNotContain(AutoEntryFindingCode.TAX_BREAKDOWN_INCONSISTENT);
+        assertThat(allFindings(response)).doesNotContain("TAX_BREAKDOWN_INCONSISTENT");
+        assertThat(response.summary().missingCount()).isEqualTo(27);
     }
 
     @Test
@@ -203,6 +259,12 @@ class AutoEntryReviewMapperTest {
                         Map.of("x", new BigDecimal("3.3"), "y", new BigDecimal("4.4")),
                         Map.of("x", new BigDecimal("1.1"), "y", new BigDecimal("4.4"))))));
         return field;
+    }
+
+    private Map<String, Object> objectElement(Map<String, Object> fields, String confidence) {
+        Map<String, Object> element = missingField("object", confidence);
+        element.put("value", fields);
+        return element;
     }
 
     private byte[] json(Object value) {

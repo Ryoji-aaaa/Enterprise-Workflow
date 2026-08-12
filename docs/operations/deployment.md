@@ -258,6 +258,16 @@ limitationとして扱う。これ単独ではPhase 1B-AをFAILにしない。`C
 値を補完・推測せず、`null`をそのままNormalized contractへ保持する。Phase 1B-Bのreview / validationが
 `MISSING`として安全に検出し、税内訳の整合性を人手確認へ回す。
 
+Phase 1B-BはPhase 1B-Aで保存した同じJobを優先して使用し、Next.js BFFの
+`/api/backend/document-analyses/{analysisId}/auto-entry-review`からReview responseを取得する。
+保持期限切れなどで利用できない場合だけ`AUTO_ENTRY`分析を1回作成し、Review取得自体で新しいAzure分析を
+開始しない。受入では`STANDARD / 10%対象額`と`REDUCED / 軽減8%対象額`の原文、confidence、sourceを保持し、
+抽出された`TaxRatePercent=null`が`value=null`、`status=MISSING`としてsummaryのmissing countへ反映される
+ことを確認する。CategoryやCategoryNotationから10または8を生成せず、税率がない要素では
+`TAX_BREAKDOWN_INCONSISTENT`のための税額検算を行わない。全フィールドの充足ではなく、欠落、低confidence、
+enum不明、金額・税額・総額・支払期限などの決定論的findingを、抽出値を補正せず人手確認へ渡せることを
+Phase 1B-BのPASS条件とする。
+
 Job失敗、timeout、異なるAnalyzer ID、異なるAPI version、異なるnormalized schema version、または上記の
 Integration / Contract不整合がある場合はrolloutを完了扱いにせず、production操作に進まない。
 public network有効化、runtime UAMIの権限昇格、API keyやSASへのfallback、およびBackendへの直接アクセスで

@@ -22,6 +22,9 @@ const documentAnalysisViewPath = new RegExp(`^/document-analyses/${UUID_PATTERN}
 const documentAnalysisRawResultPath = new RegExp(
   `^/document-analyses/${UUID_PATTERN}/raw-result$`,
 );
+const documentAnalysisAutoEntryReviewPath = new RegExp(
+  `^/document-analyses/${UUID_PATTERN}/auto-entry-review$`,
+);
 
 export type BackendProxyPolicy = {
   methods: ReadonlySet<string>;
@@ -184,6 +187,12 @@ const rules: readonly BackendProxyPolicy[] = [
   {
     methods: new Set(["GET"]),
     path: documentAnalysisRawResultPath,
+    responseType: "json",
+    timeoutMilliseconds: 15_000,
+  },
+  {
+    methods: new Set(["GET"]),
+    path: documentAnalysisAutoEntryReviewPath,
     responseType: "json",
     timeoutMilliseconds: 15_000,
   },
