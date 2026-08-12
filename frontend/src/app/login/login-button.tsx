@@ -1,15 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { LoaderCircle, LogIn } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 
+const subscribe = () => () => {};
+const getHydratedSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export function LoginButton() {
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
+  const hydrated = useSyncExternalStore(
+    subscribe,
+    getHydratedSnapshot,
+    getServerSnapshot,
+  );
 
   async function login() {
     setPending(true);
@@ -31,7 +40,7 @@ export function LoginButton() {
     <div className="grid gap-3">
       <Button
         className="h-10 w-full text-sm"
-        disabled={pending}
+        disabled={!hydrated || pending}
         onClick={login}
         type="button"
       >
