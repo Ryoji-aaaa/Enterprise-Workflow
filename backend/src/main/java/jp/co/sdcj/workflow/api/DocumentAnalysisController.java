@@ -32,6 +32,8 @@ import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisService;
 import jp.co.sdcj.workflow.service.documentanalysis.OpenedDocumentAnalysisContent;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewService;
 
 @RestController
 @RequestMapping("/api/document-analyses")
@@ -41,12 +43,15 @@ public class DocumentAnalysisController {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final DocumentAnalysisService service;
+    private final AutoEntryReviewService autoEntryReviewService;
     private final CurrentUserProvider currentUserProvider;
 
     public DocumentAnalysisController(
             DocumentAnalysisService service,
+            AutoEntryReviewService autoEntryReviewService,
             CurrentUserProvider currentUserProvider) {
         this.service = service;
+        this.autoEntryReviewService = autoEntryReviewService;
         this.currentUserProvider = currentUserProvider;
     }
 
@@ -132,6 +137,17 @@ public class DocumentAnalysisController {
             Authentication authentication) {
         return json(service.openRawResult(
                 analysisId, parseProfile(profile), current(authentication)));
+    }
+
+    @GetMapping("/{analysisId}/auto-entry-review")
+    @PreAuthorize("@permissionAuthorizer.hasPermission(authentication, 'DOCUMENT_ANALYSIS_READ_OWN')")
+    public ResponseEntity<AutoEntryReviewResponse> autoEntryReview(
+            @PathVariable UUID analysisId,
+            Authentication authentication) {
+        return noStore()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(autoEntryReviewService.review(
+                        analysisId, current(authentication)));
     }
 
     private ResponseEntity<InputStreamResource> json(OpenedDocumentAnalysisContent opened) {

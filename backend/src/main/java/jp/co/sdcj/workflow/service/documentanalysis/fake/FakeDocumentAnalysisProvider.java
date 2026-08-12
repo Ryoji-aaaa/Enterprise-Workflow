@@ -1,6 +1,7 @@
 package jp.co.sdcj.workflow.service.documentanalysis.fake;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProvider;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRequest;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderResult;
@@ -56,6 +58,10 @@ public class FakeDocumentAnalysisProvider implements DocumentAnalysisProvider {
     }
 
     private Map<String, Object> view(DocumentAnalysisProviderRequest request) {
+        if (request.analysisProfile() == DocumentAnalysisProfile.AUTO_ENTRY
+                && request.provider() == DocumentAnalysisProviderType.CONTENT_UNDERSTANDING) {
+            return autoEntryView(request);
+        }
         String markdown = """
                 # 発注書
 
@@ -101,6 +107,99 @@ public class FakeDocumentAnalysisProvider implements DocumentAnalysisProvider {
                 "metrics", Map.of(
                         "pageCount", 1,
                         "durationMilliseconds", 0));
+    }
+
+    private Map<String, Object> autoEntryView(DocumentAnalysisProviderRequest request) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("DocumentType", field("string", "INVOICE", 0.99));
+        fields.put("DocumentNumber", field("string", "INV-2026-0001", 0.98));
+        fields.put("IssueDate", field("date", "2026-08-01", 0.97));
+        fields.put("RecipientName", field("string", "ワークフロー株式会社", 0.96));
+        fields.put("RecipientDepartment", field("string", "経理部", 0.95));
+        fields.put("IssuerName", field("string", "サンプル商事株式会社", 0.55));
+        fields.put("IssuerAddress", field("string", "東京都千代田区1-2-3", 0.93));
+        fields.put("CurrencyCode", field("string", "JPY", 0.99));
+        fields.put("LineItems", field("array", List.of(objectField(Map.of(
+                "ItemDescription", field("string", "業務用備品", 0.96),
+                "Quantity", field("number", 2, 0.98),
+                "Unit", field("string", "個", 0.91),
+                "UnitPriceAmount", field("number", 5000, 0.97),
+                "TaxRatePercent", field("number", 10, 0.95),
+                "TaxCategory", field("string", "STANDARD", 0.94),
+                "LineAmount", field("number", 10000, 0.98)))), 0.96));
+        fields.put("SubtotalAmount", field("number", 10000, 0.98));
+        fields.put("TaxAmount", field("number", 1000, 0.97));
+        fields.put("TotalAmount", field("number", 10500, 0.99));
+        fields.put("TaxBreakdown", field("array", List.of(objectField(Map.of(
+                "TaxRatePercent", field("number", 10, 0.96),
+                "TaxableAmount", field("number", 10000, 0.96),
+                "TaxAmount", field("number", 1000, 0.97),
+                "CategoryNotation", field("string", "10%対象", 0.95),
+                "Category", field("string", "STANDARD", 0.95)))), 0.96));
+        fields.put("Adjustments", field("array", List.of(objectField(Map.of(
+                "Type", field("string", "DISCOUNT", 0.94),
+                "Direction", field("string", "DEDUCTION", 0.95),
+                "Description", field("string", "値引き", 0.96),
+                "Amount", field("number", 500, 0.97)))), 0.95));
+        fields.put("TaxInclusionNotation", field("string", "税抜", 0.94));
+        fields.put("PaymentDueDate", field("date", "2026-08-31", 0.96));
+        fields.put("BankTransferDestination", field("object", Map.of(
+                "BankName", field("string", "サンプル銀行", 0.93),
+                "BranchName", field("string", "本店", 0.92),
+                "AccountType", field("string", "普通", 0.94),
+                "AccountNumber", field("string", "1234567", 0.91),
+                "AccountHolderName", field("string", "サンプルショウジ", 0.90)), 0.93));
+
+        Map<String, Object> autoEntry = Map.of(
+                "schemaVersion", "2.1",
+                "pages", List.of(Map.of(
+                        "pageNumber", 1,
+                        "width", 595.0,
+                        "height", 842.0,
+                        "unit", "pixel",
+                        "angleDegrees", 0.0)),
+                "fields", fields);
+        return Map.of(
+                "schemaVersion", request.normalizedSchemaVersion(),
+                "analysisId", request.analysisId().toString(),
+                "provider", request.provider().name(),
+                "modelId", request.modelId(),
+                "providerApiVersion", request.providerApiVersion(),
+                "status", "SUCCEEDED",
+                "documents", List.of(Map.of(
+                        "markdown", "# 請求書\n\n請求番号: INV-2026-0001",
+                        "paragraphs", List.of(),
+                        "tables", List.of(),
+                        "fields", Map.of("autoEntry", autoEntry))),
+                "warnings", List.of(),
+                "metrics", Map.of(
+                        "pageCount", 1,
+                        "durationMilliseconds", 0));
+    }
+
+    private Map<String, Object> field(
+            String type,
+            Object value,
+            double confidence) {
+        return Map.of(
+                "type", type,
+                "value", value,
+                "confidence", confidence,
+                "sources", List.of(source()));
+    }
+
+    private Map<String, Object> objectField(Map<String, Object> value) {
+        return field("object", value, 0.96);
+    }
+
+    private Map<String, Object> source() {
+        return Map.of(
+                "pageNumber", 1,
+                "polygon", List.of(
+                        Map.of("x", 10.0, "y", 10.0),
+                        Map.of("x", 110.0, "y", 10.0),
+                        Map.of("x", 110.0, "y", 30.0),
+                        Map.of("x", 10.0, "y", 30.0)));
     }
 
     private Map<String, Object> paragraph(

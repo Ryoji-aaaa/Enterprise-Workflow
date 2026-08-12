@@ -85,6 +85,8 @@ workflow:
     processing-timeout: ${WORKFLOW_DOCUMENT_ANALYSIS_PROCESSING_TIMEOUT:30m}
     max-active-jobs-per-user: ${WORKFLOW_DOCUMENT_ANALYSIS_MAX_ACTIVE_JOBS_PER_USER:2}
     max-requests-per-user-per-hour: ${WORKFLOW_DOCUMENT_ANALYSIS_MAX_REQUESTS_PER_USER_PER_HOUR:20}
+    auto-entry:
+      review-confidence-threshold: ${DOCUMENT_ANALYSIS_AUTO_ENTRY_REVIEW_CONFIDENCE_THRESHOLD:0.60}
     azure:
       managed-identity-client-id: ${AZURE_DOCUMENT_ANALYSIS_CLIENT_ID:}
     document-intelligence:
