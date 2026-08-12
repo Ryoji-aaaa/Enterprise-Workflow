@@ -3,8 +3,11 @@ package jp.co.sdcj.workflow.service.documentanalysis.contentunderstanding;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 
 import com.azure.ai.contentunderstanding.ContentUnderstandingClient;
+import com.azure.ai.contentunderstanding.models.AnalysisInput;
 import com.azure.ai.contentunderstanding.models.AnalysisContent;
 import com.azure.ai.contentunderstanding.models.AnalysisResult;
 import com.azure.ai.contentunderstanding.models.ContentAnalyzerAnalyzeOperationStatus;
@@ -47,6 +50,8 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
             "Content Understanding could not analyze the supplied document.";
     private static final String SAFE_AUTH_MESSAGE =
             "Content Understanding authentication or authorization failed.";
+    private static final String COMPLETION_MODEL_NAME = "gpt-5.2";
+    private static final String EMBEDDING_MODEL_NAME = "text-embedding-3-large";
 
     private final ContentUnderstandingClient client;
     private final DocumentAnalysisProperties properties;
@@ -60,7 +65,7 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
         this.client = client;
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.normalizer = new ContentUnderstandingResultNormalizer();
+        this.normalizer = new ContentUnderstandingResultNormalizer(objectMapper);
     }
 
     @Override
@@ -115,9 +120,23 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
     private SyncPoller<ContentAnalyzerAnalyzeOperationStatus, AnalysisResult> beginAnalyze(
             DocumentAnalysisProviderRequest request) {
         try {
+            byte[] content = request.content().readAllBytes();
+            if (request.analysisProfile() == DocumentAnalysisProfile.AUTO_ENTRY) {
+                AnalysisInput input = new AnalysisInput()
+                        .setData(content)
+                        .setMimeType(request.contentType());
+                Map<String, String> modelDeployments = Map.of(
+                        COMPLETION_MODEL_NAME, request.completionModelDeploymentName(),
+                        EMBEDDING_MODEL_NAME, request.embeddingModelDeploymentName());
+                return client.beginAnalyze(
+                        request.modelId(),
+                        List.of(input),
+                        modelDeployments,
+                        ProcessingLocation.GEOGRAPHY);
+            }
             return client.beginAnalyzeBinary(
                     request.modelId(),
-                    BinaryData.fromBytes(request.content().readAllBytes()),
+                    BinaryData.fromBytes(content),
                     null,
                     request.contentType(),
                     ProcessingLocation.GEOGRAPHY);
@@ -201,6 +220,7 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
                     request.provider(),
                     request.modelId(),
                     request.providerApiVersion(),
+                    request.analysisProfile(),
                     result,
                     durationMilliseconds);
         } catch (RuntimeException exception) {

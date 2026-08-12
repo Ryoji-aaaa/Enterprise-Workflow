@@ -41,6 +41,32 @@ public record DocumentAnalysisViewV1(
             double y) {
     }
 
+    public record AutoEntry(
+            String schemaVersion,
+            List<AutoEntryPage> pages,
+            Map<String, AutoEntryField> fields) {
+    }
+
+    public record AutoEntryPage(
+            int pageNumber,
+            Double width,
+            Double height,
+            String unit,
+            Double angleDegrees) {
+    }
+
+    public record AutoEntryField(
+            String type,
+            Object value,
+            Double confidence,
+            List<AutoEntrySource> sources) {
+    }
+
+    public record AutoEntrySource(
+            int pageNumber,
+            List<Point> polygon) {
+    }
+
     public record Table(
             int index,
             int rowCount,

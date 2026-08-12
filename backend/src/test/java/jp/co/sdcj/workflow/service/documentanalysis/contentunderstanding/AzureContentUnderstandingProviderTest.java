@@ -3,6 +3,7 @@ package jp.co.sdcj.workflow.service.documentanalysis.contentunderstanding;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -13,12 +14,18 @@ import static org.mockito.Mockito.when;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.azure.ai.contentunderstanding.ContentUnderstandingClient;
+import com.azure.ai.contentunderstanding.models.AnalysisInput;
 import com.azure.ai.contentunderstanding.models.AnalysisResult;
 import com.azure.ai.contentunderstanding.models.ContentAnalyzerAnalyzeOperationStatus;
+import com.azure.ai.contentunderstanding.models.ContentFieldType;
+import com.azure.ai.contentunderstanding.models.ContentJsonField;
 import com.azure.ai.contentunderstanding.models.ContentRange;
+import com.azure.ai.contentunderstanding.models.DocumentContent;
 import com.azure.ai.contentunderstanding.models.ProcessingLocation;
 import com.azure.core.exception.HttpRequestException;
 import com.azure.core.exception.HttpResponseException;
@@ -313,6 +320,113 @@ class AzureContentUnderstandingProviderTest {
                         assertThat(exception.safeErrorCode())
                                 .isEqualTo("CONTENT_UNDERSTANDING_CONFIGURATION_ERROR"));
         verifyNoInteractions(client);
+    }
+
+    @Test
+    void autoEntryUsesAnalysisInputAndSnapshotModelDeployments() throws Exception {
+        ContentUnderstandingClient client = mock(ContentUnderstandingClient.class);
+        @SuppressWarnings("unchecked")
+        SyncPoller<ContentAnalyzerAnalyzeOperationStatus, AnalysisResult> poller =
+                mock(SyncPoller.class);
+        ContentAnalyzerAnalyzeOperationStatus status =
+                mock(ContentAnalyzerAnalyzeOperationStatus.class);
+        when(status.getId()).thenReturn("operation-auto-entry-123");
+        when(poller.waitForCompletion(Duration.ofMinutes(25)))
+                .thenReturn(new PollResponse<>(
+                        LongRunningOperationStatus.SUCCESSFULLY_COMPLETED, status));
+        when(poller.getFinalResult()).thenReturn(analysisResult(fixtureJson().replace(
+                "\"analyzerId\": \"prebuilt-layout\"",
+                "\"analyzerId\": \"enterprise_workflow_auto_entry_v2.1\"")));
+        when(client.beginAnalyze(
+                eq("enterprise_workflow_auto_entry_v2.1"),
+                anyList(),
+                eq(Map.of(
+                        "gpt-5.2", "auto-entry-gpt-5-2",
+                        "text-embedding-3-large", "auto-entry-text-embedding-3-large")),
+                eq(ProcessingLocation.GEOGRAPHY)))
+                .thenReturn(poller);
+
+        DocumentAnalysisProviderResult result = provider(client).analyze(autoEntryRequest());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<AnalysisInput>> inputs = ArgumentCaptor.forClass(List.class);
+        verify(client).beginAnalyze(
+                eq("enterprise_workflow_auto_entry_v2.1"),
+                inputs.capture(),
+                eq(Map.of(
+                        "gpt-5.2", "auto-entry-gpt-5-2",
+                        "text-embedding-3-large", "auto-entry-text-embedding-3-large")),
+                eq(ProcessingLocation.GEOGRAPHY));
+        assertThat(inputs.getValue()).singleElement().satisfies(input -> {
+            assertThat(input.getData())
+                    .isEqualTo("%PDF-1.4\n".getBytes(StandardCharsets.UTF_8));
+            assertThat(input.getMimeType()).isEqualTo("application/pdf");
+            assertThat(input.getUrl()).isNull();
+        });
+        assertThat(result.providerOperationId()).isEqualTo("operation-auto-entry-123");
+    }
+
+    @Test
+    void invalidJsonFieldUsesSafeResultInvalidPath() {
+        ContentJsonField jsonField = mock(ContentJsonField.class);
+        when(jsonField.getType()).thenReturn(ContentFieldType.JSON);
+        when(jsonField.getValue()).thenReturn(BinaryData.fromString("sensitive invalid json"));
+        DocumentContent content = mock(DocumentContent.class);
+        when(content.getMarkdown()).thenReturn("# fixture");
+        when(content.getFields()).thenReturn(Map.of("InvalidJson", jsonField));
+        AnalysisResult analysisResult = mock(AnalysisResult.class);
+        when(analysisResult.getAnalyzerId())
+                .thenReturn("enterprise_workflow_auto_entry_v2.1");
+        when(analysisResult.getApiVersion()).thenReturn("2025-11-01");
+        when(analysisResult.getStringEncoding()).thenReturn("utf16");
+        when(analysisResult.getContents()).thenReturn(List.of(content));
+
+        ContentUnderstandingClient client = mock(ContentUnderstandingClient.class);
+        @SuppressWarnings("unchecked")
+        SyncPoller<ContentAnalyzerAnalyzeOperationStatus, AnalysisResult> poller =
+                mock(SyncPoller.class);
+        ContentAnalyzerAnalyzeOperationStatus status =
+                mock(ContentAnalyzerAnalyzeOperationStatus.class);
+        when(status.getId()).thenReturn("operation-invalid-json");
+        when(poller.waitForCompletion(Duration.ofMinutes(25)))
+                .thenReturn(new PollResponse<>(
+                        LongRunningOperationStatus.SUCCESSFULLY_COMPLETED, status));
+        when(poller.getFinalResult()).thenReturn(analysisResult);
+        when(client.beginAnalyze(
+                eq("enterprise_workflow_auto_entry_v2.1"),
+                anyList(),
+                eq(Map.of(
+                        "gpt-5.2", "auto-entry-gpt-5-2",
+                        "text-embedding-3-large", "auto-entry-text-embedding-3-large")),
+                eq(ProcessingLocation.GEOGRAPHY)))
+                .thenReturn(poller);
+
+        assertThatThrownBy(() -> provider(client).analyze(autoEntryRequest()))
+                .isInstanceOfSatisfying(DocumentAnalysisProviderException.class, exception -> {
+                    assertThat(exception.safeErrorCode())
+                            .isEqualTo("CONTENT_UNDERSTANDING_RESULT_INVALID");
+                    assertThat(exception.safeErrorMessage())
+                            .isEqualTo("Content Understanding returned an invalid result.")
+                            .doesNotContain("sensitive invalid json");
+                    assertThat(exception.recoveryRequired()).isTrue();
+                    assertThat(exception.providerOperationId())
+                            .isEqualTo("operation-invalid-json");
+                });
+    }
+
+    private static DocumentAnalysisProviderRequest autoEntryRequest() {
+        return new DocumentAnalysisProviderRequest(
+                ANALYSIS_ID,
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                "enterprise_workflow_auto_entry_v2.1",
+                "2025-11-01",
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                "auto-entry-gpt-5-2",
+                "auto-entry-text-embedding-3-large",
+                1,
+                new ByteArrayInputStream("%PDF-1.4\n".getBytes(StandardCharsets.UTF_8)),
+                9,
+                "application/pdf");
     }
 
     private static DocumentAnalysisProperties properties() {

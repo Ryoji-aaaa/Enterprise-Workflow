@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import tools.jackson.databind.ObjectMapper;
 
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.service.documentanalysis.fake.FakeDocumentAnalysisProvider;
 
@@ -87,6 +88,50 @@ class DocumentAnalysisResultValidatorTest {
                         """)));
     }
 
+    @Test
+    void acceptsValidAutoEntryWithMissingIndividualValues() {
+        Map<String, Object> fields = new java.util.LinkedHashMap<>();
+        Map<String, Object> paymentDueDate = new java.util.LinkedHashMap<>();
+        paymentDueDate.put("type", "date");
+        paymentDueDate.put("value", null);
+        paymentDueDate.put("confidence", 0.83);
+        paymentDueDate.put("sources", List.of());
+        fields.put("PaymentDueDate", paymentDueDate);
+
+        byte[] normalizedJson = json(autoEntryView(Map.of(
+                "autoEntry", autoEntry(fields, validPages()))));
+
+        validator.validate(
+                autoEntryClaim(),
+                new DocumentAnalysisProviderResult(
+                        "op-1",
+                        json(Map.of("apiVersion", "2025-11-01",
+                                "analyzerId", "enterprise_workflow_auto_entry_v2.1")),
+                        normalizedJson));
+    }
+
+    @Test
+    void rejectsMissingOrMalformedAutoEntryContract() {
+        assertInvalidAutoEntry(Map.of());
+        assertInvalidAutoEntry(Map.of("autoEntry", autoEntry(Map.of(), validPages(), "2.0")));
+        assertInvalidAutoEntry(Map.of("autoEntry", Map.of(
+                "schemaVersion", "2.1",
+                "pages", validPages())));
+        assertInvalidAutoEntry(Map.of("autoEntry", autoEntry(Map.of(), List.of())));
+        assertInvalidAutoEntry(Map.of("autoEntry", autoEntry(Map.of(), List.of(Map.of(
+                "pageNumber", 1,
+                "width", 0,
+                "height", 842,
+                "unit", "pixel",
+                "angleDegrees", 0)))));
+        assertInvalidAutoEntry(Map.of("autoEntry", autoEntry(Map.of(), List.of(Map.of(
+                "pageNumber", 1,
+                "width", 595,
+                "height", 842,
+                "unit", "point",
+                "angleDegrees", 0)))));
+    }
+
     private void assertInvalid(DocumentAnalysisProviderResult result) {
         assertThatThrownBy(() -> validator.validate(
                 claim(DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE), result))
@@ -95,6 +140,18 @@ class DocumentAnalysisResultValidatorTest {
                             .isEqualTo("DOCUMENT_ANALYSIS_RESULT_CONTRACT_INVALID");
                     assertThat(exception.safeErrorMessage())
                             .isEqualTo("Document analysis result failed contract validation.");
+                    assertThat(exception.recoveryRequired()).isTrue();
+                });
+    }
+
+    private void assertInvalidAutoEntry(Map<String, Object> documentFields) {
+        DocumentAnalysisProviderResult result = result(
+                Map.of(),
+                autoEntryView(documentFields));
+        assertThatThrownBy(() -> validator.validate(autoEntryClaim(), result))
+                .isInstanceOfSatisfying(DocumentAnalysisProviderException.class, exception -> {
+                    assertThat(exception.safeErrorCode())
+                            .isEqualTo("DOCUMENT_ANALYSIS_RESULT_CONTRACT_INVALID");
                     assertThat(exception.recoveryRequired()).isTrue();
                 });
     }
@@ -132,6 +189,44 @@ class DocumentAnalysisResultValidatorTest {
         return view;
     }
 
+    private Map<String, Object> autoEntryView(Map<String, Object> fields) {
+        java.util.LinkedHashMap<String, Object> view = new java.util.LinkedHashMap<>(
+                view(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING));
+        view.put("modelId", "enterprise_workflow_auto_entry_v2.1");
+        view.put("documents", List.of(Map.of(
+                "markdown", "# test",
+                "paragraphs", List.of(),
+                "tables", List.of(),
+                "fields", fields)));
+        return view;
+    }
+
+    private Map<String, Object> autoEntry(
+            Map<String, Object> fields,
+            List<Map<String, Object>> pages) {
+        return autoEntry(fields, pages, "2.1");
+    }
+
+    private Map<String, Object> autoEntry(
+            Map<String, Object> fields,
+            List<Map<String, Object>> pages,
+            String schemaVersion) {
+        return Map.of(
+                "schemaVersion", schemaVersion,
+                "pages", pages,
+                "fields", fields);
+    }
+
+    private List<Map<String, Object>> validPages() {
+        java.util.LinkedHashMap<String, Object> page = new java.util.LinkedHashMap<>();
+        page.put("pageNumber", 1);
+        page.put("width", 595.0);
+        page.put("height", 842.0);
+        page.put("unit", "pixel");
+        page.put("angleDegrees", null);
+        return List.of(page);
+    }
+
     private DocumentAnalysisClaim claim(DocumentAnalysisProviderType provider) {
         return new DocumentAnalysisClaim(
                 ANALYSIS_ID,
@@ -143,6 +238,22 @@ class DocumentAnalysisResultValidatorTest {
                 provider == DocumentAnalysisProviderType.DOCUMENT_INTELLIGENCE
                         ? "2024-11-30"
                         : "2025-11-01",
+                1,
+                1);
+    }
+
+    private DocumentAnalysisClaim autoEntryClaim() {
+        return new DocumentAnalysisClaim(
+                ANALYSIS_ID,
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                "input/%s/source".formatted(ANALYSIS_ID),
+                "application/pdf",
+                9,
+                "enterprise_workflow_auto_entry_v2.1",
+                "2025-11-01",
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                "auto-entry-gpt-5-2",
+                "auto-entry-text-embedding-3-large",
                 1,
                 1);
     }

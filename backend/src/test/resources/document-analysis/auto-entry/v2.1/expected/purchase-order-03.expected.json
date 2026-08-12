@@ -1,0 +1,8 @@
+{
+  "fixtureSchemaVersion": 1,
+  "documentType": "PURCHASE_ORDER",
+  "requiredTaxBreakdownCategoryNotations": [
+    "消費税(8%)"
+  ],
+  "expectedFindings": []
+}

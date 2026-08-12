@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.Map;
 import java.util.UUID;
 
 import com.azure.ai.contentunderstanding.ContentUnderstandingClient;
@@ -31,6 +32,7 @@ import reactor.core.publisher.Mono;
 import tools.jackson.databind.ObjectMapper;
 
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
+import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderException;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRequest;
 import jp.co.sdcj.workflow.service.documentanalysis.contentunderstanding.AzureContentUnderstandingProvider;
@@ -96,6 +98,43 @@ class DocumentAnalysisAzureSdkWireContractTest {
         assertThat(request.getBodyAsBinaryData().toBytes()).isEqualTo(PDF);
     }
 
+    @Test
+    void contentUnderstandingAutoEntryUsesAnalysisInputAndExactModelDeployments() {
+        RecordingHttpClient httpClient = new RecordingHttpClient();
+        ContentUnderstandingClient client = new ContentUnderstandingClientBuilder()
+                .endpoint("https://content-understanding.example.test")
+                .credential(fixedCredential())
+                .httpClient(httpClient)
+                .serviceVersion(ContentUnderstandingConfiguration.SERVICE_VERSION)
+                .buildClient();
+
+        assertThatThrownBy(() -> new AzureContentUnderstandingProvider(
+                client, properties(), new ObjectMapper()).analyze(autoEntryRequest()))
+                .isInstanceOf(DocumentAnalysisProviderException.class);
+
+        HttpRequest request = httpClient.request();
+        assertThat(request.getHttpMethod()).isEqualTo(HttpMethod.POST);
+        assertThat(request.getUrl().getPath()).isEqualTo(
+                "/contentunderstanding/analyzers/"
+                        + "enterprise_workflow_auto_entry_v2.1:analyze");
+        assertThat(request.getUrl().getQuery())
+                .contains("api-version=2025-11-01")
+                .contains("stringEncoding=utf16")
+                .contains("processingLocation=geography");
+        assertThat(request.getHeaders().getValue("Content-Type"))
+                .isEqualTo("application/json");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = new ObjectMapper().readValue(
+                request.getBodyAsBinaryData().toBytes(), Map.class);
+        assertThat(body.get("modelDeployments")).isEqualTo(Map.of(
+                "gpt-5.2", "auto-entry-gpt-5-2",
+                "text-embedding-3-large", "auto-entry-text-embedding-3-large"));
+        assertThat(body.get("inputs")).isEqualTo(java.util.List.of(Map.of(
+                "data", Base64.getEncoder().encodeToString(PDF),
+                "mimeType", "application/pdf")));
+    }
+
     private static TokenCredential fixedCredential() {
         return ignored -> Mono.just(new AccessToken(
                 "wire-contract-test-token", OffsetDateTime.now().plusHours(1)));
@@ -109,6 +148,21 @@ class DocumentAnalysisAzureSdkWireContractTest {
                 provider,
                 "prebuilt-layout",
                 apiVersion,
+                1,
+                new ByteArrayInputStream(PDF),
+                PDF.length,
+                "application/pdf");
+    }
+
+    private static DocumentAnalysisProviderRequest autoEntryRequest() {
+        return new DocumentAnalysisProviderRequest(
+                UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
+                "enterprise_workflow_auto_entry_v2.1",
+                DocumentAnalysisProperties.CONTENT_UNDERSTANDING_API_VERSION,
+                DocumentAnalysisProfile.AUTO_ENTRY,
+                "auto-entry-gpt-5-2",
+                "auto-entry-text-embedding-3-large",
                 1,
                 new ByteArrayInputStream(PDF),
                 PDF.length,

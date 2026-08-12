@@ -1,0 +1,8 @@
+{
+  "fixtureSchemaVersion": 1,
+  "documentType": "ORDER_CONFIRMATION",
+  "requiredTaxBreakdownCategoryNotations": [
+    "消 費 税 (10%)"
+  ],
+  "expectedFindings": []
+}
