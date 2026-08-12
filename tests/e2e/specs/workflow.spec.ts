@@ -32,16 +32,16 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-async function login(page: Page, email: string, password: string): Promise<void> {
-  await page.goto("/login");
+async function startOAuthLogin(page: Page): Promise<void> {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const signInResponse = page.waitForResponse((response) =>
-      response.url().includes("/api/auth/sign-in/oauth2"),
+      response.request().method() === "POST"
+        && response.url().includes("/api/auth/sign-in/oauth2"),
     );
     await page.getByRole("button", { name: "ログイン", exact: true }).click();
     const response = await signInResponse;
     if (response.ok()) {
-      break;
+      return;
     }
 
     expect(response.status(), "OAuth initiation may only be retried after rate limiting").toBe(429);
@@ -51,6 +51,11 @@ async function login(page: Page, email: string, password: string): Promise<void>
     expect(retryAfterSeconds).toBeLessThanOrEqual(30);
     await page.waitForTimeout(retryAfterSeconds * 1_000 + 100);
   }
+}
+
+async function login(page: Page, email: string, password: string): Promise<void> {
+  await page.goto("/login");
+  await startOAuthLogin(page);
   await expect(page).toHaveURL(
     new RegExp(
       `^${keycloakUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/realms/workflow/protocol/openid-connect/auth`,
@@ -477,7 +482,7 @@ test("token更新不能時はtopとの往復をせず期限切れログインへ
   )).toBeTruthy();
 
   await page.unroute("**/api/backend/me");
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
+  await startOAuthLogin(page);
   await expect(page).toHaveURL(/\/top$/);
   await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
 });
