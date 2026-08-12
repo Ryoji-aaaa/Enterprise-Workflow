@@ -318,6 +318,12 @@ valueの有無はconfidenceから推測しない。valueなしは`null`のまま
 変換しない。`TaxBreakdown[].CategoryNotation`は帳票上の表記をそのまま保持し、`Category`との意味判定や
 税額・符号・合計の補正は行わない。これらの業務validationとreview判定はPhase 1B-Bの責務である。
 
+`enterprise_workflow_auto_entry_v2.1.1`では、同じ帳票でも`TaxBreakdown[].TaxRatePercent`が
+非決定的に`null`になることを既知のExtraction Quality limitationとして扱う。Phase 1B-Aの
+Integration / Contract Gateはこの欠落だけでは失敗にしない。Normalizerは`Category`、
+`CategoryNotation`、税額、対象額から税率を補完・推測せず、`null`を保持する。Phase 1B-Bのreview /
+validationはfieldを`MISSING`として返し、利用者が確認すべき欠落を安全に検出する。
+
 Studioから取得したacceptance fixtureの`stringEncoding=codePoint`はNormalizer入力として維持する。一方、
 Java SDKの実request/result contractは`utf16`であり、wire testとProvider validationで固定する。fixtureの
 encodingを理由にproduct codeを`codePoint`へ変更しない。
@@ -492,6 +498,13 @@ field構造、型、method、exact enum、processing locationを比較し、差�
 `method=extract`のままであること、旧definitionの不変性、新旧definitionにsecret-like valueが
 存在しないことを検証し、
 `make verify-infra`から実行する。
+
+Phase 1B-Aの必須acceptanceは、stagingのNext.js BFFを経由する1回のIntegration / Contract smokeである。
+同一帳票のAI抽出結果が3/3で完全一致することは必須Gateではない。smokeではJobの`SUCCEEDED`、
+`modelId=enterprise_workflow_auto_entry_v2.1.1`、`providerApiVersion=2025-11-01`、外側schema version 1、
+`fields.autoEntry.schemaVersion="2.1"`、`DocumentType`、`TaxBreakdown`の構造と主要表記、confidence、sourceを
+確認する。`TaxRatePercent=null`は記録してPhase 1B-Bのreview / validationへ渡すが、それ単独ではFAILに
+せず、補完・推測もしない。
 
 fixture は入力帳票、縮小済み Azure Content Understanding 結果、業務レビューの期待結果を対にして
 保持する。Azure の実行 ID、作成時刻、一時的な Analyzer ID、usage、およびページの words/lines は

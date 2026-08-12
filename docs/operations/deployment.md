@@ -102,6 +102,13 @@ GET response由来のserver-generated propertyを含む可能性があるため�
 `analyzerId`はURIで指定し、`createdAt`、`lastModifiedAt`、`status`、`supportedModels`、
 `warnings`とともにrequest bodyへ入れない。
 
+初回作成時の存在確認と、正式source Analyzerのdefinition同期は分けて扱う。初回作成では前述のとおり
+既存IDを置換しない。一方、正式sourceの`v2.1.1`だけが未commitの調整でcanonical definitionから
+ずれたことを正式PUT対象フィールドの比較で確認できた場合は、review済みcanonical bodyに限り
+source URIへ`allowReplace=true`を付けて復元できる。復元前後にstagingへPUT / Copyを送らず、sourceの
+`ready`とrepository / source / stagingのcanonicalized comparisonを再確認する。この手順を追加tuningや
+新しいpatch Analyzerの作成には使用しない。
+
 リポジトリrootで実行し、一時JSONは`mktemp -d`で作成したdirectoryに置き、次のように
 `az rest --body @file`で送る。
 URIへ`allowReplace`を付けない。Microsoft Entra IDのAzure CLI sessionを使い、access token、
@@ -140,24 +147,20 @@ API key、client secret、SASをfile、shell history、console log、artifactへ
 ```
 
 PUT後はsourceのAnalyzer GETを有限timeoutでpollし、`status=ready`を確認する。`failed`、
-timeout、読み取り不能は受入失敗として中断する。Ready後、同一byte列の
-`backend/src/test/resources/document-analysis/auto-entry/v2.1/documents/invoice-02.jpg`をsourceで
-3回の独立したlive analysis operationとして分析する。各回のRaw Azure resultがすべて次を
-満たした場合だけsource acceptanceをPASSとする。
+timeout、読み取り不能は受入失敗として中断する。Ready後はGET responseから正式PUT対象の
+`baseAnalyzerId`、`config`、`description`、`dynamicFieldSchema`、`fieldSchema`、
+`knowledgeSources`、`models`、`processingLocation`、`tags`だけを抽出し、key順を正規化して
+repositoryのcanonical definitionと一致することを確認する。server-generated propertyの有無や順序を
+definition差分として扱わない。
 
-- `DocumentType = INVOICE`
-- `TaxBreakdown`は2要素だけである
-- `TaxRatePercent = 10`、`Category = STANDARD`、`CategoryNotation = 10%対象額`が同一要素である
-- `TaxRatePercent = 8`、`Category = REDUCED`、`CategoryNotation = 軽減8%対象額`が同一要素である
-- 両方の`CategoryNotation`にnon-nullの`source`と`confidence`がある
-
-1回でも基準を満たさない場合はcopyせず、source acceptance失敗として原因を調査する。
-成功回だけを選ぶための自動retryは行わない。Raw result、帳票本文、source polygon、分析用URLは
-release recordやCI artifactへ保存せず、実行番号、Analyzer ID、各semantic criterionのPASS/FAILだけを記録する。
+Phase 1B-Aの必須GateはIntegration / Contractであり、同一帳票に対するAI抽出結果の3/3完全一致を
+source acceptanceまたはstaging acceptanceの必須条件にしない。抽出の反復実行はExtraction Qualityの
+観測として実施できるが、成功回だけを選ぶretryや抽出値の補完には使わない。Raw result、帳票本文、
+source polygon、分析用URLはrelease recordやCI artifactへ保存しない。
 
 ### sourceからstagingへのcross-resource Copy
 
-source acceptanceが3/3でPASSした場合だけ、GA `2025-11-01`の
+sourceが`ready`でcanonical definitionと一致した場合だけ、GA `2025-11-01`の
 [Grant Copy Authorization](https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/grant-copy-authorization?view=rest-contentunderstanding-2025-11-01)と
 [Copy](https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/copy?view=rest-contentunderstanding-2025-11-01)を使い、次の順でcopyする。
 
@@ -192,7 +195,7 @@ Contributor role assignmentが残っていないことを確認する。producti
 
 ### Phase B rollout
 
-Phase BはPhase Aとsource acceptanceが成功し、stagingの`v2.1.1`がReadyになった後だけ実施する。
+Phase BはPhase Aとsource definitionの受入が成功し、stagingの`v2.1.1`がReadyになった後だけ実施する。
 Backend runtimeのAnalyzer IDを`enterprise_workflow_auto_entry_v2.1.1`へ更新した検証済みcommitで、
 stagingの3つのruntime controlを`true`に変更し、`main`から到達可能な
 同じ検証済みimage SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
@@ -235,18 +238,31 @@ Provider呼出しへ渡さない。
 保持期限確認では期限切れJobのBlob cleanup後もPostgreSQLのJob metadataが`EXPIRED`で残ることを確認する。
 `RUNNING`はcleanup対象ではなく、lease expiry後に`FAILED_RECOVERY_REQUIRED`となってからcleanup対象になる。
 
-`v2.1.1`のrevisionをdeployした後は、同じ`invoice-02.jpg`を3回、それぞれ独立した
+`v2.1.1`のrevisionをdeployした後は、`invoice-02.jpg`を1回、
 `provider=CONTENT_UNDERSTANDING`、`profile=AUTO_ENTRY`のJobとしてNext.js BFFの
-`/api/backend/document-analyses...`経由で送信する。Job status、normalized view、必要なRaw resultの
-取得もBFF経由とし、Browserや運用clientからSpring Boot、Content Understanding、Blob Storageへ
-直接接続しない。各Jobで`modelId=enterprise_workflow_auto_entry_v2.1.1`、
-`fields.autoEntry.schemaVersion="2.1"`を確認し、sourceと同じsemantic criteriaを3/3で満たすことを
-staging acceptanceのPASS条件とする。
+`/api/backend/document-analyses...`経由で送信する。Job statusとnormalized viewの取得もBFF経由とし、
+Browserや運用clientからSpring Boot、Content Understanding、Blob Storageへ直接接続しない。Phase 1B-Aの
+Integration / Contract smokeは次をすべて満たした場合にPASSとする。
 
-1回でも失敗、timeout、異なるAnalyzer ID、または異なるnormalized schema versionがある場合は
-rolloutを完了扱いにせず、production操作に進まない。public network有効化、runtime UAMIの権限昇格、
-API keyやSASへのfallback、およびBackendへの直接アクセスで回避しない。受入記録は3回それぞれの
-Job ID、Analyzer ID、status、semantic criterionのPASS/FAILに限定し、帳票本文、Raw JSON、credentialを転記しない。
+- Jobが有限timeout内に`SUCCEEDED`となり、`modelId=enterprise_workflow_auto_entry_v2.1.1`、
+  `providerApiVersion=2025-11-01`である
+- Normalized viewが外側`schemaVersion=1`、`status=SUCCEEDED`、
+  `fields.autoEntry.schemaVersion="2.1"`である
+- `DocumentType=INVOICE`で、non-nullのconfidenceとsourceを保持する
+- `TaxBreakdown`がarray/object contractを維持し、`STANDARD / 10%対象額`と
+  `REDUCED / 軽減8%対象額`の要素、および各`CategoryNotation`のnon-null confidenceとsourceを保持する
+- Browser requestが同一originのBFFだけを通り、Azure AI、Blob Storage、Spring Bootへ直接接続しない
+
+`TaxRatePercent`が同じ帳票でも非決定的に`null`になることは、`v2.1.1`の既知のExtraction Quality
+limitationとして扱う。これ単独ではPhase 1B-AをFAILにしない。`Category`、`CategoryNotation`、金額などから
+値を補完・推測せず、`null`をそのままNormalized contractへ保持する。Phase 1B-Bのreview / validationが
+`MISSING`として安全に検出し、税内訳の整合性を人手確認へ回す。
+
+Job失敗、timeout、異なるAnalyzer ID、異なるAPI version、異なるnormalized schema version、または上記の
+Integration / Contract不整合がある場合はrolloutを完了扱いにせず、production操作に進まない。
+public network有効化、runtime UAMIの権限昇格、API keyやSASへのfallback、およびBackendへの直接アクセスで
+回避しない。受入記録はJob ID、Analyzer ID、status、contract criterionのPASS/FAILに限定し、帳票本文、
+Raw JSON、credentialを転記しない。
 
 BrowserのNetwork logには`*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、
 `*.blob.core.windows.net`への直接requestが存在せず、従来どおり`/api/backend/...`だけを呼ぶことを確認する。
