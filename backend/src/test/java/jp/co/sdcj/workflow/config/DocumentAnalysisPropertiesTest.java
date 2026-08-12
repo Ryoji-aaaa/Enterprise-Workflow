@@ -100,6 +100,27 @@ class DocumentAnalysisPropertiesTest {
     }
 
     @Test
+    void autoEntryReviewConfidenceThresholdHasDefaultAndCanBeOverridden() {
+        autoEntryReviewContextRunner()
+                .run(context -> assertThat(context.getBean(AutoEntryReviewProperties.class)
+                        .reviewConfidenceThreshold()).isEqualByComparingTo("0.60"));
+
+        autoEntryReviewContextRunner()
+                .withPropertyValues(
+                        "workflow.document-analysis.auto-entry.review-confidence-threshold=0.75")
+                .run(context -> assertThat(context.getBean(AutoEntryReviewProperties.class)
+                        .reviewConfidenceThreshold()).isEqualByComparingTo("0.75"));
+    }
+
+    @Test
+    void autoEntryReviewConfidenceThresholdRejectsOutOfRangeValue() {
+        autoEntryReviewContextRunner()
+                .withPropertyValues(
+                        "workflow.document-analysis.auto-entry.review-confidence-threshold=1.01")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
     void enabledAcceptsConnectionString() {
         contextRunner
                 .withPropertyValues(
@@ -358,9 +379,22 @@ class DocumentAnalysisPropertiesTest {
                 .run(context -> assertThat(context).hasFailed());
     }
 
+    private static ApplicationContextRunner autoEntryReviewContextRunner() {
+        return new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        ConfigurationPropertiesAutoConfiguration.class,
+                        ValidationAutoConfiguration.class))
+                .withUserConfiguration(AutoEntryReviewTestConfig.class);
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(DocumentAnalysisProperties.class)
     @Import(DocumentAnalysisStorageConfiguration.class)
     static class TestConfig {
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(AutoEntryReviewProperties.class)
+    static class AutoEntryReviewTestConfig {
     }
 }

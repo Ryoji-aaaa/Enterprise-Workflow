@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -320,6 +321,135 @@ class DocumentAnalysisApiIntegrationTest {
     }
 
     @Test
+    void autoEntryReviewは認証権限ownerと固定profileを強制する() throws Exception {
+        UUID autoEntryId = createAutoEntry(cuUser, "cu-subject");
+        UUID generalId = UUID.fromString(JsonTestSupport.stringValue(
+                mockMvc.perform(multipart("/api/document-analyses")
+                                .file(provider("CONTENT_UNDERSTANDING"))
+                                .file(pdf("general-review.pdf"))
+                                .with(validJwt(cuUser, "cu-subject")))
+                        .andExpect(status().isAccepted())
+                        .andReturn().getResponse().getContentAsString(),
+                "id"));
+
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", autoEntryId))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", autoEntryId)
+                        .with(validJwt(noPermissionUser, "none-subject")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", autoEntryId)
+                        .with(validJwt(readOnlyUser, "reader-subject")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_NOT_FOUND"));
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", generalId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_NOT_FOUND"));
+    }
+
+    @Test
+    void fakeAutoEntryはdispatcherからtypedReviewまで取得できる() throws Exception {
+        UUID analysisId = createAutoEntry(cuUser, "cu-subject");
+        dispatcher.dispatchOnce();
+        resultLoadTransactions.clear();
+
+        String response = mockMvc.perform(get(
+                            "/api/document-analyses/{id}/auto-entry-review", analysisId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(header().string("Cache-Control", containsString("private")))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.analysisId").value(analysisId.toString()))
+                .andExpect(jsonPath("$.schemaVersion").value("2.1"))
+                .andExpect(jsonPath("$.pages[0].pageNumber").value(1))
+                .andExpect(jsonPath("$.document.documentType.value").value("INVOICE"))
+                .andExpect(jsonPath("$.document.documentNumber.value").value("INV-2026-0001"))
+                .andExpect(jsonPath("$.document.issuerName.status").value("REVIEW"))
+                .andExpect(jsonPath("$.document.issuerName.findings[0]").value("LOW_CONFIDENCE"))
+                .andExpect(jsonPath("$.document.lineItems.value[0].quantity.value").value(2))
+                .andExpect(jsonPath("$.document.lineItems.value[0].review.confidence").value(0.96))
+                .andExpect(jsonPath("$.document.lineItems.value[0].review.sources[0].pageNumber")
+                        .value(1))
+                .andExpect(jsonPath("$.document.taxBreakdown.value[0].categoryNotation.value")
+                        .value("10%対象"))
+                .andExpect(jsonPath("$.document.adjustments.value[0].rawAmount.value").value(500))
+                .andExpect(jsonPath("$.document.adjustments.value[0].normalizedSignedAmount.value")
+                        .value(-500))
+                .andExpect(jsonPath("$.taxMode.value").value("TAX_EXCLUDED"))
+                .andExpect(jsonPath("$.summary.reviewCount").value(1))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(response)
+                .doesNotContain("auto-entry-gpt-5-2")
+                .doesNotContain("auto-entry-text-embedding-3-large")
+                .doesNotContain("managedIdentity")
+                .doesNotContain("endpoint")
+                .doesNotContain("rawResult");
+        assertThat(resultLoadTransactions).containsExactly(false);
+        assertThat(accessAuditCount("DOCUMENT_ANALYSIS_RESULT_ACCESSED")).isEqualTo(1);
+        String auditData = jdbcTemplate.queryForObject("""
+                select after_data
+                from audit_logs
+                where action_type = 'DOCUMENT_ANALYSIS_RESULT_ACCESSED'
+                order by occurred_at desc
+                limit 1
+                """, String.class);
+        assertThat(auditData).contains("auto-entry-review");
+    }
+
+    @Test
+    void autoEntryReviewは未完了期限切れstorageFailureを既存lifecycleで返す() throws Exception {
+        UUID queuedId = createAutoEntry(cuUser, "cu-subject");
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", queuedId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_RESULT_NOT_READY"));
+
+        jdbcTemplate.update(
+                "update document_analysis_jobs set expires_at = ? where id = ?",
+                Timestamp.from(Instant.now().minusSeconds(1)),
+                queuedId);
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", queuedId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_EXPIRED"));
+
+        UUID succeededId = createAutoEntry(cuUser, "cu-subject");
+        dispatcher.dispatchOnce();
+        resultLoadTransactions.clear();
+        stored.remove(DocumentAnalysisObjectNames.normalizedResult(succeededId));
+        mockMvc.perform(get("/api/document-analyses/{id}/auto-entry-review", succeededId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE"));
+        assertThat(resultLoadTransactions).containsExactly(false);
+        assertThat(accessAuditCount("DOCUMENT_ANALYSIS_RESULT_ACCESSED")).isZero();
+    }
+
+    @Test
+    void malformedAutoEntryResultはcustomerDataを返さないsafeErrorになる() throws Exception {
+        UUID analysisId = createAutoEntry(cuUser, "cu-subject");
+        dispatcher.dispatchOnce();
+        String sensitive = "sensitive-customer-invoice-value";
+        byte[] malformed = ("{\"customerData\":\"" + sensitive + "\"}").getBytes();
+        stored.put(
+                DocumentAnalysisObjectNames.normalizedResult(analysisId),
+                new StoredContent(malformed, MediaType.APPLICATION_JSON_VALUE));
+
+        String response = mockMvc.perform(get(
+                            "/api/document-analyses/{id}/auto-entry-review", analysisId)
+                        .with(validJwt(cuUser, "cu-subject")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code")
+                        .value("DOCUMENT_ANALYSIS_AUTO_ENTRY_RESULT_INVALID"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain(sensitive);
+    }
+
+    @Test
     void blobLoadFailureDoesNotRecordSuccessfulAccessAudit() throws Exception {
         String created = mockMvc.perform(multipart("/api/document-analyses")
                         .file(provider("DOCUMENT_INTELLIGENCE"))
@@ -429,6 +559,17 @@ class DocumentAnalysisApiIntegrationTest {
                 from audit_logs
                 where action_type = ?
                 """, Integer.class, actionType);
+    }
+
+    private UUID createAutoEntry(AppUser user, String subject) throws Exception {
+        String created = mockMvc.perform(multipart("/api/document-analyses")
+                        .file(provider("CONTENT_UNDERSTANDING"))
+                        .file(profile("AUTO_ENTRY"))
+                        .file(pdf("auto-entry-review.pdf"))
+                        .with(validJwt(user, subject)))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(JsonTestSupport.stringValue(created, "id"));
     }
 
     private AppUser user(String email, String name, String subject, Instant now) {

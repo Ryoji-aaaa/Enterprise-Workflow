@@ -4,5 +4,7 @@
   "requiredTaxBreakdownCategoryNotations": [
     "消費税(8%)"
   ],
-  "expectedFindings": []
+  "expectedFindings": [
+    "LOW_CONFIDENCE"
+  ]
 }
