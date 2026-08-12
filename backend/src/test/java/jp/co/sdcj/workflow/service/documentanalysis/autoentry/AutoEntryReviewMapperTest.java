@@ -130,7 +130,7 @@ class AutoEntryReviewMapperTest {
         DocumentAnalysisViewV1 normalized = new ContentUnderstandingResultNormalizer().normalize(
                 ANALYSIS_ID,
                 DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 DocumentAnalysisProfile.AUTO_ENTRY,
                 azureResult,
@@ -160,7 +160,7 @@ class AutoEntryReviewMapperTest {
         root.put("schemaVersion", 1);
         root.put("analysisId", ANALYSIS_ID.toString());
         root.put("provider", "CONTENT_UNDERSTANDING");
-        root.put("modelId", "enterprise_workflow_auto_entry_v2.1");
+        root.put("modelId", "enterprise_workflow_auto_entry_v2.1.1");
         root.put("providerApiVersion", "2025-11-01");
         root.put("status", "SUCCEEDED");
         root.put("documents", List.of(document(fields)));

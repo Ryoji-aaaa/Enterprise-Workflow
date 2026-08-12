@@ -1,11 +1,14 @@
 # AUTO_ENTRY v2.1 acceptance fixtures
 
-These fixtures define the acceptance baseline for
-`enterprise_workflow_auto_entry_v2.1`.
+These fixtures define the normalized AUTO_ENTRY v2.1 acceptance baseline.
 
 このディレクトリは、5件の合成・匿名化済み帳票を使って、AUTO_ENTRY Analyzer の変更を
-比較・検証するための固定 fixture である。v2.2 以降を検証するときは、同じ `documents/` を
-入力として v2.1 の基準結果と比較する。
+比較・検証するための固定 fixture である。directory名の`v2.1`は
+`fields.autoEntry.schemaVersion="2.1"`と対応するNormalized contract versionであり、Analyzer IDの
+patch versionではない。runtime Analyzerが`enterprise_workflow_auto_entry_v2.1.1`になっても
+このdirectoryはrenameせず、`enterprise_workflow_auto_entry_v2.1`でcaptureした基準結果を履歴として
+保持する。contract v2.2以降を検証するときは、同じ`documents/`を入力として
+v2.1の基準結果と比較する。
 
 ## 構成
 

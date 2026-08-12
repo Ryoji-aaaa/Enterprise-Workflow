@@ -87,7 +87,117 @@ Phase 1AではCustom AnalyzerのCopy/Ready確認、Analyzerへのmodel deploymen
 手動作成・変更したり、public networkを一時的に有効化して回避したりしない。productionはPhase 1Aでこの2 deploymentを
 作成しない。
 
-Phase BはPhase A成功後だけ実施する。stagingの3つのruntime controlを`true`に変更し、`main`から到達可能な
+### AUTO_ENTRY Analyzer patchのsource作成と受入
+
+`enterprise_workflow_auto_entry_v2.1.1`は、source Content Understanding resourceで新規作成してから
+stagingへcopyする。既存の`enterprise_workflow_auto_entry_v2.1`は削除・更新せず、
+definitionも履歴として保持する。APIはAzure Content Understanding GA `2025-11-01`の
+[Create Or Replace](https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/create-or-replace?view=rest-contentunderstanding-2025-11-01)を使う。
+
+作成前に新旧definitionの静的検査を実行し、sourceの`v2.1.1`が未作成であることをGETで
+確認する。同じIDが存在する場合は中断し、削除や置換で回避しない。Analyzer definitionは
+GET response由来のserver-generated propertyを含む可能性があるため、PUTでは正式request bodyの
+`baseAnalyzerId`、`config`、`description`、`dynamicFieldSchema`、`fieldSchema`、
+`knowledgeSources`、`models`、`processingLocation`、`tags`だけを一時JSONへ抽出する。
+`analyzerId`はURIで指定し、`createdAt`、`lastModifiedAt`、`status`、`supportedModels`、
+`warnings`とともにrequest bodyへ入れない。
+
+初回作成時の存在確認と、正式source Analyzerのdefinition同期は分けて扱う。初回作成では前述のとおり
+既存IDを置換しない。一方、正式sourceの`v2.1.1`だけが未commitの調整でcanonical definitionから
+ずれたことを正式PUT対象フィールドの比較で確認できた場合は、review済みcanonical bodyに限り
+source URIへ`allowReplace=true`を付けて復元できる。復元前後にstagingへPUT / Copyを送らず、sourceの
+`ready`とrepository / source / stagingのcanonicalized comparisonを再確認する。この手順を追加tuningや
+新しいpatch Analyzerの作成には使用しない。
+
+リポジトリrootで実行し、一時JSONは`mktemp -d`で作成したdirectoryに置き、次のように
+`az rest --body @file`で送る。
+URIへ`allowReplace`を付けない。Microsoft Entra IDのAzure CLI sessionを使い、access token、
+API key、client secret、SASをfile、shell history、console log、artifactへ出力しない。
+
+```bash
+(
+  set -Eeuo pipefail
+  umask 077
+  : "${SOURCE_CONTENT_UNDERSTANDING_ENDPOINT:?source endpoint must be set}"
+
+  readonly analyzer_id="enterprise_workflow_auto_entry_v2.1.1"
+  readonly api_version="2025-11-01"
+  readonly analyzer_definition="infra/content-understanding/analyzers/${analyzer_id}.json"
+  temporary_directory="$(mktemp -d)"
+  readonly temporary_directory
+  readonly put_body="${temporary_directory}/create-analyzer.json"
+  trap 'rm -f -- "${put_body}"; rmdir -- "${temporary_directory}"' EXIT
+
+  jq -e 'with_entries(
+    select(.key as $key |
+      ["baseAnalyzerId", "config", "description", "dynamicFieldSchema", "fieldSchema",
+       "knowledgeSources", "models", "processingLocation", "tags"] | index($key)
+    )
+  ) | if type == "object" and has("fieldSchema") and has("models") and
+         has("processingLocation")
+      then . else error("required create request fields are missing") end' \
+    "${analyzer_definition}" >"${put_body}"
+
+  az rest --method put \
+    --url "${SOURCE_CONTENT_UNDERSTANDING_ENDPOINT%/}/contentunderstanding/analyzers/${analyzer_id}?api-version=${api_version}" \
+    --headers "Content-Type=application/json" \
+    --body @"${put_body}" \
+    --output none
+)
+```
+
+PUT後はsourceのAnalyzer GETを有限timeoutでpollし、`status=ready`を確認する。`failed`、
+timeout、読み取り不能は受入失敗として中断する。Ready後はGET responseから正式PUT対象の
+`baseAnalyzerId`、`config`、`description`、`dynamicFieldSchema`、`fieldSchema`、
+`knowledgeSources`、`models`、`processingLocation`、`tags`だけを抽出し、key順を正規化して
+repositoryのcanonical definitionと一致することを確認する。server-generated propertyの有無や順序を
+definition差分として扱わない。
+
+Phase 1B-Aの必須GateはIntegration / Contractであり、同一帳票に対するAI抽出結果の3/3完全一致を
+source acceptanceまたはstaging acceptanceの必須条件にしない。抽出の反復実行はExtraction Qualityの
+観測として実施できるが、成功回だけを選ぶretryや抽出値の補完には使わない。Raw result、帳票本文、
+source polygon、分析用URLはrelease recordやCI artifactへ保存しない。
+
+### sourceからstagingへのcross-resource Copy
+
+sourceが`ready`でcanonical definitionと一致した場合だけ、GA `2025-11-01`の
+[Grant Copy Authorization](https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/grant-copy-authorization?view=rest-contentunderstanding-2025-11-01)と
+[Copy](https://learn.microsoft.com/en-us/rest/api/contentunderstanding/content-analyzers/copy?view=rest-contentunderstanding-2025-11-01)を使い、次の順でcopyする。
+
+1. sourceとstaging Content Understanding accountのAzure resource ID、region、endpointをcontrol planeから取得する。
+   stagingに`enterprise_workflow_auto_entry_v2.1.1`が未作成であることを確認し、存在する場合は中断する。
+2. Copy専用の一時User Assigned Managed Identityを作成し、sourceとstagingのそれぞれの
+   Content Understanding account scopeに`Cognitive Services Content Understanding Contributor`を付与する。
+   role assignment IDは後で正確に削除できるよう記録する。
+3. staging Container Apps Environment内に、該当identityだけをattachしたmanual triggerの
+   temporary Container Apps Jobを作成する。Jobはingress、secret、scheduleを持たせず、
+   不変のimage tagと有限execution timeoutを使う。RBAC propagation後に1回だけ起動する。
+4. Job内で一時identityを使ってsourceの
+   `POST /contentunderstanding/analyzers/enterprise_workflow_auto_entry_v2.1.1:grantCopyAuthorization?api-version=2025-11-01`
+   を実行する。bodyにstaging accountの`targetAzureResourceId`と`targetRegion`を入れ、
+   responseの`expiresAt`より前に後続処理を完了する。
+5. 同じJob内からstagingの
+   `POST /contentunderstanding/analyzers/enterprise_workflow_auto_entry_v2.1.1:copy?api-version=2025-11-01`
+   を実行する。bodyはsourceの`sourceAzureResourceId`、`sourceRegion`、
+   `sourceAnalyzerId=enterprise_workflow_auto_entry_v2.1.1`だけとし、`allowReplace`をURIへ付けない。
+6. stagingのAnalyzer GETを有限timeoutでpollし、`status=ready`を確認する。`failed`、timeout、
+   GET失敗はJobを失敗させる。Ready後にsourceとstagingのGET responseを正式PUT allowlistで抽出し、
+   request-relevantなdefinitionがsourceと一致することも確認する。
+7. 成否にかかわらずtemporary Job、2つのrole assignment、temporary UAMIの順に削除する。
+   記録したresource IDを使い、他のrole assignmentや通常Jobを対象にしない。削除後は3種の
+   temporary resourceが存在しないことをread-only commandで確認する。
+
+この手順中もstaging Content Understanding accountのpublic networkは無効のままとし、VNet内の
+temporary Jobからprivate endpoint経由でアクセスする。既存Backend runtime UAMIの
+`Cognitive Services Content Understanding Reader`は変更せず、Contributorを追加したりCopy Jobへ転用したり
+しない。cleanup後にpublic networkが`Disabled`、runtime UAMIがReaderだけであり、temporary UAMIと
+Contributor role assignmentが残っていないことを確認する。productionではこの手順を実行しない。
+
+### Phase B rollout
+
+Phase BはPhase Aとsource definitionの受入が成功し、stagingの`v2.1.1`がReadyになった後だけ実施する。
+Backend runtimeのAnalyzer IDを`enterprise_workflow_auto_entry_v2.1.1`へ更新した検証済みcommitで、
+stagingの3つのruntime controlを`true`に変更し、`main`から到達可能な
 同じ検証済みimage SHAを再deployする。Backend revisionで`WORKFLOW_DOCUMENT_ANALYSIS_EXECUTION_MODE=azure`、
 `DOCUMENT_INTELLIGENCE_ENABLED=true`、`CONTENT_UNDERSTANDING_ENABLED=true`、
 `DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS=false`、
@@ -105,8 +215,9 @@ Document Intelligence endpoint、Content Understanding endpoint、Storage blob e
 private IPが返ることを確認する。GitHub-hosted runnerや運用端末からprivate IPへ直接接続できることは
 期待しない。public IPへ解決される場合は、runtime controlを有効にしたままsmoke testへ進まない。
 
-RBACはAzure CLIで次を確認する。一時回避としてOwner、Contributor、Content Understanding Contributor、
-Storage Account Contributorなどを追加しない。
+RBACはAzure CLIで次を確認する。既存Backend runtime UAMIへ一時回避としてOwner、Contributor、
+Content Understanding Contributor、Storage Account Contributorなどを追加しない。前記cross-resource Copyの
+実行中に限り、Copy専用temporary UAMIへ付与する2つのContent Understanding Contributorだけを例外とする。
 
 ```text
 Document Analysis AI UAMI:
@@ -126,6 +237,32 @@ staging application smokeは既存Frontendから行う。`/document-intelligence
 Provider呼出しへ渡さない。
 保持期限確認では期限切れJobのBlob cleanup後もPostgreSQLのJob metadataが`EXPIRED`で残ることを確認する。
 `RUNNING`はcleanup対象ではなく、lease expiry後に`FAILED_RECOVERY_REQUIRED`となってからcleanup対象になる。
+
+`v2.1.1`のrevisionをdeployした後は、`invoice-02.jpg`を1回、
+`provider=CONTENT_UNDERSTANDING`、`profile=AUTO_ENTRY`のJobとしてNext.js BFFの
+`/api/backend/document-analyses...`経由で送信する。Job statusとnormalized viewの取得もBFF経由とし、
+Browserや運用clientからSpring Boot、Content Understanding、Blob Storageへ直接接続しない。Phase 1B-Aの
+Integration / Contract smokeは次をすべて満たした場合にPASSとする。
+
+- Jobが有限timeout内に`SUCCEEDED`となり、`modelId=enterprise_workflow_auto_entry_v2.1.1`、
+  `providerApiVersion=2025-11-01`である
+- Normalized viewが外側`schemaVersion=1`、`status=SUCCEEDED`、
+  `fields.autoEntry.schemaVersion="2.1"`である
+- `DocumentType=INVOICE`で、non-nullのconfidenceとsourceを保持する
+- `TaxBreakdown`がarray/object contractを維持し、`STANDARD / 10%対象額`と
+  `REDUCED / 軽減8%対象額`の要素、および各`CategoryNotation`のnon-null confidenceとsourceを保持する
+- Browser requestが同一originのBFFだけを通り、Azure AI、Blob Storage、Spring Bootへ直接接続しない
+
+`TaxRatePercent`が同じ帳票でも非決定的に`null`になることは、`v2.1.1`の既知のExtraction Quality
+limitationとして扱う。これ単独ではPhase 1B-AをFAILにしない。`Category`、`CategoryNotation`、金額などから
+値を補完・推測せず、`null`をそのままNormalized contractへ保持する。Phase 1B-Bのreview / validationが
+`MISSING`として安全に検出し、税内訳の整合性を人手確認へ回す。
+
+Job失敗、timeout、異なるAnalyzer ID、異なるAPI version、異なるnormalized schema version、または上記の
+Integration / Contract不整合がある場合はrolloutを完了扱いにせず、production操作に進まない。
+public network有効化、runtime UAMIの権限昇格、API keyやSASへのfallback、およびBackendへの直接アクセスで
+回避しない。受入記録はJob ID、Analyzer ID、status、contract criterionのPASS/FAILに限定し、帳票本文、
+Raw JSON、credentialを転記しない。
 
 BrowserのNetwork logには`*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、
 `*.blob.core.windows.net`への直接requestが存在せず、従来どおり`/api/backend/...`だけを呼ぶことを確認する。

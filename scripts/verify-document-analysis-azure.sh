@@ -3,7 +3,7 @@
 # Read-only Azure Resource Manager verification for an already deployed environment.
 set -Eeuo pipefail
 
-readonly AUTO_ENTRY_ANALYZER_ID="enterprise_workflow_auto_entry_v2.1"
+readonly AUTO_ENTRY_ANALYZER_ID="enterprise_workflow_auto_entry_v2.1.1"
 readonly AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME="auto-entry-gpt-5-2"
 readonly AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME="auto-entry-text-embedding-3-large"
 

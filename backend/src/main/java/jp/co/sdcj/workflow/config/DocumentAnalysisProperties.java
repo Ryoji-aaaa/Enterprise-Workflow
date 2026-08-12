@@ -115,7 +115,7 @@ public record DocumentAnalysisProperties(
             String autoEntryEmbeddingModelDeploymentName) {
 
         private static final String DEFAULT_AUTO_ENTRY_ANALYZER_ID =
-                "enterprise_workflow_auto_entry_v2.1";
+                "enterprise_workflow_auto_entry_v2.1.1";
         private static final String DEFAULT_AUTO_ENTRY_COMPLETION_MODEL_DEPLOYMENT_NAME =
                 "auto-entry-gpt-5-2";
         private static final String DEFAULT_AUTO_ENTRY_EMBEDDING_MODEL_DEPLOYMENT_NAME =

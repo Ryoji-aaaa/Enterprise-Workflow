@@ -305,7 +305,7 @@ class AzureContentUnderstandingProviderTest {
         DocumentAnalysisProviderRequest request = new DocumentAnalysisProviderRequest(
                 ANALYSIS_ID,
                 DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 DocumentAnalysisProfile.AUTO_ENTRY,
                 null,
@@ -336,9 +336,9 @@ class AzureContentUnderstandingProviderTest {
                         LongRunningOperationStatus.SUCCESSFULLY_COMPLETED, status));
         when(poller.getFinalResult()).thenReturn(analysisResult(fixtureJson().replace(
                 "\"analyzerId\": \"prebuilt-layout\"",
-                "\"analyzerId\": \"enterprise_workflow_auto_entry_v2.1\"")));
+                "\"analyzerId\": \"enterprise_workflow_auto_entry_v2.1.1\"")));
         when(client.beginAnalyze(
-                eq("enterprise_workflow_auto_entry_v2.1"),
+                eq("enterprise_workflow_auto_entry_v2.1.1"),
                 anyList(),
                 eq(Map.of(
                         "gpt-5.2", "auto-entry-gpt-5-2",
@@ -351,7 +351,7 @@ class AzureContentUnderstandingProviderTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<AnalysisInput>> inputs = ArgumentCaptor.forClass(List.class);
         verify(client).beginAnalyze(
-                eq("enterprise_workflow_auto_entry_v2.1"),
+                eq("enterprise_workflow_auto_entry_v2.1.1"),
                 inputs.capture(),
                 eq(Map.of(
                         "gpt-5.2", "auto-entry-gpt-5-2",
@@ -376,7 +376,7 @@ class AzureContentUnderstandingProviderTest {
         when(content.getFields()).thenReturn(Map.of("InvalidJson", jsonField));
         AnalysisResult analysisResult = mock(AnalysisResult.class);
         when(analysisResult.getAnalyzerId())
-                .thenReturn("enterprise_workflow_auto_entry_v2.1");
+                .thenReturn("enterprise_workflow_auto_entry_v2.1.1");
         when(analysisResult.getApiVersion()).thenReturn("2025-11-01");
         when(analysisResult.getStringEncoding()).thenReturn("utf16");
         when(analysisResult.getContents()).thenReturn(List.of(content));
@@ -393,7 +393,7 @@ class AzureContentUnderstandingProviderTest {
                         LongRunningOperationStatus.SUCCESSFULLY_COMPLETED, status));
         when(poller.getFinalResult()).thenReturn(analysisResult);
         when(client.beginAnalyze(
-                eq("enterprise_workflow_auto_entry_v2.1"),
+                eq("enterprise_workflow_auto_entry_v2.1.1"),
                 anyList(),
                 eq(Map.of(
                         "gpt-5.2", "auto-entry-gpt-5-2",
@@ -418,7 +418,7 @@ class AzureContentUnderstandingProviderTest {
         return new DocumentAnalysisProviderRequest(
                 ANALYSIS_ID,
                 DocumentAnalysisProviderType.CONTENT_UNDERSTANDING,
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 DocumentAnalysisProfile.AUTO_ENTRY,
                 "auto-entry-gpt-5-2",

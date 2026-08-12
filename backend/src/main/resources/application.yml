@@ -101,7 +101,7 @@ workflow:
       model-id: ${CONTENT_UNDERSTANDING_ANALYZER_ID:prebuilt-layout}
       api-version: ${CONTENT_UNDERSTANDING_API_VERSION:2025-11-01}
       analysis-timeout: ${CONTENT_UNDERSTANDING_ANALYSIS_TIMEOUT:25m}
-      auto-entry-analyzer-id: ${CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID:enterprise_workflow_auto_entry_v2.1}
+      auto-entry-analyzer-id: ${CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID:enterprise_workflow_auto_entry_v2.1.1}
       auto-entry-completion-model-deployment-name: ${CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME:auto-entry-gpt-5-2}
       auto-entry-embedding-model-deployment-name: ${CONTENT_UNDERSTANDING_AUTO_ENTRY_EMBEDDING_DEPLOYMENT_NAME:auto-entry-text-embedding-3-large}
     storage:

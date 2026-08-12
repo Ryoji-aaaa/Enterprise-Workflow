@@ -106,7 +106,7 @@ class DocumentAnalysisResultValidatorTest {
                 new DocumentAnalysisProviderResult(
                         "op-1",
                         json(Map.of("apiVersion", "2025-11-01",
-                                "analyzerId", "enterprise_workflow_auto_entry_v2.1")),
+                                "analyzerId", "enterprise_workflow_auto_entry_v2.1.1")),
                         normalizedJson));
     }
 
@@ -192,7 +192,7 @@ class DocumentAnalysisResultValidatorTest {
     private Map<String, Object> autoEntryView(Map<String, Object> fields) {
         java.util.LinkedHashMap<String, Object> view = new java.util.LinkedHashMap<>(
                 view(DocumentAnalysisProviderType.CONTENT_UNDERSTANDING));
-        view.put("modelId", "enterprise_workflow_auto_entry_v2.1");
+        view.put("modelId", "enterprise_workflow_auto_entry_v2.1.1");
         view.put("documents", List.of(Map.of(
                 "markdown", "# test",
                 "paragraphs", List.of(),
@@ -249,7 +249,7 @@ class DocumentAnalysisResultValidatorTest {
                 "input/%s/source".formatted(ANALYSIS_ID),
                 "application/pdf",
                 9,
-                "enterprise_workflow_auto_entry_v2.1",
+                "enterprise_workflow_auto_entry_v2.1.1",
                 "2025-11-01",
                 DocumentAnalysisProfile.AUTO_ENTRY,
                 "auto-entry-gpt-5-2",
