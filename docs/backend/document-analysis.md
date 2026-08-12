@@ -284,7 +284,9 @@ polygonをNormalized V1へ写す。独自正規表現でsourceをparseしない�
 `fields.autoEntry`へ`schemaVersion="2.1"`、native page coordinatesの`pages`、再帰的な`fields`を格納する。
 pageは`pageNumber`、`width`、`height`、`unit`、`angleDegrees`を保持する。fieldは`type`、`value`、
 `confidence`、全`DocumentSource`の`pageNumber`と`polygon`を保持し、rawの`D(...)`文字列をFrontend契約へ
-出さない。numberは`BigDecimal.valueOf`相当で変換し、`new BigDecimal(double)`は使わない。
+出さない。numberは`BigDecimal.valueOf`相当で変換し、`new BigDecimal(double)`は使わない。json fieldは
+SDKの`BinaryData`を保持せず、Jacksonでobject、array、scalar、number、boolean、nullのprovider-neutralな
+Java値へ変換する。小数は`BigDecimal`として保持し、不正なJSONは安全なresult invalidとして失敗させる。
 
 valueの有無はconfidenceから推測しない。valueなしは`null`のまま保持し、`0`、空文字、空array、空objectへ
 変換しない。`TaxBreakdown[].CategoryNotation`は帳票上の表記をそのまま保持し、`Category`との意味判定や

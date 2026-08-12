@@ -1,6 +1,9 @@
 package jp.co.sdcj.workflow.service.documentanalysis.contentunderstanding;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -11,6 +14,10 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 import com.azure.ai.contentunderstanding.models.AnalysisResult;
+import com.azure.ai.contentunderstanding.models.ContentFieldType;
+import com.azure.ai.contentunderstanding.models.ContentJsonField;
+import com.azure.ai.contentunderstanding.models.DocumentContent;
+import com.azure.core.util.BinaryData;
 import com.azure.json.JsonProviders;
 
 import org.junit.jupiter.api.Test;
@@ -204,6 +211,83 @@ class ContentUnderstandingResultNormalizerTest {
         });
     }
 
+    @Test
+    void normalizesJsonFieldsAsProviderNeutralSerializableValues() throws Exception {
+        AnalysisResult result = analysisResult("""
+                {
+                  "analyzerId": "enterprise_workflow_auto_entry_v2.1",
+                  "apiVersion": "2025-11-01",
+                  "stringEncoding": "utf16",
+                  "contents": [
+                    {
+                      "kind": "document",
+                      "mimeType": "application/pdf",
+                      "markdown": "# fixture",
+                      "fields": {
+                        "JsonObject": {"type": "json", "valueJson": {
+                          "name": "example", "amount": 12.34, "enabled": true
+                        }},
+                        "JsonArray": {"type": "json", "valueJson": ["A", "B"]},
+                        "JsonScalar": {"type": "json", "valueJson": "example"},
+                        "MissingJson": {"type": "json"}
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        DocumentAnalysisViewV1.AutoEntry autoEntry = autoEntry(normalizeAutoEntry(result));
+        Object jsonObject = autoEntry.fields().get("JsonObject").value();
+        Object jsonArray = autoEntry.fields().get("JsonArray").value();
+        Object jsonScalar = autoEntry.fields().get("JsonScalar").value();
+
+        assertThat(jsonObject)
+                .isInstanceOf(Map.class)
+                .isNotInstanceOf(BinaryData.class);
+        Map<String, Object> objectValue = jsonObjectValue(jsonObject);
+        assertThat(objectValue)
+                .containsEntry("name", "example")
+                .containsEntry("enabled", true);
+        assertThat(objectValue.get("amount"))
+                .isInstanceOf(BigDecimal.class)
+                .isEqualTo(new BigDecimal("12.34"));
+
+        assertThat(jsonArray)
+                .isInstanceOf(List.class)
+                .isNotInstanceOf(BinaryData.class);
+        assertThat(jsonArrayValue(jsonArray)).containsExactly("A", "B");
+        assertThat(jsonScalar)
+                .isEqualTo("example")
+                .isNotInstanceOf(BinaryData.class);
+        assertThat(autoEntry.fields().get("MissingJson").value()).isNull();
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        assertThat(objectMapper.readTree(objectMapper.writeValueAsBytes(jsonObject)))
+                .isEqualTo(objectMapper.readTree(
+                        "{\"name\":\"example\",\"amount\":12.34,\"enabled\":true}"));
+        assertThat(objectMapper.readTree(objectMapper.writeValueAsBytes(jsonArray)))
+                .isEqualTo(objectMapper.readTree("[\"A\",\"B\"]"));
+        assertThat(objectMapper.readTree(objectMapper.writeValueAsBytes(jsonScalar)))
+                .isEqualTo(objectMapper.readTree("\"example\""));
+    }
+
+    @Test
+    void rejectsInvalidJsonFieldWithoutReturningRawValue() {
+        ContentJsonField jsonField = mock(ContentJsonField.class);
+        when(jsonField.getType()).thenReturn(ContentFieldType.JSON);
+        when(jsonField.getValue()).thenReturn(BinaryData.fromString("sensitive invalid json"));
+        DocumentContent content = mock(DocumentContent.class);
+        when(content.getMarkdown()).thenReturn("# fixture");
+        when(content.getFields()).thenReturn(Map.of("InvalidJson", jsonField));
+        AnalysisResult result = mock(AnalysisResult.class);
+        when(result.getContents()).thenReturn(List.of(content));
+
+        assertThatThrownBy(() -> normalizeAutoEntry(result))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Content Understanding JSON field value is invalid.")
+                .hasMessageNotContaining("sensitive invalid json");
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("acceptanceFixtures")
     void normalizesAutoEntryV21AcceptanceFixture(
@@ -281,6 +365,16 @@ class ContentUnderstandingResultNormalizerTest {
     @SuppressWarnings("unchecked")
     private static Map<String, DocumentAnalysisViewV1.AutoEntryField> fieldMap(Object value) {
         return (Map<String, DocumentAnalysisViewV1.AutoEntryField>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> jsonObjectValue(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> jsonArrayValue(Object value) {
+        return (List<Object>) value;
     }
 
     @SuppressWarnings("unchecked")

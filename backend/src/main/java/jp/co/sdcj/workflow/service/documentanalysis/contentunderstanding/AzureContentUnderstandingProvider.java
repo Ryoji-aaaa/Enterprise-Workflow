@@ -65,7 +65,7 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
         this.client = client;
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.normalizer = new ContentUnderstandingResultNormalizer();
+        this.normalizer = new ContentUnderstandingResultNormalizer(objectMapper);
     }
 
     @Override

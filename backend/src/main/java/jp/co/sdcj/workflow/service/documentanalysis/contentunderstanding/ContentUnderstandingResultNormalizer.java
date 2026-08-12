@@ -2,9 +2,11 @@ package jp.co.sdcj.workflow.service.documentanalysis.contentunderstanding;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -12,6 +14,7 @@ import com.azure.ai.contentunderstanding.models.AnalysisContent;
 import com.azure.ai.contentunderstanding.models.AnalysisResult;
 import com.azure.ai.contentunderstanding.models.ContentArrayField;
 import com.azure.ai.contentunderstanding.models.ContentField;
+import com.azure.ai.contentunderstanding.models.ContentJsonField;
 import com.azure.ai.contentunderstanding.models.ContentNumberField;
 import com.azure.ai.contentunderstanding.models.ContentObjectField;
 import com.azure.ai.contentunderstanding.models.ContentSource;
@@ -25,12 +28,30 @@ import com.azure.ai.contentunderstanding.models.DocumentTableCell;
 import com.azure.ai.contentunderstanding.models.DocumentTableCellKind;
 import com.azure.ai.contentunderstanding.models.PointF;
 import com.azure.core.models.ResponseError;
+import com.azure.core.util.BinaryData;
+
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.service.documentanalysis.model.DocumentAnalysisViewV1;
 
 public class ContentUnderstandingResultNormalizer {
+
+    private static final String INVALID_JSON_FIELD_MESSAGE =
+            "Content Understanding JSON field value is invalid.";
+
+    private final ObjectMapper objectMapper;
+
+    public ContentUnderstandingResultNormalizer() {
+        this(new ObjectMapper());
+    }
+
+    ContentUnderstandingResultNormalizer(ObjectMapper objectMapper) {
+        this.objectMapper = Objects.requireNonNull(objectMapper);
+    }
 
     public DocumentAnalysisViewV1 normalize(
             UUID analysisId,
@@ -128,6 +149,9 @@ public class ContentUnderstandingResultNormalizer {
     }
 
     private Object normalizeValue(ContentField field) {
+        if (field instanceof ContentJsonField jsonField) {
+            return normalizeJsonValue(jsonField.getValue());
+        }
         Object value = field.getValue();
         if (value == null) {
             return null;
@@ -147,6 +171,57 @@ public class ContentUnderstandingResultNormalizer {
             return date.toString();
         }
         return value;
+    }
+
+    private Object normalizeJsonValue(BinaryData value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper
+                    .reader(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                    .readTree(value.toBytes());
+            if (node == null) {
+                throw invalidJsonField();
+            }
+            return providerNeutralJsonValue(node);
+        } catch (RuntimeException exception) {
+            throw invalidJsonField();
+        }
+    }
+
+    private Object providerNeutralJsonValue(JsonNode node) {
+        if (node.isObject()) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            node.forEachEntry((name, value) ->
+                    normalized.put(name, providerNeutralJsonValue(value)));
+            return Collections.unmodifiableMap(normalized);
+        }
+        if (node.isArray()) {
+            return node.valueStream()
+                    .map(this::providerNeutralJsonValue)
+                    .toList();
+        }
+        if (node.isString()) {
+            return node.stringValue();
+        }
+        if (node.isBoolean()) {
+            return node.booleanValue();
+        }
+        if (node.isIntegralNumber()) {
+            return node.canConvertToLong() ? node.longValue() : node.bigIntegerValue();
+        }
+        if (node.isFloatingPointNumber()) {
+            return node.decimalValue();
+        }
+        if (node.isNull()) {
+            return null;
+        }
+        throw invalidJsonField();
+    }
+
+    private IllegalArgumentException invalidJsonField() {
+        return new IllegalArgumentException(INVALID_JSON_FIELD_MESSAGE);
     }
 
     private List<DocumentAnalysisViewV1.AutoEntrySource> sources(

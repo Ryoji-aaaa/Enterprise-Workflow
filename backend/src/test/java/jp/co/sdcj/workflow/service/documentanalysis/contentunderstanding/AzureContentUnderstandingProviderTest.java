@@ -22,7 +22,10 @@ import com.azure.ai.contentunderstanding.ContentUnderstandingClient;
 import com.azure.ai.contentunderstanding.models.AnalysisInput;
 import com.azure.ai.contentunderstanding.models.AnalysisResult;
 import com.azure.ai.contentunderstanding.models.ContentAnalyzerAnalyzeOperationStatus;
+import com.azure.ai.contentunderstanding.models.ContentFieldType;
+import com.azure.ai.contentunderstanding.models.ContentJsonField;
 import com.azure.ai.contentunderstanding.models.ContentRange;
+import com.azure.ai.contentunderstanding.models.DocumentContent;
 import com.azure.ai.contentunderstanding.models.ProcessingLocation;
 import com.azure.core.exception.HttpRequestException;
 import com.azure.core.exception.HttpResponseException;
@@ -361,6 +364,54 @@ class AzureContentUnderstandingProviderTest {
             assertThat(input.getUrl()).isNull();
         });
         assertThat(result.providerOperationId()).isEqualTo("operation-auto-entry-123");
+    }
+
+    @Test
+    void invalidJsonFieldUsesSafeResultInvalidPath() {
+        ContentJsonField jsonField = mock(ContentJsonField.class);
+        when(jsonField.getType()).thenReturn(ContentFieldType.JSON);
+        when(jsonField.getValue()).thenReturn(BinaryData.fromString("sensitive invalid json"));
+        DocumentContent content = mock(DocumentContent.class);
+        when(content.getMarkdown()).thenReturn("# fixture");
+        when(content.getFields()).thenReturn(Map.of("InvalidJson", jsonField));
+        AnalysisResult analysisResult = mock(AnalysisResult.class);
+        when(analysisResult.getAnalyzerId())
+                .thenReturn("enterprise_workflow_auto_entry_v2.1");
+        when(analysisResult.getApiVersion()).thenReturn("2025-11-01");
+        when(analysisResult.getStringEncoding()).thenReturn("utf16");
+        when(analysisResult.getContents()).thenReturn(List.of(content));
+
+        ContentUnderstandingClient client = mock(ContentUnderstandingClient.class);
+        @SuppressWarnings("unchecked")
+        SyncPoller<ContentAnalyzerAnalyzeOperationStatus, AnalysisResult> poller =
+                mock(SyncPoller.class);
+        ContentAnalyzerAnalyzeOperationStatus status =
+                mock(ContentAnalyzerAnalyzeOperationStatus.class);
+        when(status.getId()).thenReturn("operation-invalid-json");
+        when(poller.waitForCompletion(Duration.ofMinutes(25)))
+                .thenReturn(new PollResponse<>(
+                        LongRunningOperationStatus.SUCCESSFULLY_COMPLETED, status));
+        when(poller.getFinalResult()).thenReturn(analysisResult);
+        when(client.beginAnalyze(
+                eq("enterprise_workflow_auto_entry_v2.1"),
+                anyList(),
+                eq(Map.of(
+                        "gpt-5.2", "auto-entry-gpt-5-2",
+                        "text-embedding-3-large", "auto-entry-text-embedding-3-large")),
+                eq(ProcessingLocation.GEOGRAPHY)))
+                .thenReturn(poller);
+
+        assertThatThrownBy(() -> provider(client).analyze(autoEntryRequest()))
+                .isInstanceOfSatisfying(DocumentAnalysisProviderException.class, exception -> {
+                    assertThat(exception.safeErrorCode())
+                            .isEqualTo("CONTENT_UNDERSTANDING_RESULT_INVALID");
+                    assertThat(exception.safeErrorMessage())
+                            .isEqualTo("Content Understanding returned an invalid result.")
+                            .doesNotContain("sensitive invalid json");
+                    assertThat(exception.recoveryRequired()).isTrue();
+                    assertThat(exception.providerOperationId())
+                            .isEqualTo("operation-invalid-json");
+                });
     }
 
     private static DocumentAnalysisProviderRequest autoEntryRequest() {
