@@ -338,8 +338,8 @@ class AzureContentUnderstandingProviderTest {
                 eq("enterprise_workflow_auto_entry_v2.1"),
                 anyList(),
                 eq(Map.of(
-                        "completion", "auto-entry-gpt-5-2",
-                        "embedding", "auto-entry-text-embedding-3-large")),
+                        "gpt-5.2", "auto-entry-gpt-5-2",
+                        "text-embedding-3-large", "auto-entry-text-embedding-3-large")),
                 eq(ProcessingLocation.GEOGRAPHY)))
                 .thenReturn(poller);
 
@@ -351,8 +351,8 @@ class AzureContentUnderstandingProviderTest {
                 eq("enterprise_workflow_auto_entry_v2.1"),
                 inputs.capture(),
                 eq(Map.of(
-                        "completion", "auto-entry-gpt-5-2",
-                        "embedding", "auto-entry-text-embedding-3-large")),
+                        "gpt-5.2", "auto-entry-gpt-5-2",
+                        "text-embedding-3-large", "auto-entry-text-embedding-3-large")),
                 eq(ProcessingLocation.GEOGRAPHY));
         assertThat(inputs.getValue()).singleElement().satisfies(input -> {
             assertThat(input.getData())

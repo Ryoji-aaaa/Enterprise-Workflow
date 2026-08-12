@@ -245,9 +245,11 @@ fallbackしない。
 `GENERAL`のAnalyzerは`prebuilt-layout`であり、`AUTO_ENTRY`のAnalyzerはBackend設定から
 `enterprise_workflow_auto_entry_v2.1`をsnapshotする。BrowserからAnalyzer IDを受け取らない。
 `AUTO_ENTRY`のcompletion/embedding deployment名もJobとProvider Requestへsnapshotし、SDKの
-`modelDeployments`へ`completion: auto-entry-gpt-5-2`、
-`embedding: auto-entry-text-embedding-3-large`として渡す。resource defaultsの`updateDefaults`、
-Custom AnalyzerのCopy/Ready確認、作成・更新は行わない。
+`modelDeployments`へ`gpt-5.2: auto-entry-gpt-5-2`、
+`text-embedding-3-large: auto-entry-text-embedding-3-large`として渡す。Analyzer definitionの
+`models`はroleからmodelへのmapping、分析requestの`modelDeployments`はmodelからAzure deploymentへの
+mappingであり、`completion`と`embedding`のrole名をrequestのkeyには使わない。resource defaultsの
+`updateDefaults`、Custom AnalyzerのCopy/Ready確認、作成・更新は行わない。
 
 認証はDocument Intelligenceと同じくMicrosoft Entra IDの`DefaultAzureCredential`を使う。
 `AZURE_DOCUMENT_ANALYSIS_CLIENT_ID`が設定されている場合だけUser Assigned Managed Identity client

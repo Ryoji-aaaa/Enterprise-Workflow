@@ -128,8 +128,8 @@ class DocumentAnalysisAzureSdkWireContractTest {
         Map<String, Object> body = new ObjectMapper().readValue(
                 request.getBodyAsBinaryData().toBytes(), Map.class);
         assertThat(body.get("modelDeployments")).isEqualTo(Map.of(
-                "completion", "auto-entry-gpt-5-2",
-                "embedding", "auto-entry-text-embedding-3-large"));
+                "gpt-5.2", "auto-entry-gpt-5-2",
+                "text-embedding-3-large", "auto-entry-text-embedding-3-large"));
         assertThat(body.get("inputs")).isEqualTo(java.util.List.of(Map.of(
                 "data", Base64.getEncoder().encodeToString(PDF),
                 "mimeType", "application/pdf")));

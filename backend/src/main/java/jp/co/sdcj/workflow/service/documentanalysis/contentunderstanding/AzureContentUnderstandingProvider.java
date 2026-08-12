@@ -50,8 +50,8 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
             "Content Understanding could not analyze the supplied document.";
     private static final String SAFE_AUTH_MESSAGE =
             "Content Understanding authentication or authorization failed.";
-    private static final String COMPLETION_MODEL = "completion";
-    private static final String EMBEDDING_MODEL = "embedding";
+    private static final String COMPLETION_MODEL_NAME = "gpt-5.2";
+    private static final String EMBEDDING_MODEL_NAME = "text-embedding-3-large";
 
     private final ContentUnderstandingClient client;
     private final DocumentAnalysisProperties properties;
@@ -126,8 +126,8 @@ public class AzureContentUnderstandingProvider implements DocumentAnalysisProvid
                         .setData(content)
                         .setMimeType(request.contentType());
                 Map<String, String> modelDeployments = Map.of(
-                        COMPLETION_MODEL, request.completionModelDeploymentName(),
-                        EMBEDDING_MODEL, request.embeddingModelDeploymentName());
+                        COMPLETION_MODEL_NAME, request.completionModelDeploymentName(),
+                        EMBEDDING_MODEL_NAME, request.embeddingModelDeploymentName());
                 return client.beginAnalyze(
                         request.modelId(),
                         List.of(input),
