@@ -18,6 +18,7 @@ import { paragraphsToCsv, tablesToCsv } from "./document-analysis-copy.ts";
 const job: DocumentAnalysisJob = {
   id: "123e4567-e89b-42d3-a456-426614174000",
   provider: "DOCUMENT_INTELLIGENCE",
+  profile: "GENERAL",
   modelId: "prebuilt-layout",
   providerApiVersion: "2024-11-30",
   normalizedSchemaVersion: 1,

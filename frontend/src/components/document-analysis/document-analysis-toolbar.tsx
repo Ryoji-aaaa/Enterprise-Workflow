@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Play } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,14 @@ export function DocumentAnalysisToolbar({
           {job ? <Badge variant="outline">API: {job.providerApiVersion}</Badge> : null}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{config.description}</p>
+        {config.provider === "CONTENT_UNDERSTANDING" ? (
+          <Link
+            className="mt-2 inline-block text-sm text-primary underline-offset-4 hover:underline"
+            href="/content-understanding/auto-entry"
+          >
+            自動入力を開く
+          </Link>
+        ) : null}
       </div>
       <Button
         aria-disabled={disabled}

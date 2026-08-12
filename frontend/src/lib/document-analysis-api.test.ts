@@ -18,6 +18,13 @@ test("Document Analysis source URLはBFF経由だけを返す", () => {
   );
 });
 
+test("AUTO_ENTRY source URLはprofileを明示してBFF経由だけを返す", () => {
+  assert.equal(
+    documentAnalysisSourceUrl(ANALYSIS_ID, "AUTO_ENTRY"),
+    `/api/backend/document-analyses/${ANALYSIS_ID}/source?profile=AUTO_ENTRY`,
+  );
+});
+
 test("Document Analysis API errorはHTTP status、code、安全なmessageを保持する", () => {
   const error = new DocumentAnalysisApiError(
     413,
