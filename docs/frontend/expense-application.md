@@ -48,14 +48,19 @@ Attentionとして数える。AIの未確認はnon-blockingだが、件名・利
 請求書総額と経費明細合計は別の値である。「申請明細合計」は正式な`ExpenseApplication`の明細合計で、
 AIから取得した「消費税（読取値）」はその近くにread-onlyで表示する。AI税額を申請明細や正式な申請金額へ
 自動追加せず、税額の編集・確認checkbox・`confirmedFieldPaths`への追加も行わない。税額がnullなら0円へ
-補完せず「未取得」と表示し、status、confidence、source、findingsのmetadataも表示する。
+補完せず「未取得」と表示し、status、confidence、source、findingsのmetadataも表示する。値引き、源泉徴収等の
+Adjustmentも「調整額（読取値）」として各金額、加算・減算方向、status、confidence、source、findingsを
+read-only表示する。これにより申請明細合計、消費税、調整額から請求書総額へ至る内訳を確認できる。
 
 請求書総額は、申請明細合計、その合計に安全に算出できた値引き・源泉徴収等の調整額を加えた候補、
 AI税額を加えた候補、税額と調整額の両方を加えた候補のいずれかと±1円以内なら一致とする。
 `taxMode`は候補の優先度にだけ使用し、税込・税抜のhard switchとして候補を除外しない。いずれかの有効候補が
 一致すれば警告せず、必要なAI値が未取得で不一致を断定できない場合は「請求額を照合できません」、必要値が
 揃って全候補が不一致なら「請求書総額と申請金額の照合結果が一致しません」と表示する。どちらもnon-blockingで、
-値を自動補正しない。最終的な申請値は人が原本を確認して編集する。
+値を自動補正しない。`normalizedSignedAmount.status=OK`でないAdjustmentは符号未確定として表示し、照合候補へ
+使用しない。ただし、そのAdjustmentを使用しない別の安全な候補が一致すれば一致とする。最終的な申請値は
+人が原本を確認して編集する。旧Backend responseに追加済みの税・調整fieldがない場合も未取得へ正規化し、
+画面をクラッシュさせず照合不能として表示する。
 「決定」は未確認項目がある場合に最小の確認ダイアログを表示した後、
 `POST /api/backend/expense-applications/from-auto-entry`を呼ぶ。payloadは現在の経費入力、文書入力、
 有効な`confirmedFieldPaths`だけであり、AIのconfidence、status、findings、sources、polygon、original value、

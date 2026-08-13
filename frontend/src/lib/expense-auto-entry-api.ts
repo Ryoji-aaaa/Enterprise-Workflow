@@ -60,9 +60,9 @@ export type ExpenseAutoEntryOriginal = {
   issuerName: AutoEntryField<string>;
   issuerTaxRegistrationNumber: AutoEntryField<string>;
   invoiceTotalAmount: AutoEntryField<number>;
-  taxAmount: AutoEntryField<number>;
-  taxMode: AutoEntryDerivedField<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">;
-  adjustments: AutoEntryField<AutoEntryAdjustment[]>;
+  taxAmount?: AutoEntryField<number>;
+  taxMode?: AutoEntryDerivedField<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">;
+  adjustments?: AutoEntryField<AutoEntryAdjustment[]>;
   lineItems: ExpenseAutoEntryOriginalLineItem[];
 };
 

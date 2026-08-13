@@ -326,6 +326,14 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   const workbenchTax = page.getByTestId("expense-auto-entry-tax-amount");
   await expect(workbenchTax.getByText("消費税（読取値）", { exact: false })).toContainText("1,000");
   await expect(workbenchTax.getByText("OK", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await expect(page.getByLabel("総請求額（円）", { exact: true })).toHaveValue("10500");
+  await page.getByRole("button", { name: "要確認のみ", exact: true }).click();
+  const workbenchAdjustments = page.getByTestId("expense-auto-entry-adjustments");
+  await expect(workbenchAdjustments).toContainText("調整額（読取値）");
+  await expect(workbenchAdjustments).toContainText("値引き（減算）");
+  await expect(workbenchAdjustments).toContainText(/-[￥¥]500/);
+  await expect(workbenchAdjustments.getByText("OK", { exact: true })).toBeVisible();
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toHaveCount(0);
   await page.locator("select").first().selectOption("MEAL");
@@ -371,6 +379,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(page.getByLabel("現在の分析状態")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe")).toBeVisible();
   await expect(page.getByTestId("expense-auto-entry-tax-amount")).toContainText("1,000");
+  await expect(page.getByTestId("expense-auto-entry-adjustments")).toContainText(/-[￥¥]500/);
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toHaveCount(0);
 
@@ -381,6 +390,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     new RegExp(`/api/backend/expense-applications/${created.application.id}/attachments/[0-9a-f-]{36}/content$`),
   );
   await expect(page.getByTestId("expense-auto-entry-tax-amount")).toContainText("1,000");
+  await expect(page.getByTestId("expense-auto-entry-adjustments")).toContainText(/-[￥¥]500/);
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toHaveCount(0);
 

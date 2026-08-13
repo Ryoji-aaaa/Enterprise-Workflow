@@ -170,6 +170,9 @@ Expenseの正式金額は従来どおり明細合計であり、AIの`taxAmount`
 
 請求書総額の照合候補は、現在の正式申請明細合計、その合計へ安全に算出できた
 `adjustments[].normalizedSignedAmount`を加えた額、AI `taxAmount`を加えた額、税額と調整額の両方を加えた額である。
+Adjustmentは`normalizedSignedAmount.value`が存在し、かつ`normalizedSignedAmount.status=OK`の場合だけ安全とする。
+符号が不明で`REVIEW`となったAdjustmentは、値が存在してもAdjustment合計とそれを使う候補を構成しない。
+ただし、そのAdjustmentを使用しない別の安全な候補が一致すれば一致とする。
 `taxMode`は候補の優先度にだけ使用し、税込・税抜のhard switchとして候補を除外しない。いずれかの候補と
 請求書総額の差がinclusive ±1円以内なら一致とする。taxまたはadjustmentがmissingの場合は0へ補完しない。
 有効候補が一致せず、未取得値によって別候補を作れる可能性が残る場合は照合不能とし、mismatch warningを返さない。

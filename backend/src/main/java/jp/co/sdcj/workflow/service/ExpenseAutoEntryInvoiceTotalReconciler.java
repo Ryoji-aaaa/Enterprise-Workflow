@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryAdjustment;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFieldStatus;
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryTaxMode;
 
 final class ExpenseAutoEntryInvoiceTotalReconciler {
@@ -59,7 +60,9 @@ final class ExpenseAutoEntryInvoiceTotalReconciler {
         if (adjustments == null
                 || adjustments.stream().anyMatch(adjustment ->
                         adjustment.normalizedSignedAmount() == null
-                                || adjustment.normalizedSignedAmount().value() == null)) {
+                                || adjustment.normalizedSignedAmount().value() == null
+                                || adjustment.normalizedSignedAmount().status()
+                                        != AutoEntryFieldStatus.OK)) {
             return null;
         }
         return adjustments.stream()

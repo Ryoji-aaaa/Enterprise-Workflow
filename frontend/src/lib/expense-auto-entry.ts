@@ -159,9 +159,25 @@ export function persistedAutoEntryOriginalToSource(
     issuerName: original.issuerName,
     issuerTaxRegistrationNumber: original.issuerTaxRegistrationNumber,
     invoiceTotalAmount: original.invoiceTotalAmount,
-    taxAmount: original.taxAmount,
-    taxMode: original.taxMode,
-    adjustments: original.adjustments,
+    taxAmount: original.taxAmount ?? {
+      value: null,
+      confidence: null,
+      status: "MISSING",
+      sources: [],
+      findings: [],
+    },
+    taxMode: original.taxMode ?? {
+      value: "UNKNOWN",
+      status: "MISSING",
+      findings: [],
+    },
+    adjustments: original.adjustments ?? {
+      value: null,
+      confidence: null,
+      status: "MISSING",
+      sources: [],
+      findings: [],
+    },
     lineItems: original.lineItems.map((item) => ({ ...item })),
   };
 }
@@ -347,6 +363,13 @@ export type ExpenseAutoEntryInvoiceTotalReconciliationStatus =
   | "MISMATCH"
   | "UNAVAILABLE";
 
+export function isSafeExpenseAutoEntryAdjustment(
+  adjustment: AutoEntryAdjustment,
+): boolean {
+  return adjustment.normalizedSignedAmount.value !== null
+    && adjustment.normalizedSignedAmount.status === "OK";
+}
+
 export function reconcileExpenseAutoEntryInvoiceTotal(
   invoiceTotalAmount: number | null,
   items: readonly ExpenseItem[],
@@ -358,7 +381,9 @@ export function reconcileExpenseAutoEntryInvoiceTotal(
 
   const draftLineTotal = totalExpenseAmount([...items]);
   const adjustmentValues = adjustments.value?.map(
-    (adjustment) => adjustment.normalizedSignedAmount.value,
+    (adjustment) => isSafeExpenseAutoEntryAdjustment(adjustment)
+      ? adjustment.normalizedSignedAmount.value
+      : null,
   );
   const adjustmentAvailable = adjustmentValues !== undefined
     && adjustmentValues.every((value): value is number => value !== null);

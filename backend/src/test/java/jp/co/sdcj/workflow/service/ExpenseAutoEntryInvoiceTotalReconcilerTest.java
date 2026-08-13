@@ -5,6 +5,8 @@ import static jp.co.sdcj.workflow.service.ExpenseAutoEntryInvoiceTotalReconciler
 import static jp.co.sdcj.workflow.service.ExpenseAutoEntryInvoiceTotalReconciler.Status.UNAVAILABLE;
 import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFieldStatus.MISSING;
 import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFieldStatus.OK;
+import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFieldStatus.REVIEW;
+import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryFindingCode.ADJUSTMENT_DIRECTION_UNKNOWN;
 import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryTaxMode.TAX_EXCLUDED;
 import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryTaxMode.TAX_INCLUDED;
 import static jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryTaxMode.UNKNOWN;
@@ -49,6 +51,16 @@ class ExpenseAutoEntryInvoiceTotalReconcilerTest {
     }
 
     @Test
+    void uncertainAdjustmentIsUnavailableUnlessAnotherSafeCandidateMatches() {
+        AutoEntryAdjustment uncertain = uncertainAdjustment("5");
+
+        assertThat(reconcile("115", "100", "10", List.of(uncertain), TAX_EXCLUDED))
+                .isEqualTo(UNAVAILABLE);
+        assertThat(reconcile("110", "100", "10", List.of(uncertain), TAX_EXCLUDED))
+                .isEqualTo(MATCHED);
+    }
+
+    @Test
     void usesAnInclusiveOneYenToleranceOnlyForInvoiceReconciliation() {
         assertThat(reconcile("101", "100", "0", List.of(), UNKNOWN)).isEqualTo(MATCHED);
         assertThat(reconcile("99", "100", "0", List.of(), UNKNOWN)).isEqualTo(MATCHED);
@@ -86,6 +98,19 @@ class ExpenseAutoEntryInvoiceTotalReconcilerTest {
                         value == null ? MISSING : OK, List.of(), List.of()),
                 new AutoEntryDerivedField<>(
                         value, value == null ? MISSING : OK, List.of()));
+    }
+
+    private static AutoEntryAdjustment uncertainAdjustment(String normalizedAmount) {
+        BigDecimal value = decimal(normalizedAmount);
+        return new AutoEntryAdjustment(
+                null,
+                new AutoEntryField<>("ADJUSTMENT", null, OK, List.of(), List.of()),
+                new AutoEntryField<>("UNKNOWN", null, REVIEW, List.of(),
+                        List.of(ADJUSTMENT_DIRECTION_UNKNOWN)),
+                new AutoEntryField<>("符号未確定の調整", null, OK, List.of(), List.of()),
+                new AutoEntryField<>(value.abs(), null, OK, List.of(), List.of()),
+                new AutoEntryDerivedField<>(
+                        value, REVIEW, List.of(ADJUSTMENT_DIRECTION_UNKNOWN)));
     }
 
     private static BigDecimal decimal(String value) {

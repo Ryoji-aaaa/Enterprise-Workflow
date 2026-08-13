@@ -35,14 +35,25 @@ function derived<T>(value: T | null): AutoEntryDerivedField<T> {
   return { value, status: value === null ? "MISSING" : "OK", findings: [] };
 }
 
-function adjustment(amount: number | null): AutoEntryAdjustment {
+function adjustment(
+  amount: number | null,
+  status: AutoEntryFieldStatus = amount === null ? "MISSING" : "OK",
+): AutoEntryAdjustment {
+  const uncertain = status === "REVIEW";
   return {
     review: { confidence: null, status: "OK", sources: [], findings: [] },
     type: field("DISCOUNT"),
-    direction: field("DEDUCTION"),
+    direction: {
+      ...field(uncertain ? "UNKNOWN" : "DEDUCTION", status),
+      findings: uncertain ? ["ADJUSTMENT_DIRECTION_UNKNOWN"] : [],
+    },
     description: field("調整"),
     rawAmount: field(amount === null ? null : Math.abs(amount)),
-    normalizedSignedAmount: derived(amount),
+    normalizedSignedAmount: {
+      value: amount,
+      status,
+      findings: uncertain ? ["ADJUSTMENT_DIRECTION_UNKNOWN"] : [],
+    },
   };
 }
 
@@ -201,6 +212,7 @@ test("要確認のみでは元から要確認または未取得のAI項目を編
 test("請求書総額は税・調整額とinclusive 1円許容を使って3状態で照合する", () => {
   const noAdjustments = field<AutoEntryAdjustment[]>([]);
   const discount = field([adjustment(-5)]);
+  const uncertainAdjustment = field([adjustment(5, "REVIEW")]);
   const missingAdjustments = field<AutoEntryAdjustment[]>(null, "MISSING");
   const excluded = derived<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">("TAX_EXCLUDED");
   const included = derived<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">("TAX_INCLUDED");
@@ -214,6 +226,8 @@ test("請求書総額は税・調整額とinclusive 1円許容を使って3状�
     ["taxMode UNKNOWN", 110, 100, field(10), noAdjustments, unknown, "MATCHED"],
     ["tax missingを0補完しない", 102, 100, field<number>(null, "MISSING"), noAdjustments, unknown, "UNAVAILABLE"],
     ["adjustment missing", 105, 100, field(10), missingAdjustments, excluded, "UNAVAILABLE"],
+    ["符号未確定adjustmentだけで一致", 115, 100, field(10), uncertainAdjustment, excluded, "UNAVAILABLE"],
+    ["符号未確定adjustmentなしの候補で一致", 110, 100, field(10), uncertainAdjustment, excluded, "MATCHED"],
     ["+1円", 101, 100, field(0), noAdjustments, unknown, "MATCHED"],
     ["-1円", 99, 100, field(0), noAdjustments, unknown, "MATCHED"],
     ["+2円", 102, 100, field(0), noAdjustments, unknown, "MISMATCH"],
@@ -311,6 +325,25 @@ test("live Reviewと保存済みOriginalは同じ追跡対象へ正規化でき�
     lineItems: [{ itemDescription: field("AI品名", "REVIEW"), lineAmount: field(1200) }],
   }));
   assert.deepEqual({ ...source, lineItems: source.lineItems.map(({ itemDescription, lineAmount }) => ({ itemDescription, lineAmount })) }, { ...live, lineItems: live.lineItems.map(({ itemDescription, lineAmount }) => ({ itemDescription, lineAmount })) });
+});
+
+test("旧Backend responseで税・調整情報がなくても未取得へ正規化して照合不能にする", () => {
+  const original = { ...persistedDraft().autoEntry.original };
+  delete original.taxAmount;
+  delete original.taxMode;
+  delete original.adjustments;
+
+  const source = persistedAutoEntryOriginalToSource(original);
+  assert.equal(source.taxAmount.value, null);
+  assert.equal(source.adjustments.value, null);
+  assert.equal(source.taxMode.value, "UNKNOWN");
+  assert.equal(reconcileExpenseAutoEntryInvoiceTotal(
+    1300,
+    [expenseItem(1200)],
+    source.taxAmount,
+    source.adjustments,
+    source.taxMode,
+  ), "UNAVAILABLE");
 });
 
 test("AUTO_ENTRY更新payloadは両versionと現在値だけを送り、response専用値とAI metadataを含めない", () => {
