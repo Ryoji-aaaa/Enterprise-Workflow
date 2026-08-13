@@ -21,6 +21,8 @@ const currentUser: CurrentUser = {
   roles: ["APPLICATION_USER"],
   permissions: [
     "EXPENSE_APPLICATION_READ_OWN",
+    "EXPENSE_APPLICATION_CREATE",
+    "DOCUMENT_ANALYSIS_READ_OWN",
     "ORGANIZATION_CHART_READ",
     "DOCUMENT_INTELLIGENCE_ANALYZE",
     "CONTENT_UNDERSTANDING_ANALYZE",
@@ -42,6 +44,7 @@ test("権限に応じたワークスペースメニューだけを表示する",
   assert.deepEqual(labels, [
     "トップ",
     "経費申請",
+    "請求/注文書申請（自動入力）",
     "組織図",
     "Document Intelligence",
     "Content Understanding",
@@ -61,6 +64,7 @@ test("承認待ちとユーザー管理は対応権限がある場合だけ表�
   assert.deepEqual(labels, [
     "トップ",
     "経費申請",
+    "請求/注文書申請（自動入力）",
     "承認待ち",
     "組織図",
     "ユーザー管理",
@@ -128,6 +132,21 @@ test("Document AnalysisはProviderごとのDB権限を満たす場合だけ表�
   }).some((value) => value.href === "/content-understanding"), false);
 });
 
+test("自動入力は経費作成・自分の分析参照・Content Understandingのすべての権限を要求する", () => {
+  const href = "/expenses/auto-entry";
+  assert.equal(getVisibleWorkspaceNavigationItems(currentUser).some((value) => value.href === href), true);
+  for (const permission of [
+    "EXPENSE_APPLICATION_CREATE",
+    "DOCUMENT_ANALYSIS_READ_OWN",
+    "CONTENT_UNDERSTANDING_ANALYZE",
+  ]) {
+    assert.equal(getVisibleWorkspaceNavigationItems({
+      ...currentUser,
+      permissions: currentUser.permissions.filter((value) => value !== permission),
+    }).some((value) => value.href === href), false);
+  }
+});
+
 test("詳細画面と編集画面では親メニューをアクティブにする", () => {
   assert.equal(isWorkspaceNavigationItemActive("/expenses/123", item("/expenses")), true);
   assert.equal(isWorkspaceNavigationItemActive("/expenses/123/edit", item("/expenses")), true);
@@ -151,6 +170,14 @@ test("表示可能なメニューから現在パスのアクティブ項目を�
 
   assert.equal(active?.href, "/expenses");
   assert.equal(getActiveWorkspaceNavigationItem("/admin/users/123/edit", currentUser), undefined);
+});
+
+test("より具体的な経費自動入力のmenuだけをactiveにする", () => {
+  assert.equal(getActiveWorkspaceNavigationItem("/expenses/123", currentUser)?.href, "/expenses");
+  assert.equal(getActiveWorkspaceNavigationItem("/expenses/auto-entry", currentUser)?.href, "/expenses/auto-entry");
+  assert.equal(getActiveWorkspaceNavigationItem(
+    "/expenses/auto-entry/confirm/123e4567-e89b-42d3-a456-426614174000", currentUser,
+  )?.href, "/expenses/auto-entry");
 });
 
 test("置換対象の先頭モック2件は残さず、残り4件を維持する", () => {

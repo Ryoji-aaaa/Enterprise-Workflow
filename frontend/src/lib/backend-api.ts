@@ -40,6 +40,12 @@ export function canUseContentUnderstanding(user: CurrentUser): boolean {
   return user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE");
 }
 
+export function canUseExpenseAutoEntry(user: CurrentUser): boolean {
+  return user.permissions.includes("EXPENSE_APPLICATION_CREATE")
+    && user.permissions.includes("DOCUMENT_ANALYSIS_READ_OWN")
+    && user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE");
+}
+
 export type BackendApiResult =
   | {
       kind: "success";

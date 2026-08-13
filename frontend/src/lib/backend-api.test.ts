@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   canUseContentUnderstanding,
   canUseDocumentIntelligence,
+  canUseExpenseAutoEntry,
   canViewMailNotificationHistory,
   canViewOrganizationChart,
   requestBackendMe,
@@ -69,6 +70,29 @@ test("Content UnderstandingはDB権限がある場合だけ許可する", () => 
   };
   assert.equal(canUseContentUnderstanding(permitted), true);
   assert.equal(canUseContentUnderstanding(currentUser), false);
+});
+
+test("経費自動入力は必要な3 Permissionがすべてある場合だけ許可する", () => {
+  const permitted = {
+    ...currentUser,
+    permissions: [
+      ...currentUser.permissions,
+      "EXPENSE_APPLICATION_CREATE",
+      "DOCUMENT_ANALYSIS_READ_OWN",
+      "CONTENT_UNDERSTANDING_ANALYZE",
+    ],
+  };
+  assert.equal(canUseExpenseAutoEntry(permitted), true);
+  for (const permission of [
+    "EXPENSE_APPLICATION_CREATE",
+    "DOCUMENT_ANALYSIS_READ_OWN",
+    "CONTENT_UNDERSTANDING_ANALYZE",
+  ]) {
+    assert.equal(canUseExpenseAutoEntry({
+      ...permitted,
+      permissions: permitted.permissions.filter((value) => value !== permission),
+    }), false);
+  }
 });
 
 function response(status: number, body?: unknown): BackendFetch {

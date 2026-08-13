@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils";
 
 import { useCurrentUser } from "./current-user-context";
 import {
+  getActiveWorkspaceNavigationItem,
   getVisibleWorkspaceNavigationItems,
-  isWorkspaceNavigationItemActive,
 } from "./workspace-navigation";
 
 export function WorkspaceHeader() {
@@ -27,6 +27,7 @@ export function WorkspaceHeader() {
   const pathname = usePathname();
   const initials = user.displayName.trim().slice(0, 2) || "仮";
   const navigationItems = getVisibleWorkspaceNavigationItems(user);
+  const activeItem = getActiveWorkspaceNavigationItem(pathname, user);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur md:px-6">
@@ -43,7 +44,7 @@ export function WorkspaceHeader() {
       >
         {navigationItems.map((item) => {
           const Icon = item.icon;
-          const active = isWorkspaceNavigationItemActive(pathname, item);
+          const active = activeItem?.href === item.href;
           return (
             <LinkButton
               aria-label={item.label}

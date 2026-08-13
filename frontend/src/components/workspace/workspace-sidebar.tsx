@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 
 import { useCurrentUser } from "./current-user-context";
 import {
+  getActiveWorkspaceNavigationItem,
   getVisibleWorkspaceNavigationItems,
-  isWorkspaceNavigationItemActive,
   workspaceMockNavigationItems,
 } from "./workspace-navigation";
 
@@ -17,6 +17,7 @@ export function WorkspaceSidebar() {
   const user = useCurrentUser();
   const pathname = usePathname();
   const navigationItems = getVisibleWorkspaceNavigationItems(user);
+  const activeItem = getActiveWorkspaceNavigationItem(pathname, user);
 
   return (
     <aside
@@ -26,7 +27,7 @@ export function WorkspaceSidebar() {
       <nav aria-label="ワークスペースナビゲーション" className="flex-1 space-y-1 p-3">
         {navigationItems.map((item) => {
           const Icon = item.icon;
-          const active = isWorkspaceNavigationItemActive(pathname, item);
+          const active = activeItem?.href === item.href;
           return (
             <LinkButton
               className={cn(

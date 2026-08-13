@@ -8,11 +8,45 @@
 | `/expenses/new` | 新規申請、下書き保存、申請 |
 | `/expenses/{id}` | 申請内容、明細、申請時所属、承認経路、差戻し理由 |
 | `/expenses/{id}/edit` | 下書き・差戻し申請の編集と再申請 |
+| `/expenses/auto-entry` | 請求書・注文書を分析して経費下書きを作成する補助入力 |
 | `/approvals` | ログインユーザーが現在Candidateの承認待ち一覧 |
 | `/approvals/{id}` | 承認コメント、承認、理由必須の差戻し |
 
 `/api/me.permissions`に応じてトップの経費申請・承認待ちリンクを表示する。非表示はUI制御だけで、
 Backendも各APIでDB PermissionとCandidateを検証する。
+
+## 請求/注文書申請（自動入力）
+
+`/expenses/auto-entry`は、請求書または注文書の値を確認しながら経費下書きを作成する業務画面である。
+サイドメニューの表示と直接URLの操作可否は、`EXPENSE_APPLICATION_CREATE`、
+`DOCUMENT_ANALYSIS_READ_OWN`、`CONTENT_UNDERSTANDING_ANALYZE`の3 Permissionすべてでfail closedにする。
+これはUIの可用性制御であり、最終認可はBackendが行う。
+
+PDF、JPEG、PNGを1件選択すると、選択直後にlocal object URLで`DocumentPreview`を表示し、
+`CONTENT_UNDERSTANDING`の`AUTO_ENTRY`分析を自動開始する。別の分析開始操作は設けない。
+`AnalysisStatus`で`QUEUED`、`RUNNING`、`SUCCEEDED`を表示し、成功後にAUTO_ENTRY Reviewを取得する。
+BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。
+
+Reviewから入力・編集する対象は、請求社 / 発行元、インボイス登録番号、総請求額、各明細の品名と金額だけに
+限定する。`null`のAI値は空値のままにし、税率、用途、支払先その他の値を推測補完しない。AI明細は
+`sourceLineItemIndex`を保持した経費明細へ1件ずつ対応付け、明細がない場合と人が追加する明細には
+`sourceLineItemIndex=null`を使う。利用日を変更した場合、全経費明細の利用日も現在の利用日にする。
+
+経費区分、件名、利用目的、利用日、備考、およびカテゴリ別必須項目は常に人が入力できる。
+`REVIEW`のAI値が未変更なら「原本を確認しました」で確認でき、変更した値や人が入力した`MISSING`値は
+「修正済み」と表示する。右上の「要確認のみ / すべて」はAI補助項目だけを切り替え、未解決の重要項目だけを
+Attentionとして数える。AIの未確認はnon-blockingだが、件名・利用目的・明細・カテゴリ別必須項目などの
+経費業務validationは「決定」をblockする。
+
+請求書総額と経費明細合計は別の値である。差異は警告するが、自動補正や「決定」のblockはしない。
+「決定」は未確認項目がある場合に最小の確認ダイアログを表示した後、
+`POST /api/backend/expense-applications/from-auto-entry`を呼ぶ。payloadは現在の経費入力、文書入力、
+有効な`confirmedFieldPaths`だけであり、AIのconfidence、status、findings、sources、polygon、original value、
+resolutionは送らない。`201 Created`と同じanalysis IDの再試行による`200 OK`はともに成功として
+`/expenses/auto-entry/confirm/{applicationId}`をtargetにする。
+
+この画面はFormal Expense Applicationの`DRAFT`作成までを担当する。targetとなる確認画面、
+保存済みAUTO_ENTRY下書きのGET/PUT、申請・再申請・承認はこの画面には実装しない。
 
 ## 入力と表示
 
@@ -35,6 +69,10 @@ previewでき、すべてdownloadできる。申請者本人の`DRAFT`または`
 Browserは`/api/backend/expense-applications...`と`/api/backend/expense-approvals...`だけを
 呼ぶ。catch-all Route Handlerのmethod/path allowlistに経費APIを明示し、server-sideで
 access tokenを付けてSpring Bootへ転送する。tokenをClient Componentへ渡さない。
+
+AUTO_ENTRYのFormal Handoffでは`POST /api/backend/expense-applications/from-auto-entry`だけをBFF allowlistへ
+追加し、Backendでのsource Blob読込と経費証憑保存に備えてtimeoutを30秒にする。将来の確認画面用の
+`GET`/`PUT /expense-applications/{id}/auto-entry-draft`はBFF allowlistへ公開しない。
 
 添付は`multipart/form-data`のboundaryを維持して転送し、11 MiBを超える既知の
 `Content-Length`はbody読込み前に413で拒否する。BFFは固定UUIDを含む添付pathとmethodだけを

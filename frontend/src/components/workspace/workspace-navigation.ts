@@ -14,6 +14,7 @@ import {
 import {
   canUseContentUnderstanding,
   canUseDocumentIntelligence,
+  canUseExpenseAutoEntry,
   canViewMailNotificationHistory,
   canViewOrganizationChart,
   type CurrentUser,
@@ -47,6 +48,12 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
     label: "経費申請",
     icon: FileText,
     isVisible: hasPermission("EXPENSE_APPLICATION_READ_OWN"),
+  },
+  {
+    href: "/expenses/auto-entry",
+    label: "請求/注文書申請（自動入力）",
+    icon: FileSearch,
+    isVisible: canUseExpenseAutoEntry,
   },
   {
     href: "/approvals",
@@ -111,7 +118,7 @@ export function getActiveWorkspaceNavigationItem(
   pathname: string,
   user: CurrentUser,
 ): WorkspaceNavigationItem | undefined {
-  return getVisibleWorkspaceNavigationItems(user).find((item) =>
-    isWorkspaceNavigationItemActive(pathname, item),
-  );
+  return getVisibleWorkspaceNavigationItems(user)
+    .filter((item) => isWorkspaceNavigationItemActive(pathname, item))
+    .sort((left, right) => right.href.length - left.href.length)[0];
 }
