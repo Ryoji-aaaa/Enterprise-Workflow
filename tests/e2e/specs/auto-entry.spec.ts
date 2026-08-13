@@ -69,6 +69,18 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
   await expect(page.getByRole("heading", { name: "自動入力結果", exact: true })).toBeVisible();
   await expect(page.getByText("未取得", { exact: true }).first()).toBeVisible();
 
+  const lineItemsSection = page.getByRole("heading", { name: "明細", exact: true }).locator("..");
+  const lineItemsTable = lineItemsSection.getByRole("table");
+  await expect(lineItemsTable.getByRole("columnheader")).toHaveCount(10);
+  const lineItemDataRow = lineItemsTable.getByRole("row").filter({
+    has: page.getByText("業務用備品", { exact: true }),
+  });
+  await expect(lineItemDataRow).toHaveCount(1);
+  await expect(lineItemDataRow.getByRole("cell")).toHaveCount(10);
+  await expect(lineItemDataRow.getByRole("cell").nth(2)).toContainText("業務用備品");
+  await expect(lineItemDataRow.getByRole("cell").nth(7)).toContainText("10");
+  await expect(lineItemDataRow.getByRole("cell").nth(9)).toContainText("10,000");
+
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`/content-understanding/auto-entry\\?analysis=${analysisId}$`));
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
