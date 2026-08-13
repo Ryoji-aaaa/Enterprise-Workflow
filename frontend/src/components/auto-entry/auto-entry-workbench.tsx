@@ -142,6 +142,8 @@ export function AutoEntryWorkbench() {
 
   const loadAnalysis = useCallback(async (analysisId: string, signal?: AbortSignal) => {
     setReviewLoading(false);
+    setReview(null);
+    setServerPreviewUrl(null);
     try {
       applyJob(await getDocumentAnalysis(analysisId, signal, "AUTO_ENTRY"), signal);
     } catch (cause) {
@@ -206,7 +208,7 @@ export function AutoEntryWorkbench() {
   }
 
   function selectRecentAnalysis(job: DocumentAnalysisJob) {
-    replaceAnalysisQuery(job.id); setBrowserFile(null); replaceBrowserFile(null); setActivePane("result"); void loadAnalysis(job.id);
+    replaceAnalysisQuery(job.id); setBrowserFile(null); replaceBrowserFile(null); setReview(null); setServerPreviewUrl(null); setActivePane("result"); void loadAnalysis(job.id);
   }
 
   if (!available) return <main className="p-4 md:p-8"><div className="mx-auto max-w-3xl rounded-md border bg-card p-6 text-card-foreground"><h1 className="text-lg font-semibold">自動入力</h1><p className="mt-2 text-sm text-muted-foreground">この機能は現在利用できません。</p></div></main>;
@@ -224,6 +226,11 @@ export function AutoEntryWorkbench() {
   const desktopFilePane = <DocumentUploadPanel {...filePaneProps} inputId="auto-entry-file-desktop" inputRef={desktopInputRef} />;
   const mobileFilePane = <DocumentUploadPanel {...filePaneProps} inputId="auto-entry-file-mobile" inputRef={mobileInputRef} />;
   const resultPane = <div className="flex h-full min-h-0 flex-col"><div className="border-b p-4"><AnalysisStatus state={state} viewLoading={reviewLoading} /></div><div className="min-h-0 flex-1"><AutoEntryReviewPanel review={review} /></div></div>;
+  const previewFile = state.selectedFile ?? (state.job ? {
+    name: state.job.originalFileName,
+    size: state.job.fileSize,
+    type: state.job.contentType,
+  } : null);
 
-  return <main className="p-4 md:p-8"><div className="mx-auto flex h-[calc(100svh-6rem)] max-w-[96rem] min-w-0 flex-col overflow-hidden rounded-md border bg-card text-card-foreground md:h-[calc(100svh-8rem)]">{toolbar}<div className="hidden min-h-0 min-w-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_30rem] divide-x lg:grid">{desktopFilePane}<DocumentPreview file={state.selectedFile} objectUrl={objectUrl} serverUrl={serverPreviewUrl} />{resultPane}</div><div className="flex min-h-0 min-w-0 flex-1 flex-col lg:hidden"><div aria-label="ワークベンチ表示切替" className="grid grid-cols-3 gap-1 border-b p-2" role="tablist">{mobilePanes.map((pane) => { const Icon = pane.icon; const selected = activePane === pane.id; return <Button aria-selected={selected} className={cn("justify-center", selected && "bg-muted text-foreground")} key={pane.id} onClick={() => setActivePane(pane.id)} role="tab" type="button" variant="ghost"><Icon data-icon="inline-start" />{pane.label}</Button>; })}</div><div className="min-h-0 flex-1 overflow-hidden" role="tabpanel">{activePane === "file" ? mobileFilePane : null}{activePane === "preview" ? <DocumentPreview file={state.selectedFile} objectUrl={objectUrl} serverUrl={serverPreviewUrl} /> : null}{activePane === "result" ? resultPane : null}</div></div></div></main>;
+  return <main className="p-4 md:p-8"><div className="mx-auto flex h-[calc(100svh-6rem)] max-w-[96rem] min-w-0 flex-col overflow-hidden rounded-md border bg-card text-card-foreground md:h-[calc(100svh-8rem)]">{toolbar}<div className="hidden min-h-0 min-w-0 flex-1 grid-cols-[16rem_minmax(0,1fr)_30rem] divide-x lg:grid">{desktopFilePane}<DocumentPreview file={previewFile} objectUrl={objectUrl} serverUrl={serverPreviewUrl} />{resultPane}</div><div className="flex min-h-0 min-w-0 flex-1 flex-col lg:hidden"><div aria-label="ワークベンチ表示切替" className="grid grid-cols-3 gap-1 border-b p-2" role="tablist">{mobilePanes.map((pane) => { const Icon = pane.icon; const selected = activePane === pane.id; return <Button aria-selected={selected} className={cn("justify-center", selected && "bg-muted text-foreground")} key={pane.id} onClick={() => setActivePane(pane.id)} role="tab" type="button" variant="ghost"><Icon data-icon="inline-start" />{pane.label}</Button>; })}</div><div className="min-h-0 flex-1 overflow-hidden" role="tabpanel">{activePane === "file" ? mobileFilePane : null}{activePane === "preview" ? <DocumentPreview file={previewFile} objectUrl={objectUrl} serverUrl={serverPreviewUrl} /> : null}{activePane === "result" ? resultPane : null}</div></div></div></main>;
 }

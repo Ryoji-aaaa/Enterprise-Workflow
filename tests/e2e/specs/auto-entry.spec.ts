@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -5,6 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const userEmail = requiredEnvironment("DEV_USER_EMAIL");
 const userPassword = requiredEnvironment("DEV_USER_PASSWORD");
+const receiptPdf = readFileSync(resolve("fixtures/receipt.pdf"));
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -93,4 +95,75 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
 
   await page.locator("#auto-entry-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
   await expect(page.getByRole("button", { name: "分析を実行", exact: true })).toBeEnabled();
+});
+
+test("AUTO_ENTRYはRecent analysesから同じJob、Review、source previewを復元する", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await login(page);
+  await page.goto("/content-understanding/auto-entry");
+  await expect(page.getByRole("heading", { name: "自動入力", exact: true })).toBeVisible();
+
+  await page.locator("#auto-entry-file-desktop").setInputFiles({
+    name: "auto-entry-recent.pdf",
+    mimeType: "application/pdf",
+    buffer: receiptPdf,
+  });
+  await page.getByRole("button", { name: "分析を実行", exact: true }).click();
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+  const analysisId = new URL(page.url()).searchParams.get("analysis");
+  expect(analysisId).toMatch(/^[0-9a-f-]{36}$/);
+
+  await page.goto("/content-understanding");
+  await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
+  await page.goto("/content-understanding/auto-entry");
+  const recentAnalysis = page.getByTestId("document-analysis-file-pane")
+    .getByRole("button", { name: /auto-entry-recent\.pdf/ });
+  await expect(recentAnalysis).toBeVisible();
+  await recentAnalysis.click();
+
+  await expect(page).toHaveURL(new RegExp(`/content-understanding/auto-entry\\?analysis=${analysisId}$`));
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+  await expect(page.getByRole("heading", { name: "自動入力結果", exact: true })).toBeVisible();
+  await expect(page.getByText("文書番号", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("未取得", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("iframe[title='auto-entry-recent.pdfのPDFプレビュー']"))
+    .toHaveAttribute("src", `/api/backend/document-analyses/${analysisId}/source?profile=AUTO_ENTRY`);
+  await expect(page.getByRole("button", { name: "分析を実行", exact: true })).toBeDisabled();
+});
+
+test("AUTO_ENTRYはmobileでFile、Preview、Resultを切り替えてReviewを表示する", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await login(page);
+  await page.goto("/content-understanding/auto-entry");
+  await expect(page.getByRole("tab", { name: "File", exact: true })).toHaveAttribute("aria-selected", "true");
+
+  await page.locator("#auto-entry-file-mobile").setInputFiles({
+    name: "auto-entry-mobile.pdf",
+    mimeType: "application/pdf",
+    buffer: receiptPdf,
+  });
+  await expect(page.getByRole("tab", { name: "Preview", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "auto-entry-mobile.pdfのプレビュー" })
+    .locator("iframe")).toBeVisible();
+
+  await page.getByRole("button", { name: "分析を実行", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Result", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", { timeout: 60_000 });
+  const mobileReview = page.getByTestId("auto-entry-review-panel").last();
+  await expect(mobileReview.getByRole("heading", { name: "自動入力結果", exact: true })).toBeVisible();
+  await expect(mobileReview.getByText("OK", { exact: true }).first()).toBeVisible();
+  await expect(mobileReview.getByText("要確認", { exact: true }).first()).toBeVisible();
+  await expect(mobileReview.getByText("未取得", { exact: true }).first()).toBeVisible();
+
+  const lineItemsTable = mobileReview.getByRole("heading", { name: "明細", exact: true })
+    .locator("..").getByRole("table");
+  await expect(lineItemsTable).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });

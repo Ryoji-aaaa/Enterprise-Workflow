@@ -63,7 +63,9 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 30. Document Analysis操作中にBrowserからAzure AI、Foundry、Azure Blob Storageへ直接requestしないことを
     確認する
 31. 一般ユーザーがContent Understandingの画面導線からAUTO_ENTRYをFake Providerで実行し、
-    `SUCCEEDED`後のReview、`MISSING`表示、reload後の結果復元を確認する
+    `SUCCEEDED`後のReview、`MISSING`表示、reload後の結果復元を確認する。さらにRecent analysesから
+    同じJob、Review、BFF source previewを復元し、Browser `File` がない状態では再分析できないことと、
+    mobile viewportでFile、Preview、Resultを切り替えてReviewを表示できることを確認する
 
 雇用区分のBackend境界は正社員・準社員を許可し、パート・嘱託を権限保持時も拒否するAPI
 統合テストで確認する。Frontend単体テストは`PART_TIME`、`CONTRACT_EMPLOYEE`、`SYSTEM`を
