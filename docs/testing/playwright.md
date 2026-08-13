@@ -82,6 +82,8 @@ trace、screenshot、videoを関連付けるために使用する。JSONはPlayw
 - 固定sleepと無限再試行は使用しない
 - Better Authが短時間の連続ログインへ429を返した場合だけ、
   応答の`x-retry-after`秒に従って1回だけ再試行する
+- Better AuthのOAuthログイン開始では、ボタンの表示やクリック完了だけを遷移開始の根拠にせず、
+  hydration完了後に操作可能となったボタンから`POST /api/auth/sign-in/oauth2`が発生したことを同期点として確認する
 - worker数は1とし、未登録申請とMailpit通知の共有状態を競合させない
 
 ## テストデータ
