@@ -75,12 +75,16 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
   const lineItemsSection = page.getByRole("heading", { name: "明細", exact: true }).locator("..");
   const lineItemsTable = lineItemsSection.getByRole("table");
   await expect(lineItemsTable.getByRole("columnheader")).toHaveCount(10);
+  await expect(lineItemsTable.getByRole("row")).toHaveCount(2);
+  await expect(lineItemsTable.getByText("明細 1", { exact: false })).toHaveCount(0);
+  await expect(lineItemsTable.getByText("明細 2", { exact: false })).toHaveCount(0);
   const lineItemDataRow = lineItemsTable.getByRole("row").filter({
     has: page.getByText("業務用備品", { exact: true }),
   });
   await expect(lineItemDataRow).toHaveCount(1);
   await expect(lineItemDataRow.getByRole("cell")).toHaveCount(10);
   await expect(lineItemDataRow.getByRole("cell").nth(2)).toContainText("業務用備品");
+  await expect(lineItemDataRow.getByRole("cell").nth(2).getByText("OK", { exact: true })).toBeVisible();
   await expect(lineItemDataRow.getByRole("cell").nth(7)).toContainText("10");
   await expect(lineItemDataRow.getByRole("cell").nth(9)).toContainText("10,000");
 
