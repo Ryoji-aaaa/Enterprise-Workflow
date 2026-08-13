@@ -12,7 +12,10 @@ import type {
   AutoEntryReviewResponse,
 } from "@/lib/auto-entry-review";
 import {
+  formatAutoEntryConfidence,
+  formatAutoEntryFinding,
   formatAutoEntryFieldValue,
+  formatAutoEntrySources,
   getAutoEntryArrayDisplayState,
 } from "@/lib/auto-entry-review-display";
 import { cn } from "@/lib/utils";
@@ -43,9 +46,9 @@ function ReviewMeta({
   findings,
 }: Pick<AutoEntryField<unknown>, "confidence" | "sources" | "findings">) {
   const parts = [
-    confidence === null ? null : `confidence ${new Intl.NumberFormat("ja-JP", { style: "percent", maximumFractionDigits: 1 }).format(confidence)}`,
-    sources.length === 0 ? null : `source p. ${sources.map((source) => source.pageNumber).join(", ")}`,
-    ...findings,
+    formatAutoEntryConfidence(confidence),
+    formatAutoEntrySources(sources),
+    ...findings.map(formatAutoEntryFinding),
   ].filter((value): value is string => value !== null);
 
   return parts.length === 0 ? null : (
@@ -90,7 +93,9 @@ function DerivedFieldValue({ field }: { field: AutoEntryDerivedField<string | nu
         <StatusBadge status={field.status} />
       </div>
       {field.findings.length > 0 ? (
-        <p className="mt-1 text-xs text-muted-foreground">{field.findings.join(" · ")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {field.findings.map(formatAutoEntryFinding).join(" · ")}
+        </p>
       ) : null}
     </div>
   );

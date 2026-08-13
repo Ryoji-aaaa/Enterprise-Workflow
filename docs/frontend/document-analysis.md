@@ -116,10 +116,20 @@ AUTO_ENTRY Jobが`SUCCEEDED`になった後、FrontendはBFFの
 そのまま表示する。Frontendは業務validation、金額再計算、税率・Category・CategoryNotationからの
 推測または補完を行わない。
 
+finding codeは表示時だけ業務利用者向けの日本語へ変換する。Frontendはfindingを追加・削除・再判定
+せず、Backendが返した順序と意味を維持する。confidenceとsourceは表示専用で、それぞれ「信頼度
+93.2%」「参照ページ 1, 2」の形式で表示する。confidenceからFrontend独自の`OK`、`REVIEW`、
+`MISSING`判定は行わない。
+
 値が`null`で`status=MISSING`のfieldは「未取得」と表示する。特に`TaxRatePercent=null`は、
 `Category=STANDARD`/`REDUCED`や`CategoryNotation`が`10%対象額`/`軽減8%対象額`であっても、
 10または8へ補完せず「未取得」のまま表示する。sourceはpage numberとして表示するだけで、polygon
 overlay、編集、修正保存、経費申請への転記は提供しない。
+
+reloadまたはRecent analysesからの復元では、分析Jobの`originalFileName`と`contentType`を使って
+BFFのsource previewを表示する。Browserの`File` objectは復元しないため、「分析を実行」は無効の
+ままとする。mobileではFile、Preview、Resultタブで同じ操作とReview表示を提供し、横長の明細表は
+表コンテナ内を横スクロールする。
 
 ## ローカルFake Provider
 
