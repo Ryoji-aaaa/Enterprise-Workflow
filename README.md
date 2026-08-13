@@ -36,7 +36,7 @@ Blob Storageへ接続せず、業務データと証憑をSpring Boot APIから�
 - Docker EngineとDocker Compose plugin
 - GNU Make
 - Git
-- `curl`、`jq`、`openssl`、`envsubst`、`grep`、`ripgrep` (`rg`)、`timeout`
+- `curl`、`jq`、`openssl`、`envsubst`、`grep`、`timeout`
 - Terraform CLI（`make verify-infra`とインフラ作業時のみ）
 - 利用ポート: `3000`、`8180`、`8025`
 

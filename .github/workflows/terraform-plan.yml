@@ -33,7 +33,7 @@ jobs:
       - name: Install static validation dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes jq ripgrep
+          sudo apt-get install --yes jq
       - uses: hashicorp/setup-terraform@v3
       - name: Verify Terraform and infrastructure configuration
         run: make verify-infra
