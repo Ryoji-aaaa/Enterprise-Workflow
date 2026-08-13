@@ -1,5 +1,9 @@
 import { fetchBackend } from "./backend-browser-client.ts";
-import type { DocumentAnalysisProvider } from "./document-analysis.ts";
+import type {
+  DocumentAnalysisProfile,
+  DocumentAnalysisProvider,
+} from "./document-analysis.ts";
+import type { AutoEntryReviewResponse } from "./auto-entry-review.ts";
 
 export type DocumentAnalysisJobStatus =
   | "QUEUED"
@@ -12,6 +16,7 @@ export type DocumentAnalysisJobStatus =
 export type DocumentAnalysisJob = {
   id: string;
   provider: DocumentAnalysisProvider;
+  profile: DocumentAnalysisProfile;
   modelId: string;
   providerApiVersion: string;
   normalizedSchemaVersion: number;
@@ -167,9 +172,11 @@ export async function createDocumentAnalysis(
   provider: DocumentAnalysisProvider,
   file: File,
   signal?: AbortSignal,
+  profile?: DocumentAnalysisProfile,
 ): Promise<DocumentAnalysisJob> {
   const data = new FormData();
   data.append("provider", provider);
+  if (profile) data.append("profile", profile);
   data.append("file", file, file.name);
   return parseDocumentAnalysisResponse<DocumentAnalysisJob>(
     await fetchBackend("/api/backend/document-analyses", {
@@ -186,12 +193,14 @@ export async function listDocumentAnalyses(
   page = 0,
   size = 10,
   signal?: AbortSignal,
+  profile?: DocumentAnalysisProfile,
 ): Promise<DocumentAnalysisPage> {
   const query = new URLSearchParams({
     provider,
     page: String(page),
     size: String(size),
   });
+  if (profile) query.set("profile", profile);
   return parseDocumentAnalysisResponse<DocumentAnalysisPage>(
     await fetchBackend(`/api/backend/document-analyses?${query}`, { signal }),
     "分析履歴を取得できませんでした。",
@@ -201,9 +210,11 @@ export async function listDocumentAnalyses(
 export async function getDocumentAnalysis(
   id: string,
   signal?: AbortSignal,
+  profile?: DocumentAnalysisProfile,
 ): Promise<DocumentAnalysisJob> {
+  const query = documentAnalysisProfileQuery(profile);
   return parseDocumentAnalysisResponse<DocumentAnalysisJob>(
-    await fetchBackend(`/api/backend/document-analyses/${encodeURIComponent(id)}`, { signal }),
+    await fetchBackend(`/api/backend/document-analyses/${encodeURIComponent(id)}${query}`, { signal }),
     "分析状態を取得できませんでした。",
   );
 }
@@ -211,9 +222,11 @@ export async function getDocumentAnalysis(
 export async function getDocumentAnalysisView(
   id: string,
   signal?: AbortSignal,
+  profile?: DocumentAnalysisProfile,
 ): Promise<DocumentAnalysisViewV1> {
+  const query = documentAnalysisProfileQuery(profile);
   return parseDocumentAnalysisResponse<DocumentAnalysisViewV1>(
-    await fetchBackend(`/api/backend/document-analyses/${encodeURIComponent(id)}/view`, { signal }),
+    await fetchBackend(`/api/backend/document-analyses/${encodeURIComponent(id)}/view${query}`, { signal }),
     "分析結果を取得できませんでした。",
   );
 }
@@ -221,9 +234,11 @@ export async function getDocumentAnalysisView(
 export async function getDocumentAnalysisRawResult(
   id: string,
   signal?: AbortSignal,
+  profile?: DocumentAnalysisProfile,
 ): Promise<DocumentAnalysisRawResult> {
+  const query = documentAnalysisProfileQuery(profile);
   const response = await fetchBackend(
-    `/api/backend/document-analyses/${encodeURIComponent(id)}/raw-result`,
+    `/api/backend/document-analyses/${encodeURIComponent(id)}/raw-result${query}`,
     { signal },
   );
   if (response.ok) return formatDocumentAnalysisRawResult(await response.text());
@@ -237,6 +252,26 @@ export async function getDocumentAnalysisRawResult(
   );
 }
 
-export function documentAnalysisSourceUrl(id: string): string {
-  return `/api/backend/document-analyses/${encodeURIComponent(id)}/source`;
+export async function getAutoEntryReview(
+  id: string,
+  signal?: AbortSignal,
+): Promise<AutoEntryReviewResponse> {
+  return parseDocumentAnalysisResponse<AutoEntryReviewResponse>(
+    await fetchBackend(
+      `/api/backend/document-analyses/${encodeURIComponent(id)}/auto-entry-review`,
+      { signal },
+    ),
+    "自動入力結果を取得できませんでした。",
+  );
+}
+
+function documentAnalysisProfileQuery(profile?: DocumentAnalysisProfile): string {
+  return profile ? `?profile=${encodeURIComponent(profile)}` : "";
+}
+
+export function documentAnalysisSourceUrl(
+  id: string,
+  profile?: DocumentAnalysisProfile,
+): string {
+  return `/api/backend/document-analyses/${encodeURIComponent(id)}/source${documentAnalysisProfileQuery(profile)}`;
 }

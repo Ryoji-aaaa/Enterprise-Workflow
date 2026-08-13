@@ -8,6 +8,8 @@ export type DocumentAnalysisProvider =
   | "DOCUMENT_INTELLIGENCE"
   | "CONTENT_UNDERSTANDING";
 
+export type DocumentAnalysisProfile = "GENERAL" | "AUTO_ENTRY";
+
 export type DocumentAnalysisProviderConfig = {
   provider: DocumentAnalysisProvider;
   title: string;

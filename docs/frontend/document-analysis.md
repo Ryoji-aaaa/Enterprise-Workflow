@@ -10,6 +10,11 @@ BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。すべ
 Next.js BFFの`/api/backend/document-analyses...`を経由し、BFFがSpring Bootの
 `/api/document-analyses...`へ転送する。
 
+`/content-understanding/auto-entry`はContent Understanding配下のAUTO_ENTRY専用の
+読み取り専用Review画面である。既存の`/content-understanding`はGENERAL profileの技術的な
+Workbenchとして維持する。AUTO_ENTRY画面はUpload、Preview、Job状態表示を既存部品から再利用するが、
+結果表示はGENERALのMarkdown/Paragraphs/Tables/Raw Resultとは分離する。
+
 ## 正式機能と権限
 
 Document IntelligenceとContent Understandingは正式機能である。メニュー表示と直接URL表示は、
@@ -54,7 +59,9 @@ multipart uploadではBrowserが生成した`Content-Type`とboundaryを維持�
 
 ## 実行フロー
 
-Frontendは`provider`と`file`だけを`FormData`へ入れて`POST /api/backend/document-analyses`へ送信する。
+GENERALではFrontendは`provider`と`file`を`FormData`へ入れて
+`POST /api/backend/document-analyses`へ送信する。
+AUTO_ENTRYでは必ず`provider=CONTENT_UNDERSTANDING`、`profile=AUTO_ENTRY`、`file`を送信する。
 `modelId`、API version、analyzer ID、endpoint、credential、Blob object name、保持期限は
 Browserから送信しない。
 
@@ -96,6 +103,23 @@ SASはBrowserへ渡さない。
 ページ表示時はBackendからprovider別に直近10件の分析履歴を取得する。履歴を選択するとURL queryを
 更新し、Job状態、server source preview、結果を復元する。URL queryのJob providerが現在の画面と
 一致しない場合は、その結果を現在画面の結果として描画しない。
+
+AUTO_ENTRY画面では履歴を
+`?provider=CONTENT_UNDERSTANDING&profile=AUTO_ENTRY`に固定し、Job、source、view系の取得にも
+`profile=AUTO_ENTRY`を明示する。GENERAL JobをAUTO_ENTRY画面に混在または表示しない。
+
+## AUTO_ENTRY Review
+
+AUTO_ENTRY Jobが`SUCCEEDED`になった後、FrontendはBFFの
+`GET /api/backend/document-analyses/{analysisId}/auto-entry-review`を取得する。Summary、各fieldの
+`value`、`confidence`、`status`、`sources`、`findings`、派生fieldはReview API responseを正として
+そのまま表示する。Frontendは業務validation、金額再計算、税率・Category・CategoryNotationからの
+推測または補完を行わない。
+
+値が`null`で`status=MISSING`のfieldは「未取得」と表示する。特に`TaxRatePercent=null`は、
+`Category=STANDARD`/`REDUCED`や`CategoryNotation`が`10%対象額`/`軽減8%対象額`であっても、
+10または8へ補完せず「未取得」のまま表示する。sourceはpage numberとして表示するだけで、polygon
+overlay、編集、修正保存、経費申請への転記は提供しない。
 
 ## ローカルFake Provider
 
