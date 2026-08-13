@@ -93,8 +93,10 @@ Formal Handoff POSTは`analysisId`が冪等性keyであるため、503やtimeout
 再実行できる。自動再送はしない。AUTO_ENTRY PUTは結果が不明なため自動再送せず、明示的に再読み込みする。
 submit/resubmitの503または先行要求が成立した可能性のある`EXPENSE_APPLICATION_INVALID_STATUS`では、
 POSTを再送せず現在申請を1回だけGETする。`PENDING_APPROVAL`、`APPROVED`、`CANCELLED`なら現在状態を正本として
-詳細へ遷移し、`DRAFT`または`RETURNED`なら利用者が再試行できるエラーに留める。GETも失敗した場合は
-結果不明と明示し、自動再申請しない。
+詳細へ遷移し、`DRAFT`なら利用者が再試行できるエラーに留める。最初のsubmit後に`RETURNED`なら、submitは
+成立後に差し戻されたものとして現在状態を正本に詳細へ遷移する。resubmit後の`RETURNED`は未実行と、
+再申請成立後に新しいRunも差し戻された状態を区別できないため、再試行可能と断定せず結果不明とする。
+GETも失敗した場合も結果不明と明示し、自動再申請しない。
 
 ## 入力と表示
 

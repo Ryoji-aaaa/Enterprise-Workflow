@@ -15,6 +15,8 @@ type ErrorBody = {
   message?: string;
 };
 
+type SubmissionAction = "submit" | "resubmit";
+
 export class ExpenseSubmitResultError extends Error {
   readonly resultUnknown: boolean;
   readonly retryable: boolean;
@@ -40,6 +42,7 @@ function isExpenseStatus(value: unknown): value is ExpenseStatus {
 
 async function reconcileSubmitResult(
   applicationId: string,
+  action: SubmissionAction,
   fetchImplementation: BackendFetch,
 ): Promise<ExpenseApplication> {
   let readResponse: Response;
@@ -68,10 +71,17 @@ async function reconcileSubmitResult(
       { resultUnknown: true },
     );
   }
-  if (current.status === "DRAFT" || current.status === "RETURNED") {
+  if (current.status === "DRAFT") {
     throw new ExpenseSubmitResultError(
       "申請は完了していません。最新の内容を確認してから、もう一度申請してください。",
       { retryable: true },
+    );
+  }
+  if (current.status === "RETURNED") {
+    if (action === "submit") return current as ExpenseApplication;
+    throw new ExpenseSubmitResultError(
+      "再申請結果を確認できませんでした。自動的な再申請は行っていません。申請詳細で現在の承認履歴を確認してください。",
+      { resultUnknown: true },
     );
   }
   return current as ExpenseApplication;
@@ -79,7 +89,7 @@ async function reconcileSubmitResult(
 
 export async function submitExpenseApplicationWithReconciliation(
   applicationId: string,
-  action: "submit" | "resubmit",
+  action: SubmissionAction,
   fetchImplementation: BackendFetch = fetchBackend,
 ): Promise<ExpenseApplication> {
   const encodedId = encodeURIComponent(applicationId);
@@ -91,7 +101,7 @@ export async function submitExpenseApplicationWithReconciliation(
     );
   } catch (cause) {
     if (cause instanceof AuthenticationRequiredError) throw cause;
-    return reconcileSubmitResult(encodedId, fetchImplementation);
+    return reconcileSubmitResult(encodedId, action, fetchImplementation);
   }
   const submitBody = (await submitResponse.json().catch(() => ({}))) as
     Partial<ExpenseApplication> & ErrorBody;
@@ -102,5 +112,5 @@ export async function submitExpenseApplicationWithReconciliation(
       submitBody.message ?? "申請できませんでした。下書きは保存されています。",
     ));
   }
-  return reconcileSubmitResult(encodedId, fetchImplementation);
+  return reconcileSubmitResult(encodedId, action, fetchImplementation);
 }

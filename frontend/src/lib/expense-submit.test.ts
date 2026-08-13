@@ -82,6 +82,35 @@ test("503後もDRAFTなら再試行可能なエラーとして留まりPOSTを�
   assert.deepEqual(request.calls.map((call) => call.method), ["POST", "GET"]);
 });
 
+test("submit後のRETURNED read-backはsubmit済みの現在状態として扱う", async () => {
+  const request = sequence([
+    Response.json({ code: "BACKEND_UNAVAILABLE" }, { status: 503 }),
+    Response.json(application("RETURNED")),
+  ]);
+
+  const result = await submitExpenseApplicationWithReconciliation(
+    ID, "submit", request.fetchImplementation,
+  );
+
+  assert.equal(result.status, "RETURNED");
+  assert.deepEqual(request.calls.map((call) => call.method), ["POST", "GET"]);
+});
+
+test("resubmit後のRETURNED read-backは再送可能と断定せず結果不明にする", async () => {
+  const request = sequence([
+    Response.json({ code: "BACKEND_UNAVAILABLE" }, { status: 503 }),
+    Response.json(application("RETURNED")),
+  ]);
+
+  await assert.rejects(
+    submitExpenseApplicationWithReconciliation(ID, "resubmit", request.fetchImplementation),
+    (cause: unknown) => cause instanceof ExpenseSubmitResultError
+      && cause.resultUnknown
+      && !cause.retryable,
+  );
+  assert.deepEqual(request.calls.map((call) => call.method), ["POST", "GET"]);
+});
+
 test("read-backも失敗した場合は結果不明を明示しPOSTを再送しない", async () => {
   const request = sequence([
     Response.json({ code: "BACKEND_UNAVAILABLE" }, { status: 503 }),
