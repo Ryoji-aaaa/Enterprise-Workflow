@@ -233,14 +233,15 @@ WHERE table_schema = 'public'
     'expense_approval_steps',
     'expense_approval_candidates',
     'expense_application_attachments',
+    'expense_application_auto_entry_contexts',
     'notification_outbox',
     'document_analysis_jobs'
   );
 SQL
   )"
-  [[ "${schema_table_count}" == "23" ]] || {
+  [[ "${schema_table_count}" == "24" ]] || {
     fail_check "Flyway history and workflow schema tables were not initialized." \
-      "23 tables" "${schema_table_count} tables"
+      "24 tables" "${schema_table_count} tables"
   }
 
   migration_summary="$(
@@ -267,7 +268,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V013__add_mail_notification_read_permission.sql',
     'V014__create_document_analysis_schema.sql',
     'V015__promote_document_analysis_to_application_user.sql',
-    'V016__add_document_analysis_profiles.sql'
+    'V016__add_document_analysis_profiles.sql',
+    'V017__create_expense_auto_entry_context.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -276,9 +278,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "16:16" ]] || {
+  [[ "${migration_summary}" == "17:17" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "16 total migrations:16 successful checksummed migrations" "${migration_summary}"
+      "17 total migrations:17 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(

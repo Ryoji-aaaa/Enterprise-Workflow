@@ -53,7 +53,7 @@ public class ExpenseApplicationAttachmentController {
         var result = attachmentService.list(applicationId, user);
         return result.attachments().stream()
                 .map(attachment -> ExpenseApplicationAttachmentResponse.from(
-                        attachment, result.deletable()))
+                        attachment, result.deletable(attachment.getId())))
                 .toList();
     }
 

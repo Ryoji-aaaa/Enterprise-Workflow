@@ -30,6 +30,7 @@ import jp.co.sdcj.workflow.domain.ExpenseApprovalRun;
 import jp.co.sdcj.workflow.domain.ExpenseApprovalStep;
 import jp.co.sdcj.workflow.domain.ExpenseApprovalStepStatus;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationItemRepository;
+import jp.co.sdcj.workflow.repository.ExpenseApplicationAutoEntryContextRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
@@ -43,6 +44,7 @@ public class ExpenseApplicationService {
     private static final BigDecimal MAX_TOTAL_AMOUNT = new BigDecimal("999999999999");
 
     private final ExpenseApplicationRepository applicationRepository;
+    private final ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository;
     private final ExpenseApplicationAccessService accessService;
     private final ExpenseApplicationItemRepository itemRepository;
     private final ExpenseApprovalRunRepository runRepository;
@@ -57,6 +59,7 @@ public class ExpenseApplicationService {
 
     public ExpenseApplicationService(
             ExpenseApplicationRepository applicationRepository,
+            ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository,
             ExpenseApplicationAccessService accessService,
             ExpenseApplicationItemRepository itemRepository,
             ExpenseApprovalRunRepository runRepository,
@@ -69,6 +72,7 @@ public class ExpenseApplicationService {
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper) {
         this.applicationRepository = applicationRepository;
+        this.autoEntryContextRepository = autoEntryContextRepository;
         this.accessService = accessService;
         this.itemRepository = itemRepository;
         this.runRepository = runRepository;
@@ -85,11 +89,18 @@ public class ExpenseApplicationService {
     @Transactional
     public ExpenseApplicationDetails createDraft(
             ExpenseApplicationInput input, AppUser applicant) {
+        return createDraftWithId(UUID.randomUUID(), input, applicant);
+    }
+
+    @Transactional
+    public ExpenseApplicationDetails createDraftWithId(
+            UUID applicationId, ExpenseApplicationInput input, AppUser applicant) {
         Instant now = Instant.now();
         ApplicantOrganizationSnapshot organization = routeResolver.resolveOrganization(applicant, now);
         BigDecimal total = validateAndTotal(input);
         ExpenseApplication application = applicationRepository.save(new ExpenseApplication(
-                nextApplicationNumber(), applicant, organization.unit().getOrganizationId(),
+                applicationId, nextApplicationNumber(), applicant,
+                organization.unit().getOrganizationId(),
                 organization.unit(), organization.division(), input.category(), input.title(),
                 input.purpose(), input.expenseDate(), total, input.remarks(), applicant.getId()));
         List<ExpenseApplicationItem> items = saveItems(application.getId(), input.items());
@@ -105,13 +116,39 @@ public class ExpenseApplicationService {
     public ExpenseApplicationDetails update(
             UUID applicationId, ExpenseApplicationInput input, long version, AppUser applicant) {
         ExpenseApplication application = ownedForUpdate(applicationId, applicant);
+        if (autoEntryContextRepository.existsByExpenseApplicationId(applicationId)) {
+            throw conflict(
+                    "EXPENSE_AUTO_ENTRY_DRAFT_REQUIRES_CONTEXT_UPDATE",
+                    "自動入力で作成した下書きは専用APIから更新してください。");
+        }
+        return updateOwned(application, input, version, applicant, false);
+    }
+
+    @Transactional
+    public ExpenseApplicationDetails updateAutoEntryDraft(
+            UUID applicationId, ExpenseApplicationInput input, long version, AppUser applicant) {
+        return updateOwned(
+                ownedForUpdate(applicationId, applicant), input, version, applicant, true);
+    }
+
+    private ExpenseApplicationDetails updateOwned(
+            ExpenseApplication application,
+            ExpenseApplicationInput input,
+            long version,
+            AppUser applicant,
+            boolean autoEntry) {
         if (application.getStatus() != ExpenseApplicationStatus.DRAFT
                 && application.getStatus() != ExpenseApplicationStatus.RETURNED) {
-            throw conflict("EXPENSE_APPLICATION_NOT_EDITABLE", "この申請は編集できません。");
+            throw conflict(
+                    autoEntry
+                            ? "EXPENSE_AUTO_ENTRY_DRAFT_NOT_EDITABLE"
+                            : "EXPENSE_APPLICATION_NOT_EDITABLE",
+                    "この申請は編集できません。");
         }
         if (application.getVersion() != version) {
             throw conflict("OPTIMISTIC_LOCK_CONFLICT", "他の更新と競合しました。再読み込みしてください。");
         }
+        UUID applicationId = application.getId();
         BigDecimal total = validateAndTotal(input);
         Map<String, Object> before = Map.of(
                 "status", application.getStatus().name(), "totalAmount", application.getTotalAmount());

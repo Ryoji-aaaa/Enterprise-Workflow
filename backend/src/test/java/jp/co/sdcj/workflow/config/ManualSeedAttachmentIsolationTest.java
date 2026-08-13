@@ -10,6 +10,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import jp.co.sdcj.workflow.service.ExpenseApplicationAttachmentService;
+import jp.co.sdcj.workflow.service.ExpenseAutoEntryDraftService;
 import jp.co.sdcj.workflow.storage.AttachmentStorage;
 
 @SpringBootTest(
@@ -38,5 +39,7 @@ class ManualSeedAttachmentIsolationTest {
         assertThat(applicationContext.getBeansOfType(AttachmentStorage.class)).isEmpty();
         assertThat(applicationContext.getBeansOfType(
                 ExpenseApplicationAttachmentService.class)).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                ExpenseAutoEntryDraftService.class)).isEmpty();
     }
 }

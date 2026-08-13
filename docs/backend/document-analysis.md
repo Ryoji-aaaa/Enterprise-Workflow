@@ -100,6 +100,22 @@ endpoint、resource ID、Managed Identity、Analyzer/model deployment metadata�
 返さない。Blob I/OはDB transaction外で行い、Blob本文を最後まで正常に読み込んだ後だけ、既存の
 `DOCUMENT_ANALYSIS_RESULT_ACCESSED`を`resultKind=auto-entry-review`として別transactionで記録する。
 
+### AUTO_ENTRYから経費下書きへのFormal Handoff
+
+正式な業務引継ぎは経費APIの`POST /api/expense-applications/from-auto-entry`で行う。Handoff serviceは
+自BackendのReview HTTP APIを呼ばず、`AutoEntryReviewService`を直接利用する。このため、owner、profile、
+provider、status、retention、保存済みNormalized viewの検証はReview APIと同じである。
+
+Document Analysis result Blobは既定7日で削除される一方、経費申請はそれより長く保持される。
+Handoff時にBackend-normalizedな`AutoEntryReviewResponse`を経費AUTO_ENTRY contextのJSONBへsnapshotし、
+AI原値を保持する。Raw Azure response、Analyzer deployment metadata、Blob URL、credentialはsnapshotへ
+含めない。人が編集した現在値と確認状態は別のJSONBへ保存し、AI原値を上書きしない。
+
+原本文書は`openSource(analysisId, AUTO_ENTRY, user)`でBackendが読み、Job metadataのSHA-256と実bytesを
+照合してから既存の経費証憑containerへcopyする。Browser、Next.js、SASによるBlob間移送は行わない。
+Review/source読込と経費Blob書込はDB transaction外で行い、DB commit失敗時は経費Blobをbest-effortで
+削除する。Document Analysis側のsource/result access監査は従来どおり記録する。
+
 ## ファイル検証
 
 Backendはアップロードされたファイルを必ず検証する。

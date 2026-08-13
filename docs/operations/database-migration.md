@@ -63,6 +63,12 @@ nullのまま維持する。`AUTO_ENTRY`はContent Understandingと2つのnon-nu
 許すcheck constraintで保護する。適用後はFlyway V016成功、`APPLICATION_USER`と`SYSTEM_ADMIN`への
 3 Permission、旧RoleのPermission 0件、有効割当0件を確認する。
 
+AUTO_ENTRY Formal Handoffを含むrevisionでは続けてV017を適用する。V017は
+`expense_application_auto_entry_contexts`を追加し、経費申請、Document Analysis Job、原本を複製した
+経費添付を一意に関連付ける。Review snapshotとhuman review stateはJSONBで保持する。既存行を更新せず、
+Blob containerやBlob objectも操作しない。適用後はFlyway V017成功、tableとapplication/analysis/source
+attachmentの3つの一意制約、context schema versionのcheck constraintを確認する。
+
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
 `SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから
