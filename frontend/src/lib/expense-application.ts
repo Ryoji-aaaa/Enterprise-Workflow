@@ -158,6 +158,14 @@ const errorMessages: Record<string, string> = {
   SELF_APPROVAL_NOT_ALLOWED: "自分自身の申請は承認できません。",
   RETURN_REASON_REQUIRED: "差戻し理由を入力してください。",
   OPTIMISTIC_LOCK_CONFLICT: "他の更新と競合しました。最新情報を再読込してください。",
+  EXPENSE_AUTO_ENTRY_SOURCE_MAPPING_INVALID: "自動入力結果と経費明細の対応が不正です。文書を読み込み直してください。",
+  EXPENSE_AUTO_ENTRY_CURRENCY_UNSUPPORTED: "JPY以外の文書は経費申請へ変換できません。",
+  DOCUMENT_ANALYSIS_NOT_FOUND: "自動入力結果が見つかりません。文書を読み込み直してください。",
+  DOCUMENT_ANALYSIS_EXPIRED: "自動入力結果の保持期限が切れています。文書を読み込み直してください。",
+  DOCUMENT_ANALYSIS_RESULT_NOT_READY: "分析結果の準備が完了していません。しばらくしてからもう一度お試しください。",
+  DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE: "自動入力結果を現在読み込めません。しばらくしてからもう一度お試しください。",
+  EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE: "証憑を現在保存できません。しばらくしてからもう一度お試しください。",
+  BACKEND_UNAVAILABLE: "現在、サービスを利用できません。しばらくしてからもう一度お試しください。",
 };
 
 export function expenseErrorMessage(code: string | undefined, fallback: string): string {

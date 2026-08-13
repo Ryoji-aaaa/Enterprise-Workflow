@@ -25,6 +25,7 @@ const documentAnalysisRawResultPath = new RegExp(
 const documentAnalysisAutoEntryReviewPath = new RegExp(
   `^/document-analyses/${UUID_PATTERN}/auto-entry-review$`,
 );
+const expenseAutoEntryHandoffPath = /^\/expense-applications\/from-auto-entry$/;
 
 export type BackendProxyPolicy = {
   methods: ReadonlySet<string>;
@@ -91,6 +92,12 @@ const rules: readonly BackendProxyPolicy[] = [
     path: /^\/expense-applications$/,
     responseType: "json",
     timeoutMilliseconds: DEFAULT_BACKEND_PROXY_TIMEOUT_MILLISECONDS,
+  },
+  {
+    methods: new Set(["POST"]),
+    path: expenseAutoEntryHandoffPath,
+    responseType: "json",
+    timeoutMilliseconds: 30_000,
   },
   {
     methods: new Set(["GET"]),

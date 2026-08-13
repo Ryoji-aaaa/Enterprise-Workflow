@@ -46,6 +46,16 @@ test("経費申請と承認に必要なパスだけを許可する", () => {
   assert.equal(isAllowedBackendProxyRequest("DELETE", `/expense-applications/${USER_ID}`), false);
 });
 
+test("AUTO_ENTRYからの経費下書き作成はPOSTだけを許可し、30秒timeoutを使う", () => {
+  const path = "/expense-applications/from-auto-entry";
+  assert.equal(isAllowedBackendProxyRequest("POST", path), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", path), false);
+  assert.equal(isAllowedBackendProxyRequest("PUT", path), false);
+  assert.equal(isAllowedBackendProxyRequest("DELETE", path), false);
+  assert.equal(getBackendProxyPolicy("POST", path)?.timeoutMilliseconds, 30_000);
+  assert.equal(getBackendProxyPolicy("POST", path)?.responseType, "json");
+});
+
 test("メール通知履歴は一覧とUUID詳細のGETだけを許可する", () => {
   const collection = "/admin/mail-notifications";
   assert.equal(isAllowedBackendProxyRequest("GET", collection), true);

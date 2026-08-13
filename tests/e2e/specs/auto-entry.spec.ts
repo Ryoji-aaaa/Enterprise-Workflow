@@ -6,6 +6,8 @@ import { expect, test, type Page } from "@playwright/test";
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const userEmail = requiredEnvironment("DEV_USER_EMAIL");
 const userPassword = requiredEnvironment("DEV_USER_PASSWORD");
+const expenseUserEmail = requiredEnvironment("DEV_EXPENSE_USER_EMAIL");
+const expenseUserPassword = requiredEnvironment("DEV_EXPENSE_PASSWORD");
 const receiptPdf = readFileSync(resolve("fixtures/receipt.pdf"));
 
 function requiredEnvironment(name: string): string {
@@ -14,7 +16,11 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-async function login(page: Page): Promise<void> {
+async function login(
+  page: Page,
+  email = userEmail,
+  password = userPassword,
+): Promise<void> {
   await page.goto("/login");
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const signInResponse = page.waitForResponse((response) =>
@@ -33,8 +39,8 @@ async function login(page: Page): Promise<void> {
   await expect(page).toHaveURL(new RegExp(
     `^${keycloakUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/realms/workflow/`,
   ));
-  await page.locator("#username").fill(userEmail);
-  await page.locator("#password").fill(userPassword);
+  await page.locator("#username").fill(email);
+  await page.locator("#password").fill(password);
   await page.locator("#kc-login").click();
   await expect(page).toHaveURL(/\/top$/);
 }
@@ -99,6 +105,56 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
 
   await page.locator("#auto-entry-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
   await expect(page.getByRole("button", { name: "分析を実行", exact: true })).toBeEnabled();
+});
+
+test("請求/注文書申請（自動入力）はBFF経由でFormal Expense下書きを作成する", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await login(page, expenseUserEmail, expenseUserPassword);
+  await page.getByRole("link", { name: "請求/注文書申請（自動入力）", exact: true }).click();
+  await expect(page).toHaveURL(/\/expenses\/auto-entry$/);
+  await expect(page.getByRole("heading", { name: "請求/注文書申請（自動入力）", exact: true })).toBeVisible();
+
+  const createAnalysisResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+      && response.request().method() === "POST",
+  );
+  await page.locator("#expense-auto-entry-file").setInputFiles(resolve("fixtures/receipt.pdf"));
+  expect(await (await createAnalysisResponse).json()).toMatchObject({
+    provider: "CONTENT_UNDERSTANDING",
+    profile: "AUTO_ENTRY",
+  });
+  await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe"))
+    .toBeVisible();
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  await page.getByLabel("件名", { exact: true }).fill(`自動入力E2E-${Date.now()}`);
+  await page.getByLabel("利用目的", { exact: true }).fill("請求書に基づく業務用備品の精算");
+  const handoffResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/backend/expense-applications/from-auto-entry")
+      && response.request().method() === "POST",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "決定", exact: true }).click();
+
+  const response = await handoffResponse;
+  expect([200, 201]).toContain(response.status());
+  const payload = response.request().postDataJSON() as Record<string, unknown>;
+  expect(Object.keys(payload).sort()).toEqual([
+    "analysisId", "application", "confirmedFieldPaths", "document",
+  ]);
+  expect(JSON.stringify(payload)).not.toContain("confidence");
+  expect(JSON.stringify(payload)).not.toContain("findings");
+  expect(JSON.stringify(payload)).not.toContain("sources");
+  expect(JSON.stringify(payload)).not.toContain("polygon");
+  expect(JSON.stringify(payload)).not.toContain("resolution");
+
+  const created = await response.json() as { application: { id: string } };
+  await expect(page).toHaveURL(new RegExp(
+    `/expenses/auto-entry/confirm/${created.application.id}$`,
+  ));
 });
 
 test("AUTO_ENTRYはRecent analysesから同じJob、Review、source previewを復元する", async ({ page }) => {
