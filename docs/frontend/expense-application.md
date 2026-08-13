@@ -9,6 +9,7 @@
 | `/expenses/{id}` | 申請内容、明細、申請時所属、承認経路、差戻し理由 |
 | `/expenses/{id}/edit` | 下書き・差戻し申請の編集と再申請 |
 | `/expenses/auto-entry` | 請求書・注文書を分析して経費下書きを作成する補助入力 |
+| `/expenses/auto-entry/confirm/{applicationId}` | 保存済みAUTO_ENTRY下書きの最終確認・編集・保存・申請 |
 | `/approvals` | ログインユーザーが現在Candidateの承認待ち一覧 |
 | `/approvals/{id}` | 承認コメント、承認、理由必須の差戻し |
 
@@ -45,8 +46,39 @@ Attentionとして数える。AIの未確認はnon-blockingだが、件名・利
 resolutionは送らない。`201 Created`と同じanalysis IDの再試行による`200 OK`はともに成功として
 `/expenses/auto-entry/confirm/{applicationId}`をtargetにする。
 
-この画面はFormal Expense Applicationの`DRAFT`作成までを担当する。targetとなる確認画面、
-保存済みAUTO_ENTRY下書きのGET/PUT、申請・再申請・承認はこの画面には実装しない。
+この画面はFormal Expense Applicationの`DRAFT`作成までを担当する。作成後は
+`/expenses/auto-entry/confirm/{applicationId}`へ遷移する。
+
+## AUTO_ENTRY確認・最終編集
+
+`/expenses/auto-entry/confirm/{applicationId}`はReact stateやDocument Analysisの保持期限に依存せず、
+`GET /api/backend/expense-applications/{applicationId}/auto-entry-draft`から保存済みのFormal Expense
+下書き、AI原値snapshot、人の現在値、人間確認状態を復元する。画面利用には
+`EXPENSE_APPLICATION_READ_OWN`と`EXPENSE_APPLICATION_CREATE`の両Permissionを要求し、分析用の
+Permissionは要求しない。Backend認可が最終的な正本である。
+
+原本プレビューはAUTO_ENTRY contextの`sourceAttachmentId`と既存の経費添付APIを使う。
+`GET /expense-applications/{id}/attachments`で原本添付を特定し、既存`DocumentPreview`へ
+`/api/backend/expense-applications/{id}/attachments/{attachmentId}/content`を渡す。Document Analysisの
+source URL、BrowserのBlob URL、再アップロードは使わない。原本添付を取得できない場合はプレビューだけの
+エラーを表示し、保存済みフォームは安全に表示を継続する。
+
+AIの原値と`currentDocument`は別に保持する。初期の確認済みpathはBackend field stateが`CONFIRMED`のもの
+だけを復元し、`EDITED`、`NOT_REQUIRED`、`UNRESOLVED`は確認済みにしない。編集時の表示規則、要確認のみの
+filter、削除済みAI明細、`sourceLineItemIndex`、利用日変更時の明細利用日更新は補助入力画面と共通である。
+AI未確認と請求書総額差異は非blockingであり、経費の必須入力・カテゴリ別必須項目・明細金額のvalidationは
+保存と申請をblockする。
+
+「下書き保存」は`PUT /api/backend/expense-applications/{id}/auto-entry-draft`だけを使用し、
+`applicationVersion`と`contextVersion`、現在の業務入力、文書入力、有効な`confirmedFieldPaths`を送る。
+AI metadata、原値、response専用の明細ID/display orderは送らない。成功時はBackend応答で両versionと
+人間確認状態を置き換え、同じ確認画面に留まる。`409 OPTIMISTIC_LOCK_CONFLICT`は自動再試行せず、利用者が
+明示的に再読み込みできる。
+
+申請前に未解決項目があれば確認ダイアログを表示するが、継続できる。未保存の編集がある場合は専用PUTで
+先に保存してから、`DRAFT`には既存`POST /expense-applications/{id}/submit`、`RETURNED`には既存
+`POST /expense-applications/{id}/resubmit`を呼ぶ。成功時は`/expenses/{id}`へ遷移する。保存成功後に申請が
+失敗しても保存済み下書きを戻さず、その状態を明示して確認画面に留まる。
 
 ## 入力と表示
 
@@ -70,9 +102,10 @@ Browserは`/api/backend/expense-applications...`と`/api/backend/expense-approva
 呼ぶ。catch-all Route Handlerのmethod/path allowlistに経費APIを明示し、server-sideで
 access tokenを付けてSpring Bootへ転送する。tokenをClient Componentへ渡さない。
 
-AUTO_ENTRYのFormal Handoffでは`POST /api/backend/expense-applications/from-auto-entry`だけをBFF allowlistへ
-追加し、Backendでのsource Blob読込と経費証憑保存に備えてtimeoutを30秒にする。将来の確認画面用の
-`GET`/`PUT /expense-applications/{id}/auto-entry-draft`はBFF allowlistへ公開しない。
+AUTO_ENTRYのFormal Handoffでは`POST /api/backend/expense-applications/from-auto-entry`だけを30秒timeoutで
+BFF allowlistへ追加する。確認画面用にはUUIDを固定した
+`GET`/`PUT /expense-applications/{id}/auto-entry-draft`だけを追加する。POST/PATCH/DELETEや想定外suffixは
+allowlistしない。
 
 添付は`multipart/form-data`のboundaryを維持して転送し、11 MiBを超える既知の
 `Content-Length`はbody読込み前に413で拒否する。BFFは固定UUIDを含む添付pathとmethodだけを

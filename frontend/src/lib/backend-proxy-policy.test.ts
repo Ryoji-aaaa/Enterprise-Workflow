@@ -56,6 +56,16 @@ test("AUTO_ENTRYからの経費下書き作成はPOSTだけを許可し、30秒t
   assert.equal(getBackendProxyPolicy("POST", path)?.responseType, "json");
 });
 
+test("AUTO_ENTRY保存済み下書きはUUID pathのGET/PUTだけを許可する", () => {
+  const path = `/expense-applications/${USER_ID}/auto-entry-draft`;
+  assert.equal(isAllowedBackendProxyRequest("GET", path), true);
+  assert.equal(isAllowedBackendProxyRequest("PUT", path), true);
+  assert.equal(getBackendProxyPolicy("GET", path)?.responseType, "json");
+  for (const method of ["POST", "PATCH", "DELETE"]) assert.equal(isAllowedBackendProxyRequest(method, path), false);
+  assert.equal(isAllowedBackendProxyRequest("GET", "/expense-applications/not-a-uuid/auto-entry-draft"), false);
+  assert.equal(isAllowedBackendProxyRequest("GET", `${path}/unexpected`), false);
+});
+
 test("メール通知履歴は一覧とUUID詳細のGETだけを許可する", () => {
   const collection = "/admin/mail-notifications";
   assert.equal(isAllowedBackendProxyRequest("GET", collection), true);

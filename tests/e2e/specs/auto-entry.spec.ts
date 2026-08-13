@@ -165,7 +165,7 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
   await expect(page.getByText("修正済み", { exact: true })).toHaveCount(2);
 });
 
-test("請求/注文書申請（自動入力）はBFF経由でFormal Expense下書きを作成する", async ({ page }) => {
+test("請求/注文書申請（自動入力）は保存済み確認画面で最終編集・保存・申請できる", async ({ page }) => {
   test.setTimeout(90_000);
 
   await login(page, expenseUserEmail, expenseUserPassword);
@@ -228,6 +228,47 @@ test("請求/注文書申請（自動入力）はBFF経由でFormal Expense下�
   await expect(page).toHaveURL(new RegExp(
     `/expenses/auto-entry/confirm/${created.application.id}$`,
   ));
+  await expect(page.getByRole("heading", { name: "自動入力の確認", exact: true })).toBeVisible();
+  await expect(page.getByText("文書を読み込む", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("現在の分析状態")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "自動入力の確認", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe")).toHaveAttribute(
+    "src",
+    new RegExp(`/api/backend/expense-applications/${created.application.id}/attachments/[0-9a-f-]{36}/content$`),
+  );
+
+  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
+  await issuerName.fill("最終編集済み発行元");
+  await expect(page.getByText("修正済み", { exact: true }).first()).toBeVisible();
+  const saveResponse = page.waitForResponse((candidate) =>
+    candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/auto-entry-draft`)
+      && candidate.request().method() === "PUT",
+  );
+  await page.getByRole("button", { name: "下書き保存", exact: true }).click();
+  expect((await saveResponse).ok()).toBeTruthy();
+  await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel("請求社 / 発行元", { exact: true })).toHaveValue("最終編集済み発行元");
+  const submit = page.getByRole("button", { name: "申請", exact: true });
+  await expect(submit).toBeEnabled();
+  await page.getByLabel("件名", { exact: true }).fill("");
+  await expect(submit).toBeDisabled();
+  await page.getByLabel("件名", { exact: true }).fill(`自動入力E2E-${Date.now()}（最終確認）`);
+  await expect(submit).toBeEnabled();
+  const submitResponse = page.waitForResponse((candidate) =>
+    candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/submit`)
+      && candidate.request().method() === "POST",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await submit.click();
+  expect((await submitResponse).ok()).toBeTruthy();
+  await expect(page).toHaveURL(new RegExp(`/expenses/${created.application.id}$`));
+  await expect(page.getByText("承認待ち", { exact: true }).first()).toBeVisible();
 });
 
 test("AUTO_ENTRYはRecent analysesから同じJob、Review、source previewを復元する", async ({ page }) => {
