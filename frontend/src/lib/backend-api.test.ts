@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   canUseContentUnderstanding,
+  canEditExpenseAutoEntryDraft,
   canUseDocumentIntelligence,
   canUseExpenseAutoEntry,
   canViewMailNotificationHistory,
@@ -25,6 +26,13 @@ const currentUser: CurrentUser = {
     mailNotificationHistory: true,
   },
 };
+
+test("保存済みAUTO_ENTRY下書き編集は読取と作成Permissionの両方を要求する", () => {
+  const permitted = { ...currentUser, permissions: ["EXPENSE_APPLICATION_READ_OWN", "EXPENSE_APPLICATION_CREATE"] };
+  assert.equal(canEditExpenseAutoEntryDraft(permitted), true);
+  assert.equal(canEditExpenseAutoEntryDraft({ ...permitted, permissions: ["EXPENSE_APPLICATION_READ_OWN"] }), false);
+  assert.equal(canEditExpenseAutoEntryDraft({ ...permitted, permissions: ["EXPENSE_APPLICATION_CREATE"] }), false);
+});
 
 test("組織図メニューは権限を持つ正社員と準社員だけに許可する", () => {
   assert.equal(canViewOrganizationChart(currentUser), true);

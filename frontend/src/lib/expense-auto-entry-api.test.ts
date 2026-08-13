@@ -10,3 +10,10 @@ test("AUTO_ENTRY handoff errorを安全な利用者向けメッセージへ変�
   assert.match(expenseAutoEntrySafeErrorMessage(503, "DOCUMENT_ANALYSIS_STORAGE_UNAVAILABLE"), /利用/);
   assert.match(expenseAutoEntrySafeErrorMessage(500, "UNKNOWN"), /作成/);
 });
+
+test("保存済みAUTO_ENTRY下書きのエラーも安全な利用者向け文言へ変換する", () => {
+  assert.match(expenseAutoEntrySafeErrorMessage(404, "EXPENSE_AUTO_ENTRY_DRAFT_NOT_FOUND"), /下書き/);
+  assert.match(expenseAutoEntrySafeErrorMessage(403, "UNKNOWN"), /権限/);
+  assert.match(expenseAutoEntrySafeErrorMessage(409, "OPTIMISTIC_LOCK_CONFLICT"), /競合/);
+  assert.match(expenseAutoEntrySafeErrorMessage(409, "EXPENSE_AUTO_ENTRY_DRAFT_NOT_EDITABLE"), /編集/);
+});

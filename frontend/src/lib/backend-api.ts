@@ -46,6 +46,11 @@ export function canUseExpenseAutoEntry(user: CurrentUser): boolean {
     && user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE");
 }
 
+export function canEditExpenseAutoEntryDraft(user: CurrentUser): boolean {
+  return user.permissions.includes("EXPENSE_APPLICATION_READ_OWN")
+    && user.permissions.includes("EXPENSE_APPLICATION_CREATE");
+}
+
 export type BackendApiResult =
   | {
       kind: "success";

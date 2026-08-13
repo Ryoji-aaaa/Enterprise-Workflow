@@ -7,15 +7,21 @@ import type {
   AutoEntryReviewResponse,
 } from "./auto-entry-review.ts";
 import {
+  confirmedAutoEntryFieldPaths,
+  createExpenseAutoEntryDraftUpdateRequest,
   createExpenseAutoEntryDraftRequest,
   getAutoEntryAttention,
   getConfirmedAutoEntryFieldPaths,
   getResolvedAutoEntryFields,
   hasInvoiceTotalMismatch,
   initializeExpenseAutoEntryForm,
+  liveAutoEntryReviewToSource,
+  persistedAutoEntryOriginalToSource,
+  persistedExpenseAutoEntryDraftToForm,
   resolveAutoEntryField,
   shouldShowAutoEntryField,
 } from "./expense-auto-entry.ts";
+import type { ExpenseAutoEntryDraftResponse } from "./expense-auto-entry-api.ts";
 
 function field<T>(value: T | null, status: AutoEntryFieldStatus = "OK"): AutoEntryField<T> {
   return { value, status, confidence: null, sources: [], findings: [] };
@@ -48,6 +54,23 @@ function review({
       }))),
     } as unknown as AutoEntryReviewResponse["document"],
   } as unknown as AutoEntryReviewResponse;
+}
+
+function persistedDraft(): ExpenseAutoEntryDraftResponse {
+  return {
+    application: {
+      id: "123e4567-e89b-42d3-a456-426614174000", applicationNumber: "EXP-20260813-000001",
+      category: "OTHER", title: "保存済み件名", purpose: "保存済み目的", expenseDate: "2026-08-13",
+      totalAmount: 1250, currencyCode: "JPY", remarks: null, status: "DRAFT", version: 7,
+      items: [{ id: "123e4567-e89b-42d3-a456-426614174001", displayOrder: 1, sourceLineItemIndex: 4, expenseDate: "2026-08-13", description: "人が修正した品名", amount: 1200, merchantName: "", origin: "", destination: "", transportationType: "", participants: "" }, { id: "123e4567-e89b-42d3-a456-426614174002", displayOrder: 2, sourceLineItemIndex: null, expenseDate: "2026-08-13", description: "手入力明細", amount: 50, merchantName: "", origin: "", destination: "", transportationType: "", participants: "" }],
+    },
+    autoEntry: {
+      analysisId: "123e4567-e89b-42d3-a456-426614174010", contextVersion: 3, contextSchemaVersion: 1, sourceAttachmentId: "123e4567-e89b-42d3-a456-426614174011", schemaVersion: "2.1",
+      original: { issuerName: field("AI発行元", "REVIEW"), issuerTaxRegistrationNumber: field<string>(null, "MISSING"), invoiceTotalAmount: field(1200), lineItems: [{ sourceLineItemIndex: 4, itemDescription: field("AI品名", "REVIEW"), lineAmount: field(1200) }] },
+      currentDocument: { issuerName: "人が修正した発行元", issuerTaxRegistrationNumber: null, invoiceTotalAmount: null },
+      fields: { "document.issuerName": { resolution: "EDITED" }, "document.lineItems[4].itemDescription": { resolution: "CONFIRMED" }, "document.issuerTaxRegistrationNumber": { resolution: "UNRESOLVED" }, "document.totalAmount": { resolution: "NOT_REQUIRED" } }, unresolvedCount: 1, warnings: [],
+    },
+  };
 }
 
 test("AI値を必要最小限の初期フォームへ転記し、AIがない値を補完しない", () => {
@@ -157,4 +180,38 @@ test("handoff payloadは人間の現在値と有効な確認パスだけを含�
   assert.equal(JSON.stringify(payload).includes("sources"), false);
   assert.equal(JSON.stringify(payload).includes("polygon"), false);
   assert.equal(JSON.stringify(payload).includes("resolution"), false);
+});
+
+test("保存済みAUTO_ENTRY下書きは人間の現在値とsourceLineItemIndexを編集フォームへ復元する", () => {
+  const form = persistedExpenseAutoEntryDraftToForm(persistedDraft());
+  assert.equal(form.document.issuerName, "人が修正した発行元");
+  assert.equal(form.document.issuerTaxRegistrationNumber, "");
+  assert.equal(form.document.invoiceTotalAmount, null);
+  assert.deepEqual(form.application.items.map(({ sourceLineItemIndex, description }) => ({ sourceLineItemIndex, description })), [{ sourceLineItemIndex: 4, description: "人が修正した品名" }, { sourceLineItemIndex: null, description: "手入力明細" }]);
+});
+
+test("保存済みの確認状態はCONFIRMEDだけをローカル確認パスへ復元する", () => {
+  assert.deepEqual([...confirmedAutoEntryFieldPaths(persistedDraft().autoEntry.fields)], ["document.lineItems[4].itemDescription"]);
+});
+
+test("live Reviewと保存済みOriginalは同じ追跡対象へ正規化できる", () => {
+  const source = persistedAutoEntryOriginalToSource(persistedDraft().autoEntry.original);
+  const live = liveAutoEntryReviewToSource(review({
+    issuerName: field("AI発行元", "REVIEW"), issuerTaxRegistrationNumber: field<string>(null, "MISSING"), totalAmount: field(1200),
+    lineItems: [{ itemDescription: field("AI品名", "REVIEW"), lineAmount: field(1200) }],
+  }));
+  assert.deepEqual({ ...source, lineItems: source.lineItems.map(({ itemDescription, lineAmount }) => ({ itemDescription, lineAmount })) }, { ...live, lineItems: live.lineItems.map(({ itemDescription, lineAmount }) => ({ itemDescription, lineAmount })) });
+});
+
+test("AUTO_ENTRY更新payloadは両versionと現在値だけを送り、response専用値とAI metadataを含めない", () => {
+  const draft = persistedDraft();
+  const form = persistedExpenseAutoEntryDraftToForm(draft);
+  const resolved = getResolvedAutoEntryFields(persistedAutoEntryOriginalToSource(draft.autoEntry.original), form, confirmedAutoEntryFieldPaths(draft.autoEntry.fields));
+  const payload = createExpenseAutoEntryDraftUpdateRequest(draft, form, resolved);
+  assert.deepEqual(Object.keys(payload).sort(), ["application", "applicationVersion", "confirmedFieldPaths", "contextVersion", "document"]);
+  assert.equal(payload.applicationVersion, 7);
+  assert.equal(payload.contextVersion, 3);
+  assert.deepEqual(payload.application.items.map((item) => item.sourceLineItemIndex), [4, null]);
+  const json = JSON.stringify(payload);
+  for (const forbidden of ["confidence", "findings", "sources", "polygon", "resolution", "original", '"id"', "displayOrder", "status"]) assert.equal(json.includes(forbidden), false);
 });

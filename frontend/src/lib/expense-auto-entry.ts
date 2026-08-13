@@ -8,6 +8,11 @@ import {
   type ExpenseCategory,
   type ExpenseItem,
 } from "./expense-application.ts";
+import type {
+  ExpenseAutoEntryDraftResponse,
+  ExpenseAutoEntryOriginal,
+  UpdateExpenseAutoEntryDraftRequest,
+} from "./expense-auto-entry-api.ts";
 
 export type ExpenseAutoEntryItem = ExpenseItem & {
   sourceLineItemIndex: number | null;
@@ -49,6 +54,17 @@ export type AutoEntryTrackedField = {
 
 export type ResolvedAutoEntryField = AutoEntryTrackedField & {
   resolution: AutoEntryHumanResolution;
+};
+
+export type ExpenseAutoEntryReviewSource = {
+  issuerName: AutoEntryField<string>;
+  issuerTaxRegistrationNumber: AutoEntryField<string>;
+  invoiceTotalAmount: AutoEntryField<number>;
+  lineItems: Array<{
+    sourceLineItemIndex: number;
+    itemDescription: AutoEntryField<string>;
+    lineAmount: AutoEntryField<number>;
+  }>;
 };
 
 export type CreateExpenseAutoEntryDraftRequest = {
@@ -112,6 +128,70 @@ export function initializeExpenseAutoEntryForm(
   };
 }
 
+export function liveAutoEntryReviewToSource(
+  review: AutoEntryReviewResponse,
+): ExpenseAutoEntryReviewSource {
+  return {
+    issuerName: review.document.issuerName,
+    issuerTaxRegistrationNumber: review.document.issuerTaxRegistrationNumber,
+    invoiceTotalAmount: review.document.totalAmount,
+    lineItems: (review.document.lineItems.value ?? []).map((item, sourceLineItemIndex) => ({
+      sourceLineItemIndex,
+      itemDescription: item.itemDescription,
+      lineAmount: item.lineAmount,
+    })),
+  };
+}
+
+export function persistedAutoEntryOriginalToSource(
+  original: ExpenseAutoEntryOriginal,
+): ExpenseAutoEntryReviewSource {
+  return {
+    issuerName: original.issuerName,
+    issuerTaxRegistrationNumber: original.issuerTaxRegistrationNumber,
+    invoiceTotalAmount: original.invoiceTotalAmount,
+    lineItems: original.lineItems.map((item) => ({ ...item })),
+  };
+}
+
+export function persistedExpenseAutoEntryDraftToForm(
+  draft: ExpenseAutoEntryDraftResponse,
+): ExpenseAutoEntryForm {
+  return {
+    application: {
+      category: draft.application.category,
+      title: draft.application.title,
+      purpose: draft.application.purpose,
+      expenseDate: draft.application.expenseDate,
+      remarks: draft.application.remarks ?? "",
+      items: draft.application.items.map((item) => ({
+        sourceLineItemIndex: item.sourceLineItemIndex,
+        expenseDate: item.expenseDate,
+        description: item.description,
+        amount: item.amount,
+        merchantName: item.merchantName,
+        origin: item.origin,
+        destination: item.destination,
+        transportationType: item.transportationType,
+        participants: item.participants,
+      })),
+    },
+    document: {
+      issuerName: draft.autoEntry.currentDocument.issuerName ?? "",
+      issuerTaxRegistrationNumber: draft.autoEntry.currentDocument.issuerTaxRegistrationNumber ?? "",
+      invoiceTotalAmount: draft.autoEntry.currentDocument.invoiceTotalAmount,
+    },
+  };
+}
+
+export function confirmedAutoEntryFieldPaths(
+  fields: Record<string, { resolution: AutoEntryHumanResolution }>,
+): Set<string> {
+  return new Set(Object.entries(fields)
+    .filter(([, field]) => field.resolution === "CONFIRMED")
+    .map(([path]) => path));
+}
+
 function normalizeString(value: string | null): string | null {
   if (value === null) return null;
   const normalized = value.trim();
@@ -162,34 +242,35 @@ function sourceItem(
 }
 
 export function getTrackedAutoEntryFields(
-  review: AutoEntryReviewResponse,
+  source: ExpenseAutoEntryReviewSource,
   form: ExpenseAutoEntryForm,
 ): AutoEntryTrackedField[] {
   const tracked: AutoEntryTrackedField[] = [
     {
       path: "document.issuerName",
       label: "請求社 / 発行元",
-      field: review.document.issuerName,
+      field: source.issuerName,
       currentValue: form.document.issuerName,
       deleted: false,
     },
     {
       path: "document.issuerTaxRegistrationNumber",
       label: "インボイス登録番号",
-      field: review.document.issuerTaxRegistrationNumber,
+      field: source.issuerTaxRegistrationNumber,
       currentValue: form.document.issuerTaxRegistrationNumber,
       deleted: false,
     },
     {
       path: "document.totalAmount",
       label: "総請求額",
-      field: review.document.totalAmount,
+      field: source.invoiceTotalAmount,
       currentValue: form.document.invoiceTotalAmount,
       deleted: false,
     },
   ];
 
-  for (const [sourceLineItemIndex, lineItem] of (review.document.lineItems.value ?? []).entries()) {
+  for (const lineItem of source.lineItems) {
+    const sourceLineItemIndex = lineItem.sourceLineItemIndex;
     const currentItem = sourceItem(form.application.items, sourceLineItemIndex);
     tracked.push(
       {
@@ -212,11 +293,12 @@ export function getTrackedAutoEntryFields(
 }
 
 export function getResolvedAutoEntryFields(
-  review: AutoEntryReviewResponse,
+  source: ExpenseAutoEntryReviewSource | AutoEntryReviewResponse,
   form: ExpenseAutoEntryForm,
   confirmedPaths: ReadonlySet<string>,
 ): ResolvedAutoEntryField[] {
-  return getTrackedAutoEntryFields(review, form).map((field) => ({
+  const normalizedSource = "document" in source ? liveAutoEntryReviewToSource(source) : source;
+  return getTrackedAutoEntryFields(normalizedSource, form).map((field) => ({
     ...field,
     resolution: resolveAutoEntryField(
       field.field,
@@ -267,6 +349,41 @@ export function createExpenseAutoEntryDraftRequest(
       items: form.application.items.map((item) => ({ ...item })),
     },
     document: { ...form.document },
+    confirmedFieldPaths: getConfirmedAutoEntryFieldPaths(resolvedFields),
+  };
+}
+
+export function createExpenseAutoEntryDraftUpdateRequest(
+  draft: ExpenseAutoEntryDraftResponse,
+  form: ExpenseAutoEntryForm,
+  resolvedFields: readonly ResolvedAutoEntryField[],
+): UpdateExpenseAutoEntryDraftRequest {
+  return {
+    applicationVersion: draft.application.version,
+    contextVersion: draft.autoEntry.contextVersion,
+    application: {
+      category: form.application.category,
+      title: form.application.title,
+      purpose: form.application.purpose,
+      expenseDate: form.application.expenseDate,
+      remarks: form.application.remarks,
+      items: form.application.items.map((item) => ({
+        sourceLineItemIndex: item.sourceLineItemIndex,
+        expenseDate: item.expenseDate,
+        description: item.description,
+        amount: item.amount,
+        merchantName: item.merchantName,
+        origin: item.origin,
+        destination: item.destination,
+        transportationType: item.transportationType,
+        participants: item.participants,
+      })),
+    },
+    document: {
+      issuerName: form.document.issuerName,
+      issuerTaxRegistrationNumber: form.document.issuerTaxRegistrationNumber,
+      invoiceTotalAmount: form.document.invoiceTotalAmount,
+    },
     confirmedFieldPaths: getConfirmedAutoEntryFieldPaths(resolvedFields),
   };
 }
