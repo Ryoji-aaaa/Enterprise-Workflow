@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { AutoEntryTaxBreakdown } from "./auto-entry-review.ts";
-import { formatAutoEntryFieldValue } from "./auto-entry-review-display.ts";
+import type { AutoEntryField, AutoEntryTaxBreakdown } from "./auto-entry-review.ts";
+import {
+  formatAutoEntryFieldValue,
+  getAutoEntryArrayDisplayState,
+} from "./auto-entry-review-display.ts";
 
 function missingTaxRate(categoryNotation: string, category: string): AutoEntryTaxBreakdown {
   return {
@@ -25,4 +28,13 @@ test("TaxRatePercentがnullならCategoryやCategoryNotationから10/8を補完�
     assert.equal(breakdown.taxRatePercent.status, "MISSING");
     assert.equal(formatAutoEntryFieldValue(breakdown.taxRatePercent), "未取得");
   }
+});
+
+test("配列fieldはnullの未取得と空配列のなしを区別する", () => {
+  const field = <T>(value: T[] | null, status: AutoEntryField<T[]>["status"]): Pick<AutoEntryField<T[]>, "status" | "value"> => ({ value, status });
+
+  assert.equal(getAutoEntryArrayDisplayState(field(null, "MISSING")), "missing");
+  assert.equal(getAutoEntryArrayDisplayState(field(null, "OK")), "empty");
+  assert.equal(getAutoEntryArrayDisplayState(field([], "OK")), "empty");
+  assert.equal(getAutoEntryArrayDisplayState(field(["item"], "OK")), "items");
 });

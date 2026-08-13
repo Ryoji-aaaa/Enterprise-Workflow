@@ -1,5 +1,14 @@
 import type { AutoEntryField } from "./auto-entry-review.ts";
 
+export type AutoEntryArrayDisplayState = "missing" | "empty" | "items";
+
+export function getAutoEntryArrayDisplayState<T>(
+  field: Pick<AutoEntryField<T[]>, "status" | "value">,
+): AutoEntryArrayDisplayState {
+  if (field.value === null) return field.status === "MISSING" ? "missing" : "empty";
+  return field.value.length === 0 ? "empty" : "items";
+}
+
 export function formatAutoEntryFieldValue(
   field: Pick<AutoEntryField<string | number>, "value">,
 ): string {

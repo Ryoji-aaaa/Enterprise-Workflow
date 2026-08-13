@@ -11,7 +11,10 @@ import type {
   AutoEntryObjectReview,
   AutoEntryReviewResponse,
 } from "@/lib/auto-entry-review";
-import { formatAutoEntryFieldValue } from "@/lib/auto-entry-review-display";
+import {
+  formatAutoEntryFieldValue,
+  getAutoEntryArrayDisplayState,
+} from "@/lib/auto-entry-review-display";
 import { cn } from "@/lib/utils";
 
 const statusLabels: Record<AutoEntryFieldStatus, string> = {
@@ -153,6 +156,9 @@ export function AutoEntryReviewPanel({ review }: { review: AutoEntryReviewRespon
   const lineItems = document.lineItems.value ?? [];
   const taxBreakdown = document.taxBreakdown.value ?? [];
   const adjustments = document.adjustments.value ?? [];
+  const lineItemsDisplay = getAutoEntryArrayDisplayState(document.lineItems);
+  const taxBreakdownDisplay = getAutoEntryArrayDisplayState(document.taxBreakdown);
+  const adjustmentsDisplay = getAutoEntryArrayDisplayState(document.adjustments);
   const bank = document.bankTransferDestination.value;
 
   return (
@@ -176,7 +182,7 @@ export function AutoEntryReviewPanel({ review }: { review: AutoEntryReviewRespon
 
         <ReviewSection title="基本情報">
           <AutoEntryFieldRow field={document.documentType} label="文書種別" />
-          <AutoEntryFieldRow field={document.documentNumber} label="請求番号" />
+          <AutoEntryFieldRow field={document.documentNumber} label="文書番号" />
           <AutoEntryFieldRow field={document.issueDate} label="発行日" />
           <AutoEntryFieldRow field={document.subject} label="件名" />
           <AutoEntryFieldRow field={document.currencyCode} label="通貨" />
@@ -215,7 +221,7 @@ export function AutoEntryReviewPanel({ review }: { review: AutoEntryReviewRespon
         <section className="rounded-md border bg-background p-4">
           <h3 className="text-sm font-semibold">明細</h3>
           <ArrayFieldMeta field={document.lineItems} />
-          {lineItems.length === 0 ? <p className="text-sm text-muted-foreground">明細は未取得です。</p> : (
+          {lineItemsDisplay === "missing" ? <p className="text-sm text-muted-foreground">明細は未取得です。</p> : lineItemsDisplay === "empty" ? <p className="text-sm text-muted-foreground">明細はありません。</p> : (
             <ReviewTable>
               <thead className="border-b text-xs text-muted-foreground"><tr>{["日付", "商品コード", "内容", "数量", "単位", "単価", "税区分", "税率", "Category", "金額"].map((label) => <th className="p-2 font-medium" key={label}>{label}</th>)}</tr></thead>
               <tbody>{lineItems.map((item, index) => <LineItemRows index={index} item={item} key={index} />)}</tbody>
@@ -226,7 +232,7 @@ export function AutoEntryReviewPanel({ review }: { review: AutoEntryReviewRespon
         <section className="rounded-md border bg-background p-4">
           <h3 className="text-sm font-semibold">税内訳</h3>
           <ArrayFieldMeta field={document.taxBreakdown} />
-          {taxBreakdown.length === 0 ? <p className="text-sm text-muted-foreground">税内訳は未取得です。</p> : (
+          {taxBreakdownDisplay === "missing" ? <p className="text-sm text-muted-foreground">税内訳は未取得です。</p> : taxBreakdownDisplay === "empty" ? <p className="text-sm text-muted-foreground">税内訳はありません。</p> : (
             <ReviewTable><thead className="border-b text-xs text-muted-foreground"><tr>{["表記", "税率", "対象額", "税額", "Category"].map((label) => <th className="p-2 font-medium" key={label}>{label}</th>)}</tr></thead><tbody>{taxBreakdown.map((item, index) => <tr className="border-b align-top" key={index}><td className="p-2"><AutoEntryFieldValue field={item.categoryNotation} /></td><td className="p-2"><AutoEntryFieldValue field={item.taxRatePercent} /></td><td className="p-2"><AutoEntryFieldValue field={item.taxableAmount} /></td><td className="p-2"><AutoEntryFieldValue field={item.taxAmount} /></td><td className="p-2"><AutoEntryFieldValue field={item.category} /><ObjectReviewMeta review={item.review} /></td></tr>)}</tbody></ReviewTable>
           )}
         </section>
@@ -234,7 +240,7 @@ export function AutoEntryReviewPanel({ review }: { review: AutoEntryReviewRespon
         <section className="rounded-md border bg-background p-4">
           <h3 className="text-sm font-semibold">調整</h3>
           <ArrayFieldMeta field={document.adjustments} />
-          {adjustments.length === 0 ? <p className="text-sm text-muted-foreground">調整は未取得です。</p> : (
+          {adjustmentsDisplay === "missing" ? <p className="text-sm text-muted-foreground">調整は未取得です。</p> : adjustmentsDisplay === "empty" ? <p className="text-sm text-muted-foreground">調整はありません。</p> : (
             <ReviewTable><thead className="border-b text-xs text-muted-foreground"><tr>{["種別", "方向", "説明", "金額", "正規化金額"].map((label) => <th className="p-2 font-medium" key={label}>{label}</th>)}</tr></thead><tbody>{adjustments.map((item, index) => <tr className="border-b align-top" key={index}><td className="p-2"><AutoEntryFieldValue field={item.type} /></td><td className="p-2"><AutoEntryFieldValue field={item.direction} /></td><td className="p-2"><AutoEntryFieldValue field={item.description} /></td><td className="p-2"><AutoEntryFieldValue field={item.rawAmount} /></td><td className="p-2"><DerivedFieldValue field={item.normalizedSignedAmount} /><ObjectReviewMeta review={item.review} /></td></tr>)}</tbody></ReviewTable>
           )}
         </section>

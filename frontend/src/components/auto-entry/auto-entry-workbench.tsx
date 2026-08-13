@@ -190,11 +190,14 @@ export function AutoEntryWorkbench() {
     replaceAnalysisQuery(null); dispatch({ type: "clear" }); setActivePane("file");
   }
 
+  const canRunAnalysis = browserFile !== null && !isDocumentAnalysisProcessing(state.status);
+  const analysisFile = canRunAnalysis ? browserFile : null;
+
   async function runAnalysis() {
-    if (!browserFile || isDocumentAnalysisProcessing(state.status)) return;
+    if (!canRunAnalysis || analysisFile === null) return;
     dispatch({ type: "upload" }); setReview(null); setReviewLoading(false);
     try {
-      const job = await createDocumentAnalysis("CONTENT_UNDERSTANDING", browserFile, undefined, "AUTO_ENTRY");
+      const job = await createDocumentAnalysis("CONTENT_UNDERSTANDING", analysisFile, undefined, "AUTO_ENTRY");
       replaceAnalysisQuery(job.id); setServerPreviewUrl(documentAnalysisSourceUrl(job.id, "AUTO_ENTRY")); dispatch({ type: "job", job });
       refreshRecentAnalyses(); setActivePane("result");
     } catch (cause) {
@@ -208,7 +211,7 @@ export function AutoEntryWorkbench() {
 
   if (!available) return <main className="p-4 md:p-8"><div className="mx-auto max-w-3xl rounded-md border bg-card p-6 text-card-foreground"><h1 className="text-lg font-semibold">自動入力</h1><p className="mt-2 text-sm text-muted-foreground">この機能は現在利用できません。</p></div></main>;
 
-  const toolbar = <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-xl font-semibold">自動入力</h1><Badge variant="secondary">AUTO_ENTRY</Badge>{state.job ? <Badge variant="outline">Model: {state.job.modelId}</Badge> : null}</div><p className="mt-1 text-sm text-muted-foreground">帳票から抽出した値を確認する読み取り専用画面です。</p></div><Button disabled={!state.selectedFile || isDocumentAnalysisProcessing(state.status)} onClick={() => void runAnalysis()} type="button">分析を実行</Button></div>;
+  const toolbar = <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="truncate text-xl font-semibold">自動入力</h1><Badge variant="secondary">AUTO_ENTRY</Badge>{state.job ? <Badge variant="outline">Model: {state.job.modelId}</Badge> : null}</div><p className="mt-1 text-sm text-muted-foreground">帳票から抽出した値を確認する読み取り専用画面です。</p></div><Button disabled={!canRunAnalysis} onClick={() => void runAnalysis()} type="button">分析を実行</Button></div>;
   const filePaneProps = {
     onClear: clearSelection,
     onSelectFiles: selectFiles,

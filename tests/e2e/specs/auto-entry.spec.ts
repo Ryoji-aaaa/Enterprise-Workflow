@@ -67,6 +67,7 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
     timeout: 60_000,
   });
   await expect(page.getByRole("heading", { name: "自動入力結果", exact: true })).toBeVisible();
+  await expect(page.getByText("文書番号", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("未取得", { exact: true }).first()).toBeVisible();
 
   const lineItemsSection = page.getByRole("heading", { name: "明細", exact: true }).locator("..");
@@ -88,4 +89,8 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
   });
   await expect(page.getByRole("heading", { name: "自動入力結果", exact: true })).toBeVisible();
   await expect(page.getByText("未取得", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "分析を実行", exact: true })).toBeDisabled();
+
+  await page.locator("#auto-entry-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
+  await expect(page.getByRole("button", { name: "分析を実行", exact: true })).toBeEnabled();
 });
