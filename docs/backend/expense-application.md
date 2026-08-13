@@ -4,8 +4,8 @@
 
 会食費、交通費、研修費、資格受験費、その他経費について、下書き作成、編集、申請、
 一覧・詳細、承認、差戻し、再申請、承認前の取下げを提供する。BrowserはNext.js BFFだけを
-呼び、Spring BootだけがPostgreSQLと証憑Blob Storageへ接続する。領収書・証憑の添付を提供し、
-OCR、外貨、税・インボイス詳細、
+呼び、Spring BootだけがPostgreSQLと証憑Blob Storageへ接続する。領収書・証憑の添付と
+Document Analysis `AUTO_ENTRY`からの下書き確定を提供し、汎用OCR、外貨換算、税・インボイス詳細、
 会計・支払連携、金額別追加承認、承認済み取消はPoC対象外である。
 
 ## データモデル
@@ -21,6 +21,12 @@ Content-Type、サイズ、SHA-256、Blob object名、登録者、論理削除�
 Blob Storageへ保存する。1申請につき有効な添付は10件、合計30 MiB、1ファイル10 MiBまでで、
 PDF、JPEG、PNGだけを許可する。拡張子、申告Content-Type、magic numberを一致させ、空ファイル、
 制御文字やpath separatorを含むファイル名、255文字を超えるファイル名を拒否する。
+
+V017は`expense_application_auto_entry_contexts`を追加する。1つの経費申請、1つのDocument
+Analysis Job、原本文書から複製した1つの経費添付にそれぞれ最大1行だけ対応させる。
+`analysis_id`の一意制約を最終的な冪等性境界とし、同じAUTO_ENTRY分析から複数の経費下書きを
+作成しない。Backendで生成した`AutoEntryReviewResponse`のsnapshotと、人間の現在値・確認状態を
+別々のJSONBへ保存する。Azure Raw response、Blob URL、credentialは保存しない。
 
 Runは申請・再申請ごとに作成し、Stepは`DEPARTMENT_MANAGER`と`ACCOUNTING`、Candidateは
 そのStepを処理できるユーザーを表す。再申請時も旧Run・Step・Candidateを更新せず、新しい
@@ -82,6 +88,8 @@ POST /api/expense-approvals/{stepId}/approve|return
 GET/POST /api/expense-applications/{id}/attachments
 GET /api/expense-applications/{id}/attachments/{attachmentId}/content
 DELETE /api/expense-applications/{id}/attachments/{attachmentId}
+POST /api/expense-applications/from-auto-entry
+GET/PUT /api/expense-applications/{id}/auto-entry-draft
 ```
 
 一覧は`page`、`size`と任意の`status`を受け取る。他人の詳細は最新RunのCandidateに
@@ -102,6 +110,61 @@ Blobをbest-effortで削除する。Blob削除に失敗してもAPIは204を返�
 削除queueの対象とする。Azure Blob soft deleteは誤削除からの復旧手段であり、DBとの分散transactionを
 提供するものではない。
 
+## AUTO_ENTRY Formal Handoff
+
+`POST /api/expense-applications/from-auto-entry`は、本人の`AUTO_ENTRY + CONTENT_UNDERSTANDING +
+SUCCEEDED` Jobを正式な`ExpenseApplication DRAFT`へ確定する。`EXPENSE_APPLICATION_CREATE`と
+`DOCUMENT_ANALYSIS_READ_OWN`の両方を要求する。Browserから受け取るのは現在の業務入力値、
+AI明細との対応を示す`sourceLineItemIndex`、確認済みfield pathだけであり、AI原値、confidence、
+status、findings、sourcesは受け取らない。Service層から`AutoEntryReviewService`を直接呼び、
+Backend Reviewをsnapshotとして保存する。
+
+対応するfield pathは次に限定する。
+
+```text
+document.issuerName
+document.issuerTaxRegistrationNumber
+document.totalAmount
+document.lineItems[n].itemDescription
+document.lineItems[n].lineAmount
+```
+
+`sourceLineItemIndex`はnullなら人が追加した明細、0以上ならReview上の明細indexである。負数、存在しない
+index、重複index、未対応field pathは`400 EXPENSE_AUTO_ENTRY_SOURCE_MAPPING_INVALID`で拒否する。
+文字列は前後空白を除去し、空文字をnullとして比較する。金額は`BigDecimal.compareTo`でscaleに依存せず
+比較する。
+
+人間の状態はAI Review statusと分離し、Backendが次のように決定する。
+
+| 状態 | 判定 |
+| --- | --- |
+| `NOT_REQUIRED` | AI statusが`OK`で値が同じ |
+| `UNRESOLVED` | `REVIEW`で値が同じかつ未確認、または`MISSING`の必須対象が未入力 |
+| `CONFIRMED` | `REVIEW`で値が同じかつ確認済み |
+| `EDITED` | AI原値と人の現在値が異なる |
+
+AI原値は人の値で上書きしない。`UNRESOLVED`は注意表示用であり、既存submit APIの追加gateにはしない。
+Expenseの正式金額は従来どおり明細合計である。人が入力した請求書総額と明細合計が異なる場合は
+`INVOICE_TOTAL_DIFFERS_FROM_DRAFT_TOTAL`を非blocking warningとして返し、明細を自動補正しない。
+Reviewの通貨が明示的にJPY以外なら`422 EXPENSE_AUTO_ENTRY_CURRENCY_UNSUPPORTED`とし、換算しない。
+通貨や税率のmissing値も推測補完しない。
+
+POSTは`analysisId`を冪等性keyとして扱う。既存contextが本人に存在すれば新しい申請・添付を作らず、
+既存draftを返す。同時要求が`analysis_id`一意制約で競合した場合は、loser側のBlobを削除してwinnerを
+返す。原本文書はBrowserに再uploadさせず、BackendがDocument Analysis input Blobを読み、SHA-256、
+Content-Type、sizeを維持して`expense-evidence/{applicationId}/{attachmentId}`へ保存する。
+
+Blob読込・書込中にDB transactionを保持しない。target Blobを先に保存し、経費申請、明細、添付metadata、
+AUTO_ENTRY context、成功監査を短い同一transactionでcommitする。DB失敗時はtarget Blobをbest-effortで
+削除する。contextが参照する原本添付は論理削除できない。
+
+`GET /api/expense-applications/{id}/auto-entry-draft`は申請者本人かつ
+`EXPENSE_APPLICATION_READ_OWN`だけに、正式draft、対応するAI原値、現在値、人間状態、warning、添付ID、
+application/context versionを返す。`PUT`は申請者本人、`DRAFT`または`RETURNED`、
+`EXPENSE_APPLICATION_CREATE`を要求し、両versionのどちらかが古ければ
+`409 OPTIMISTIC_LOCK_CONFLICT`にする。経費内容・明細とhuman review stateは同じtransactionで更新する。
+AUTO_ENTRY contextを持つ申請を通常PUTで更新することは拒否し、専用PUTでprovenanceとの整合を維持する。
+
 ## 監査
 
 作成、更新、申請、再申請、取下げ、Step承認、差戻し、最終承認を`audit_logs`へ追記する。
@@ -113,3 +176,9 @@ Candidate外・自己承認・所有者外の参照または更新は、既存�
 添付では登録、content取得、削除、認可拒否、形式・上限拒否、Blob障害を既存`audit_logs`へ記録する。
 申請ID、添付ID、元ファイル名、Content-Type、サイズ、SHA-256と理由コードを必要最小限として扱い、
 ファイル内容、credential、接続文字列、SAS、SDKの生例外メッセージは記録しない。
+
+Formal Handoffでは既存の`EXPENSE_APPLICATION_CREATED`、`EXPENSE_APPLICATION_UPDATED`、
+`EXPENSE_ATTACHMENT_UPLOADED`に加え、`EXPENSE_AUTO_ENTRY_DRAFT_CREATED`と
+`EXPENSE_AUTO_ENTRY_DRAFT_UPDATED`を記録する。追加監査はapplication ID、analysis ID、AUTO_ENTRY
+schema version、source attachment ID、unresolved件数だけをallowlistで保存し、請求書field値とReview
+snapshotを複製しない。

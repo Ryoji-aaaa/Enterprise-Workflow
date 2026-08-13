@@ -40,10 +40,22 @@ public class ExpenseApplicationAccessService {
     public ExpenseApplication ownedForUpdate(UUID id, AppUser user, String deniedAction) {
         ExpenseApplication application = applicationRepository.findByIdForUpdate(id)
                 .orElseThrow(ExpenseApplicationAccessService::notFound);
-        if (!application.getApplicantUserId().equals(user.getId())) {
-            deny(user, deniedAction, id, "NOT_OWNER");
-        }
+        requireOwner(application, user, deniedAction);
         return application;
+    }
+
+    public ExpenseApplication owned(UUID id, AppUser user, String deniedAction) {
+        ExpenseApplication application = applicationRepository.findById(id)
+                .orElseThrow(ExpenseApplicationAccessService::notFound);
+        requireOwner(application, user, deniedAction);
+        return application;
+    }
+
+    private void requireOwner(
+            ExpenseApplication application, AppUser user, String deniedAction) {
+        if (!application.getApplicantUserId().equals(user.getId())) {
+            deny(user, deniedAction, application.getId(), "NOT_OWNER");
+        }
     }
 
     private void deny(AppUser user, String action, UUID id, String reason) {

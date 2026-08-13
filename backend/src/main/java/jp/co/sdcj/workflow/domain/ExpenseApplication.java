@@ -73,7 +73,16 @@ public class ExpenseApplication extends AuditedEntity {
             OrganizationUnit unit, OrganizationUnit division, ExpenseCategory category,
             String title, String purpose, LocalDate expenseDate, BigDecimal totalAmount,
             String remarks, UUID auditUserId) {
-        super(auditUserId);
+        this(UUID.randomUUID(), applicationNumber, applicant, organizationId, unit, division,
+                category, title, purpose, expenseDate, totalAmount, remarks, auditUserId);
+    }
+
+    public ExpenseApplication(
+            UUID id, String applicationNumber, AppUser applicant, UUID organizationId,
+            OrganizationUnit unit, OrganizationUnit division, ExpenseCategory category,
+            String title, String purpose, LocalDate expenseDate, BigDecimal totalAmount,
+            String remarks, UUID auditUserId) {
+        super(id, auditUserId);
         this.applicationNumber = required(applicationNumber, "applicationNumber");
         this.applicantUserId = applicant.getId();
         this.applicantNameSnapshot = applicant.getDisplayName();

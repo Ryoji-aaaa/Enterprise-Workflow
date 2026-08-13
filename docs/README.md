@@ -67,6 +67,7 @@
 - [ADR-0015: 経費証憑のBackend専用Blob Storage](decisions/ADR-0015-expense-attachment-blob-storage.md)
 - [ADR-0016: ローカルMailpitとTransactional Outbox](decisions/ADR-0016-local-mailpit-transactional-outbox.md)
 - [ADR-0017: Document AnalysisをBFF境界と非同期Jobで実装](decisions/ADR-0017-document-analysis-architecture.md)
+- [ADR-0018: AUTO_ENTRYから経費下書きへの正式引継ぎ](decisions/ADR-0018-auto-entry-expense-draft-handoff.md)
 
 ## 履歴資料
 

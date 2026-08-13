@@ -21,6 +21,7 @@ import jp.co.sdcj.workflow.domain.ExpenseApplication;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationAttachment;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationStatus;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationAttachmentRepository;
+import jp.co.sdcj.workflow.repository.ExpenseApplicationAutoEntryContextRepository;
 import jp.co.sdcj.workflow.storage.AttachmentStorage;
 import jp.co.sdcj.workflow.storage.AttachmentStorageException;
 import jp.co.sdcj.workflow.storage.StoredAttachmentContent;
@@ -36,6 +37,7 @@ public class ExpenseApplicationAttachmentService {
     private final ExpenseAttachmentSecurityInspector securityInspector;
     private final ExpenseApplicationAccessService accessService;
     private final ExpenseApplicationAttachmentRepository attachmentRepository;
+    private final ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository;
     private final AttachmentStorage storage;
     private final AuditLogService auditLogService;
     private final AttachmentProperties properties;
@@ -45,6 +47,7 @@ public class ExpenseApplicationAttachmentService {
             ExpenseAttachmentSecurityInspector securityInspector,
             ExpenseApplicationAccessService accessService,
             ExpenseApplicationAttachmentRepository attachmentRepository,
+            ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository,
             AttachmentStorage storage,
             AuditLogService auditLogService,
             AttachmentProperties properties,
@@ -52,6 +55,7 @@ public class ExpenseApplicationAttachmentService {
         this.securityInspector = securityInspector;
         this.accessService = accessService;
         this.attachmentRepository = attachmentRepository;
+        this.autoEntryContextRepository = autoEntryContextRepository;
         this.storage = storage;
         this.auditLogService = auditLogService;
         this.properties = properties;
@@ -173,6 +177,15 @@ public class ExpenseApplicationAttachmentService {
                     .findActiveForUpdate(applicationId, attachmentId)
                     .orElseThrow(() -> attachmentNotFound(
                             user, attachmentId, "EXPENSE_ATTACHMENT_DELETE_DENIED"));
+            if (autoEntryContextRepository.existsBySourceAttachmentId(attachmentId)) {
+                auditLogService.recordDenied(
+                        AuditActor.user(user), "EXPENSE_ATTACHMENT_DELETE_DENIED", TARGET_TYPE,
+                        attachmentId.toString(), "EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED");
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED",
+                        "自動入力の原本文書は削除できません。");
+            }
             attachment.delete(user.getId(), Instant.now());
             auditLogService.recordSuccess(
                     AuditActor.user(user), "EXPENSE_ATTACHMENT_DELETED", TARGET_TYPE,

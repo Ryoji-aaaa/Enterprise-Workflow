@@ -198,7 +198,8 @@ public class DocumentAnalysisService {
                     "DOCUMENT_ANALYSIS_SOURCE_ACCESSED",
                     analysisId,
                     metadata.auditData());
-            return new OpenedDocumentAnalysisContent(metadata.originalFileName(), content);
+            return new OpenedDocumentAnalysisContent(
+                    metadata.originalFileName(), metadata.sha256(), content);
         } catch (DocumentAnalysisStorageException exception) {
             throw storageUnavailable();
         }
@@ -280,7 +281,7 @@ public class DocumentAnalysisService {
                     "DOCUMENT_ANALYSIS_RESULT_ACCESSED",
                     analysisId,
                     metadata.auditData());
-            return new OpenedDocumentAnalysisContent(null, content);
+            return new OpenedDocumentAnalysisContent(null, null, content);
         } catch (DocumentAnalysisStorageException exception) {
             throw storageUnavailable();
         }
