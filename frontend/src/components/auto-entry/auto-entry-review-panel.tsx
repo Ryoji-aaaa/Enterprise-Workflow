@@ -123,28 +123,20 @@ function ReviewTable({ children }: { children: ReactNode }) {
   return <div className="overflow-x-auto"><table className="w-full min-w-[52rem] text-left text-sm">{children}</table></div>;
 }
 
-function LineItemRows({ item, index }: { item: AutoEntryLineItem; index: number }) {
+function LineItemRow({ item }: { item: AutoEntryLineItem }) {
   return (
-    <>
-      <tr className="border-b align-top">
-        <td className="p-2" colSpan={10}>
-          <p className="text-xs text-muted-foreground">明細 {index + 1} · <StatusBadge status={item.review.status} /></p>
-          <ObjectReviewMeta review={item.review} />
-        </td>
-      </tr>
-      <tr className="border-b align-top">
-        <td className="p-2"><AutoEntryFieldValue field={item.itemDate} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.productCode} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.itemDescription} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.quantity} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.unit} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.unitPriceAmount} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.taxIndicator} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.taxRatePercent} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.taxCategory} /></td>
-        <td className="p-2"><AutoEntryFieldValue field={item.lineAmount} /></td>
-      </tr>
-    </>
+    <tr className="border-b align-top">
+      <td className="p-2"><AutoEntryFieldValue field={item.itemDate} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.productCode} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.itemDescription} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.quantity} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.unit} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.unitPriceAmount} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.taxIndicator} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.taxRatePercent} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.taxCategory} /></td>
+      <td className="p-2"><AutoEntryFieldValue field={item.lineAmount} /></td>
+    </tr>
   );
 }
 
@@ -229,7 +221,7 @@ export function AutoEntryReviewPanel({ review }: { review: AutoEntryReviewRespon
           {lineItemsDisplay === "missing" ? <p className="text-sm text-muted-foreground">明細は未取得です。</p> : lineItemsDisplay === "empty" ? <p className="text-sm text-muted-foreground">明細はありません。</p> : (
             <ReviewTable>
               <thead className="border-b text-xs text-muted-foreground"><tr>{["日付", "商品コード", "内容", "数量", "単位", "単価", "税区分", "税率", "Category", "金額"].map((label) => <th className="p-2 font-medium" key={label}>{label}</th>)}</tr></thead>
-              <tbody>{lineItems.map((item, index) => <LineItemRows index={index} item={item} key={index} />)}</tbody>
+              <tbody>{lineItems.map((item, index) => <LineItemRow item={item} key={index} />)}</tbody>
             </ReviewTable>
           )}
         </section>
