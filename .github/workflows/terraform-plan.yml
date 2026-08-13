@@ -29,7 +29,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install static validation dependencies
         run: |
           sudo apt-get update
@@ -77,7 +77,7 @@ jobs:
       TF_VAR_content_understanding_enabled: ${{ vars.CONTENT_UNDERSTANDING_ENABLED || 'false' }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install jq for plan safety gate
         run: |
           sudo apt-get update
