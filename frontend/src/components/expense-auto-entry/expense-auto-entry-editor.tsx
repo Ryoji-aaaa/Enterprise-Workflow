@@ -16,10 +16,12 @@ import {
 import {
   type ExpenseAutoEntryForm,
   type ExpenseAutoEntryItem,
+  type ExpenseAutoEntryReviewSource,
   type ResolvedAutoEntryField,
   autoEntryStatusLabel,
+  formatExpenseAutoEntryTaxAmount,
   getAutoEntryAttention,
-  hasInvoiceTotalMismatch,
+  reconcileExpenseAutoEntryInvoiceTotal,
   shouldShowAutoEntryField,
 } from "@/lib/expense-auto-entry";
 import {
@@ -39,7 +41,7 @@ function statusClass(status: AutoEntryField<unknown>["status"]): string {
 
 function FieldMetadata({ field, resolution }: {
   field: AutoEntryField<string | number>;
-  resolution: ResolvedAutoEntryField["resolution"];
+  resolution?: ResolvedAutoEntryField["resolution"];
 }) {
   const details = [
     formatAutoEntryConfidence(field.confidence),
@@ -60,6 +62,7 @@ function AttentionReason({ field }: { field: ResolvedAutoEntryField }) {
 
 export function ExpenseAutoEntryEditor({
   form,
+  reviewSource,
   resolvedFields,
   confirmedPaths,
   showAttentionOnly,
@@ -74,6 +77,7 @@ export function ExpenseAutoEntryEditor({
   children,
 }: {
   form: ExpenseAutoEntryForm;
+  reviewSource: ExpenseAutoEntryReviewSource;
   resolvedFields: readonly ResolvedAutoEntryField[];
   confirmedPaths: ReadonlySet<string>;
   showAttentionOnly: boolean;
@@ -89,7 +93,13 @@ export function ExpenseAutoEntryEditor({
 }) {
   const attention = getAutoEntryAttention(resolvedFields);
   const resolvedByPath = new Map(resolvedFields.map((field) => [field.path, field]));
-  const totalMismatch = hasInvoiceTotalMismatch(form.document.invoiceTotalAmount, form.application.items);
+  const reconciliation = reconcileExpenseAutoEntryInvoiceTotal(
+    form.document.invoiceTotalAmount,
+    form.application.items,
+    reviewSource.taxAmount,
+    reviewSource.adjustments,
+    reviewSource.taxMode,
+  );
   const documentFields = [
     { label: "請求社 / 発行元", path: "document.issuerName", value: form.document.issuerName, type: "text" as const },
     { label: "インボイス登録番号", path: "document.issuerTaxRegistrationNumber", value: form.document.issuerTaxRegistrationNumber, type: "text" as const },
@@ -109,7 +119,7 @@ export function ExpenseAutoEntryEditor({
       const description = item.sourceLineItemIndex === null ? undefined : resolvedByPath.get(`document.lineItems[${item.sourceLineItemIndex}].itemDescription`);
       const amount = item.sourceLineItemIndex === null ? undefined : resolvedByPath.get(`document.lineItems[${item.sourceLineItemIndex}].lineAmount`);
       return <div className="space-y-3 rounded-md border p-3" key={`${item.sourceLineItemIndex ?? "manual"}-${index}`}><div className="grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-sm">内容<Input maxLength={500} onChange={(event) => onItemChange(index, { description: event.target.value })} required value={item.description} /></label><label className="grid gap-1 text-sm">金額（円）<Input min={1} onChange={(event) => onItemChange(index, { amount: Number(event.target.value) })} required step={1} type="number" value={item.amount || ""} /></label></div>{description ? <><FieldMetadata field={description.field} resolution={description.resolution} />{description.field.status === "REVIEW" && description.resolution !== "EDITED" ? <label className="flex items-center gap-2 text-sm"><input checked={confirmedPaths.has(description.path)} onChange={(event) => onConfirmationChange(description.path, event.target.checked)} type="checkbox" />内容の原本を確認しました</label> : null}</> : null}{amount ? <><FieldMetadata field={amount.field} resolution={amount.resolution} />{amount.field.status === "REVIEW" && amount.resolution !== "EDITED" ? <label className="flex items-center gap-2 text-sm"><input checked={confirmedPaths.has(amount.path)} onChange={(event) => onConfirmationChange(amount.path, event.target.checked)} type="checkbox" />金額の原本を確認しました</label> : null}</> : null}{form.application.category === "MEAL" || form.application.category === "TRAINING" || form.application.category === "CERTIFICATION" ? <label className="grid gap-1 text-sm">{form.application.category === "MEAL" ? "店舗名" : form.application.category === "TRAINING" ? "主催者" : "試験実施団体"}<Input onChange={(event) => onItemChange(index, { merchantName: event.target.value })} required value={item.merchantName} /></label> : null}{form.application.category === "MEAL" ? <label className="grid gap-1 text-sm">参加者<Input onChange={(event) => onItemChange(index, { participants: event.target.value })} required value={item.participants} /></label> : null}{form.application.category === "TRANSPORTATION" ? <div className="grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-sm">交通手段<Input onChange={(event) => onItemChange(index, { transportationType: event.target.value })} required value={item.transportationType} /></label><label className="grid gap-1 text-sm">出発地<Input onChange={(event) => onItemChange(index, { origin: event.target.value })} required value={item.origin} /></label><label className="grid gap-1 text-sm">到着地<Input onChange={(event) => onItemChange(index, { destination: event.target.value })} required value={item.destination} /></label></div> : null}<div className="flex justify-end"><Button aria-label={`明細${index + 1}を削除`} onClick={() => onDeleteItem(index)} size="sm" type="button" variant="ghost"><Trash2 data-icon="inline-start" />削除</Button></div></div>;
-    })}<p className="text-right text-lg font-semibold">申請明細合計 {yen(totalExpenseAmount(form.application.items))}</p>{totalMismatch ? <Alert><TriangleAlert /><AlertTitle>請求書総額と申請明細合計が一致しません</AlertTitle><AlertDescription>明細または請求書総額を自動で変更することはありません。</AlertDescription></Alert> : null}</section>
+    })}<div className="space-y-2 text-right"><p className="text-lg font-semibold">申請明細合計 {yen(totalExpenseAmount(form.application.items))}</p><div data-testid="expense-auto-entry-tax-amount"><p className="font-medium">消費税（読取値） {formatExpenseAutoEntryTaxAmount(reviewSource.taxAmount.value)}</p><div className="flex justify-end"><FieldMetadata field={reviewSource.taxAmount} /></div></div></div>{reconciliation === "MISMATCH" ? <Alert><TriangleAlert /><AlertTitle>請求書総額と申請金額の照合結果が一致しません</AlertTitle><AlertDescription>申請明細、読み取った消費税・値引き等を考慮して照合しています。値を自動で変更することはありません。</AlertDescription></Alert> : null}{reconciliation === "UNAVAILABLE" ? <Alert><TriangleAlert /><AlertTitle>請求額を照合できません</AlertTitle><AlertDescription>消費税または調整額を十分に取得できなかったため、請求書総額との整合性を判定できません。原本を確認してください。</AlertDescription></Alert> : null}</section>
     {children}
   </div>;
 }

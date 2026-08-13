@@ -323,6 +323,11 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
 
   await expect(page.getByLabel("内容", { exact: true })).toBeVisible();
   await expect(page.getByLabel("金額（円）", { exact: true })).toBeVisible();
+  const workbenchTax = page.getByTestId("expense-auto-entry-tax-amount");
+  await expect(workbenchTax.getByText("消費税（読取値）", { exact: false })).toContainText("1,000");
+  await expect(workbenchTax.getByText("OK", { exact: true })).toBeVisible();
+  await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
+    .toHaveCount(0);
   await page.locator("select").first().selectOption("MEAL");
   await expect(page.getByLabel("店舗名", { exact: true })).toBeVisible();
   await expect(page.getByLabel("参加者", { exact: true })).toBeVisible();
@@ -365,6 +370,9 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(page.getByText("文書を読み込む", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("現在の分析状態")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe")).toBeVisible();
+  await expect(page.getByTestId("expense-auto-entry-tax-amount")).toContainText("1,000");
+  await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
+    .toHaveCount(0);
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "自動入力の確認", exact: true })).toBeVisible();
@@ -372,6 +380,17 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     "src",
     new RegExp(`/api/backend/expense-applications/${created.application.id}/attachments/[0-9a-f-]{36}/content$`),
   );
+  await expect(page.getByTestId("expense-auto-entry-tax-amount")).toContainText("1,000");
+  await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
+    .toHaveCount(0);
+
+  const lineAmount = page.getByLabel("金額（円）", { exact: true });
+  await lineAmount.fill("9998");
+  await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
+    .toBeVisible();
+  await lineAmount.fill("10000");
+  await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
+    .toHaveCount(0);
 
   await page.getByRole("button", { name: "すべて", exact: true }).click();
   const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });

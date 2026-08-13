@@ -249,14 +249,19 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                 .andExpect(jsonPath("$.autoEntry.schemaVersion").value("2.1"))
                 .andExpect(jsonPath("$.autoEntry.original.issuerName.value")
                         .value("サンプル商事株式会社"))
+                .andExpect(jsonPath("$.autoEntry.original.taxAmount.value").value(1000))
+                .andExpect(jsonPath("$.autoEntry.original.taxMode.value")
+                        .value("TAX_EXCLUDED"))
+                .andExpect(jsonPath(
+                        "$.autoEntry.original.adjustments.value[0].normalizedSignedAmount.value")
+                        .value(-500))
                 .andExpect(jsonPath("$.autoEntry.fields['document.issuerName'].resolution")
                         .value("CONFIRMED"))
                 .andExpect(jsonPath(
                         "$.autoEntry.fields['document.issuerTaxRegistrationNumber'].resolution")
                         .value("UNRESOLVED"))
                 .andExpect(jsonPath("$.autoEntry.unresolvedCount").value(1))
-                .andExpect(jsonPath("$.autoEntry.warnings[0]")
-                        .value("INVOICE_TOTAL_DIFFERS_FROM_DRAFT_TOTAL"))
+                .andExpect(jsonPath("$.autoEntry.warnings").isEmpty())
                 .andReturn().getResponse().getContentAsString();
         JsonNode createdJson = objectMapper.readTree(created);
         UUID applicationId = UUID.fromString(createdJson.path("application").path("id").asText());
@@ -777,6 +782,13 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                 .andExpect(jsonPath("$.autoEntry.analysisId").value(analysisId.toString()))
                 .andExpect(jsonPath("$.autoEntry.original.lineItems[0].lineAmount.value")
                         .value(10000))
+                .andExpect(jsonPath("$.autoEntry.original.taxAmount.value").value(1000))
+                .andExpect(jsonPath("$.autoEntry.original.taxMode.value")
+                        .value("TAX_EXCLUDED"))
+                .andExpect(jsonPath(
+                        "$.autoEntry.original.adjustments.value[0].normalizedSignedAmount.value")
+                        .value(-500))
+                .andExpect(jsonPath("$.autoEntry.warnings").isEmpty())
                 .andExpect(jsonPath("$.application.items[0].amount").value(10000));
         mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
                         .with(validJwt(otherUser, "other")))

@@ -173,7 +173,7 @@ public class ExpenseAutoEntryDraftService {
                     null);
             return new ExpenseAutoEntryDraftDetails(
                     applicationDetails, context, review, humanState,
-                    warnings(humanState, applicationDetails.application().getTotalAmount()), false);
+                    warnings(humanState, applicationDetails.application().getTotalAmount(), review), false);
         });
         if (details == null) {
             throw new IllegalStateException("Expense AUTO_ENTRY update transaction returned no result");
@@ -238,7 +238,7 @@ public class ExpenseAutoEntryDraftService {
                 null);
         return new ExpenseAutoEntryDraftDetails(
                 applicationDetails, context, review, humanState,
-                warnings(humanState, applicationDetails.application().getTotalAmount()), true);
+                warnings(humanState, applicationDetails.application().getTotalAmount(), review), true);
     }
 
     private ExpenseAutoEntryDraftDetails load(
@@ -268,7 +268,7 @@ public class ExpenseAutoEntryDraftService {
         validateStoredContext(context, review, humanState);
         return new ExpenseAutoEntryDraftDetails(
                 applicationDetails, context, review, humanState,
-                warnings(humanState, applicationDetails.application().getTotalAmount()), created);
+                warnings(humanState, applicationDetails.application().getTotalAmount(), review), created);
     }
 
     private ExpenseApplicationAutoEntryContext existingOwnedContext(
@@ -422,9 +422,16 @@ public class ExpenseAutoEntryDraftService {
 
     static List<Warning> warnings(
             ExpenseAutoEntryHumanReviewState humanState,
-            BigDecimal draftTotal) {
+            BigDecimal draftTotal,
+            AutoEntryReviewResponse review) {
         BigDecimal invoiceTotal = humanState.document().invoiceTotalAmount();
-        return invoiceTotal != null && invoiceTotal.compareTo(draftTotal) != 0
+        var status = ExpenseAutoEntryInvoiceTotalReconciler.reconcile(
+                invoiceTotal,
+                draftTotal,
+                review.document().taxAmount().value(),
+                review.document().adjustments().value(),
+                review.taxMode().value());
+        return status == ExpenseAutoEntryInvoiceTotalReconciler.Status.MISMATCH
                 ? List.of(Warning.INVOICE_TOTAL_DIFFERS_FROM_DRAFT_TOTAL)
                 : List.of();
     }

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type {
+  AutoEntryAdjustment,
+  AutoEntryDerivedField,
   AutoEntryField,
   AutoEntryFieldStatus,
   AutoEntryReviewResponse,
@@ -10,32 +12,68 @@ import {
   confirmedAutoEntryFieldPaths,
   createExpenseAutoEntryDraftUpdateRequest,
   createExpenseAutoEntryDraftRequest,
+  formatExpenseAutoEntryTaxAmount,
   getAutoEntryAttention,
   getConfirmedAutoEntryFieldPaths,
   getResolvedAutoEntryFields,
-  hasInvoiceTotalMismatch,
   initializeExpenseAutoEntryForm,
   liveAutoEntryReviewToSource,
   persistedAutoEntryOriginalToSource,
   persistedExpenseAutoEntryDraftToForm,
+  reconcileExpenseAutoEntryInvoiceTotal,
   resolveAutoEntryField,
   shouldShowAutoEntryField,
 } from "./expense-auto-entry.ts";
 import type { ExpenseAutoEntryDraftResponse } from "./expense-auto-entry-api.ts";
+import type { ExpenseItem } from "./expense-application.ts";
 
 function field<T>(value: T | null, status: AutoEntryFieldStatus = "OK"): AutoEntryField<T> {
   return { value, status, confidence: null, sources: [], findings: [] };
+}
+
+function derived<T>(value: T | null): AutoEntryDerivedField<T> {
+  return { value, status: value === null ? "MISSING" : "OK", findings: [] };
+}
+
+function adjustment(amount: number | null): AutoEntryAdjustment {
+  return {
+    review: { confidence: null, status: "OK", sources: [], findings: [] },
+    type: field("DISCOUNT"),
+    direction: field("DEDUCTION"),
+    description: field("調整"),
+    rawAmount: field(amount === null ? null : Math.abs(amount)),
+    normalizedSignedAmount: derived(amount),
+  };
+}
+
+function expenseItem(amount: number): ExpenseItem {
+  return {
+    expenseDate: "2026-08-13",
+    description: "明細",
+    amount,
+    merchantName: "",
+    origin: "",
+    destination: "",
+    transportationType: "",
+    participants: "",
+  };
 }
 
 function review({
   issuerName = field("株式会社ABC", "REVIEW"),
   issuerTaxRegistrationNumber = field<string>(null, "MISSING"),
   totalAmount = field<number>(null, "MISSING"),
+  taxAmount = field(0),
+  adjustments = field<AutoEntryAdjustment[]>([]),
+  taxMode = derived<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">("UNKNOWN"),
   lineItems = [{ itemDescription: field("業務用備品"), lineAmount: field(1200) }],
 }: {
   issuerName?: AutoEntryField<string>;
   issuerTaxRegistrationNumber?: AutoEntryField<string>;
   totalAmount?: AutoEntryField<number>;
+  taxAmount?: AutoEntryField<number>;
+  adjustments?: AutoEntryField<AutoEntryAdjustment[]>;
+  taxMode?: AutoEntryDerivedField<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">;
   lineItems?: Array<{ itemDescription: AutoEntryField<string>; lineAmount: AutoEntryField<number> }>;
 } = {}): AutoEntryReviewResponse {
   return {
@@ -47,12 +85,15 @@ function review({
       issuerName,
       issuerTaxRegistrationNumber,
       totalAmount,
+      taxAmount,
+      adjustments,
       lineItems: field(lineItems.map((item) => ({
         review: { confidence: null, status: "OK", sources: [], findings: [] },
         itemDescription: item.itemDescription,
         lineAmount: item.lineAmount,
       }))),
     } as unknown as AutoEntryReviewResponse["document"],
+    taxMode,
   } as unknown as AutoEntryReviewResponse;
 }
 
@@ -66,7 +107,7 @@ function persistedDraft(): ExpenseAutoEntryDraftResponse {
     },
     autoEntry: {
       analysisId: "123e4567-e89b-42d3-a456-426614174010", contextVersion: 3, contextSchemaVersion: 1, sourceAttachmentId: "123e4567-e89b-42d3-a456-426614174011", schemaVersion: "2.1",
-      original: { issuerName: field("AI発行元", "REVIEW"), issuerTaxRegistrationNumber: field<string>(null, "MISSING"), invoiceTotalAmount: field(1200), lineItems: [{ sourceLineItemIndex: 4, itemDescription: field("AI品名", "REVIEW"), lineAmount: field(1200) }] },
+      original: { issuerName: field("AI発行元", "REVIEW"), issuerTaxRegistrationNumber: field<string>(null, "MISSING"), invoiceTotalAmount: field(1200), taxAmount: field(120), taxMode: derived("TAX_EXCLUDED"), adjustments: field<AutoEntryAdjustment[]>([]), lineItems: [{ sourceLineItemIndex: 4, itemDescription: field("AI品名", "REVIEW"), lineAmount: field(1200) }] },
       currentDocument: { issuerName: "人が修正した発行元", issuerTaxRegistrationNumber: null, invoiceTotalAmount: null },
       fields: { "document.issuerName": { resolution: "EDITED" }, "document.lineItems[4].itemDescription": { resolution: "CONFIRMED" }, "document.issuerTaxRegistrationNumber": { resolution: "UNRESOLVED" }, "document.totalAmount": { resolution: "NOT_REQUIRED" } }, unresolvedCount: 1, warnings: [],
     },
@@ -157,11 +198,79 @@ test("要確認のみでは元から要確認または未取得のAI項目を編
   assert.equal(shouldShowAutoEntryField(editedMissing, true), true);
 });
 
-test("請求書総額との差異はnon-blocking warning用にだけ判定する", () => {
-  const form = initializeExpenseAutoEntryForm(review({ totalAmount: field(1200) }), "2026-08-13");
-  assert.equal(hasInvoiceTotalMismatch(form.document.invoiceTotalAmount, form.application.items), false);
-  assert.equal(hasInvoiceTotalMismatch(1300, form.application.items), true);
-  assert.equal(hasInvoiceTotalMismatch(null, form.application.items), false);
+test("請求書総額は税・調整額とinclusive 1円許容を使って3状態で照合する", () => {
+  const noAdjustments = field<AutoEntryAdjustment[]>([]);
+  const discount = field([adjustment(-5)]);
+  const missingAdjustments = field<AutoEntryAdjustment[]>(null, "MISSING");
+  const excluded = derived<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">("TAX_EXCLUDED");
+  const included = derived<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">("TAX_INCLUDED");
+  const unknown = derived<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">("UNKNOWN");
+
+  const cases = [
+    ["明細 + 税", 110, 100, field(10), noAdjustments, excluded, "MATCHED"],
+    ["明細自体", 100, 100, field(10), noAdjustments, excluded, "MATCHED"],
+    ["税込表記でも明細 + 税 - discount", 105, 100, field(10), discount, included, "MATCHED"],
+    ["明細 + 税 - withholding", 105, 100, field(10), discount, excluded, "MATCHED"],
+    ["taxMode UNKNOWN", 110, 100, field(10), noAdjustments, unknown, "MATCHED"],
+    ["tax missingを0補完しない", 102, 100, field<number>(null, "MISSING"), noAdjustments, unknown, "UNAVAILABLE"],
+    ["adjustment missing", 105, 100, field(10), missingAdjustments, excluded, "UNAVAILABLE"],
+    ["+1円", 101, 100, field(0), noAdjustments, unknown, "MATCHED"],
+    ["-1円", 99, 100, field(0), noAdjustments, unknown, "MATCHED"],
+    ["+2円", 102, 100, field(0), noAdjustments, unknown, "MISMATCH"],
+    ["必要データが揃った不一致", 120, 100, field(10), noAdjustments, excluded, "MISMATCH"],
+  ] as const;
+
+  for (const [label, invoiceTotal, lineTotal, tax, adjustments, mode, expected] of cases) {
+    assert.equal(
+      reconcileExpenseAutoEntryInvoiceTotal(
+        invoiceTotal,
+        [expenseItem(lineTotal)],
+        tax,
+        adjustments,
+        mode,
+      ),
+      expected,
+      label,
+    );
+  }
+
+  assert.equal(reconcileExpenseAutoEntryInvoiceTotal(
+    115,
+    [expenseItem(105)],
+    field(10),
+    noAdjustments,
+    excluded,
+  ), "MATCHED", "humanが編集した最新明細合計を使う");
+  assert.equal(reconcileExpenseAutoEntryInvoiceTotal(
+    110,
+    [expenseItem(100)],
+    field(10),
+    noAdjustments,
+    excluded,
+  ), "MATCHED", "humanが編集した現在のinvoice totalを使う");
+  assert.equal(reconcileExpenseAutoEntryInvoiceTotal(
+    null,
+    [expenseItem(100)],
+    field(10),
+    noAdjustments,
+    excluded,
+  ), "UNAVAILABLE");
+});
+
+test("消費税のread-only表示はnullを未取得としmetadataをsourceへ維持する", () => {
+  const taxAmount = {
+    ...field<number>(null, "MISSING"),
+    confidence: 0.42,
+    findings: ["LOW_CONFIDENCE" as const],
+    sources: [{ pageNumber: 1, polygon: [] }],
+  };
+  const source = liveAutoEntryReviewToSource(review({ taxAmount }));
+
+  assert.equal(formatExpenseAutoEntryTaxAmount(source.taxAmount.value), "未取得");
+  assert.notEqual(formatExpenseAutoEntryTaxAmount(source.taxAmount.value), "￥0");
+  assert.notEqual(formatExpenseAutoEntryTaxAmount(source.taxAmount.value), "¥0");
+  assert.deepEqual(source.taxAmount, taxAmount);
+  assert.match(formatExpenseAutoEntryTaxAmount(1000), /1,000/);
 });
 
 test("handoff payloadは人間の現在値と有効な確認パスだけを含み、AI metadataを含めない", () => {
@@ -198,6 +307,7 @@ test("live Reviewと保存済みOriginalは同じ追跡対象へ正規化でき�
   const source = persistedAutoEntryOriginalToSource(persistedDraft().autoEntry.original);
   const live = liveAutoEntryReviewToSource(review({
     issuerName: field("AI発行元", "REVIEW"), issuerTaxRegistrationNumber: field<string>(null, "MISSING"), totalAmount: field(1200),
+    taxAmount: field(120), taxMode: derived("TAX_EXCLUDED"), adjustments: field<AutoEntryAdjustment[]>([]),
     lineItems: [{ itemDescription: field("AI品名", "REVIEW"), lineAmount: field(1200) }],
   }));
   assert.deepEqual({ ...source, lineItems: source.lineItems.map(({ itemDescription, lineAmount }) => ({ itemDescription, lineAmount })) }, { ...live, lineItems: live.lineItems.map(({ itemDescription, lineAmount }) => ({ itemDescription, lineAmount })) });

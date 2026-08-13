@@ -42,6 +42,7 @@ import {
   getAutoEntryAttention,
   getResolvedAutoEntryFields,
   initializeExpenseAutoEntryForm,
+  liveAutoEntryReviewToSource,
 } from "@/lib/expense-auto-entry";
 import {
   isExpenseInputValid,
@@ -170,9 +171,10 @@ export function ExpenseAutoEntryWorkbench() {
     })();
   }
 
+  const reviewSource = useMemo(() => review ? liveAutoEntryReviewToSource(review) : null, [review]);
   const resolvedFields = useMemo(
-    () => review && form ? getResolvedAutoEntryFields(review, form, confirmedPaths) : [],
-    [confirmedPaths, form, review],
+    () => reviewSource && form ? getResolvedAutoEntryFields(reviewSource, form, confirmedPaths) : [],
+    [confirmedPaths, form, reviewSource],
   );
   const attention = useMemo(() => getAutoEntryAttention(resolvedFields), [resolvedFields]);
   const valid = form !== null && isExpenseInputValid(
@@ -298,7 +300,7 @@ export function ExpenseAutoEntryWorkbench() {
             <div className="border-b p-4"><AnalysisStatus state={state} viewLoading={reviewLoading} /></div>
             <div className="space-y-6 p-4">
               {submitError ? <Alert variant="destructive"><TriangleAlert /><AlertTitle>作成できませんでした</AlertTitle><AlertDescription>{submitError}</AlertDescription></Alert> : null}
-              {form && review ? <ExpenseAutoEntryEditor confirmedPaths={confirmedPaths} form={form} onAddItem={() => updateApplication({ items: [...form.application.items, createManualExpenseAutoEntryItem(form.application.expenseDate)] })} onApplicationChange={updateApplication} onConfirmationChange={setConfirmed} onDeleteItem={(index) => updateApplication({ items: form.application.items.filter((_, itemIndex) => itemIndex !== index) })} onDocumentChange={updateDocument} onExpenseDateChange={changeExpenseDate} onItemChange={updateItem} onShowAttentionOnlyChange={setShowAttentionOnly} resolvedFields={resolvedFields} showAttentionOnly={showAttentionOnly}><div className="flex justify-end"><Button disabled={!canDecide} onClick={() => void decide()} type="button">{submitting ? "作成中…" : "決定"}</Button></div></ExpenseAutoEntryEditor> : <p className="text-sm text-muted-foreground">文書を選択すると、分析完了後に入力フォームを表示します。</p>}
+              {form && reviewSource ? <ExpenseAutoEntryEditor confirmedPaths={confirmedPaths} form={form} onAddItem={() => updateApplication({ items: [...form.application.items, createManualExpenseAutoEntryItem(form.application.expenseDate)] })} onApplicationChange={updateApplication} onConfirmationChange={setConfirmed} onDeleteItem={(index) => updateApplication({ items: form.application.items.filter((_, itemIndex) => itemIndex !== index) })} onDocumentChange={updateDocument} onExpenseDateChange={changeExpenseDate} onItemChange={updateItem} onShowAttentionOnlyChange={setShowAttentionOnly} resolvedFields={resolvedFields} reviewSource={reviewSource} showAttentionOnly={showAttentionOnly}><div className="flex justify-end"><Button disabled={!canDecide} onClick={() => void decide()} type="button">{submitting ? "作成中…" : "決定"}</Button></div></ExpenseAutoEntryEditor> : <p className="text-sm text-muted-foreground">文書を選択すると、分析完了後に入力フォームを表示します。</p>}
             </div>
           </section>
         </div>
