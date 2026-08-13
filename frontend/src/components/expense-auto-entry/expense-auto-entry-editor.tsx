@@ -51,7 +51,11 @@ function FieldMetadata({ field, resolution }: {
 
 function AttentionReason({ field }: { field: ResolvedAutoEntryField }) {
   const reason = field.field.status === "MISSING" ? "未取得のため、必要に応じて入力してください" : field.field.findings.length > 0 ? field.field.findings.map(formatAutoEntryFinding).join(" · ") : "原本を確認してください";
-  return <li className="rounded-md border bg-background px-3 py-2"><p className="font-medium">{field.label}</p><p className="mt-0.5 text-muted-foreground">{reason}</p></li>;
+  const details = [
+    formatAutoEntryConfidence(field.field.confidence),
+    formatAutoEntrySources(field.field.sources),
+  ].filter((value): value is string => value !== null);
+  return <li className="rounded-md border bg-background px-3 py-2"><p className="font-medium">{field.label}</p><p className="mt-0.5 text-muted-foreground">{reason}</p>{details.length > 0 ? <p className="mt-0.5 text-muted-foreground">{details.join(" · ")}</p> : null}</li>;
 }
 
 export function ExpenseAutoEntryEditor({

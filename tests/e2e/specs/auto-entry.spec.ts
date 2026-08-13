@@ -254,12 +254,18 @@ test("請求/注文書申請（自動入力）は保存済み確認画面で最�
 
   await page.reload();
   await expect(page.getByLabel("請求社 / 発行元", { exact: true })).toHaveValue("最終編集済み発行元");
+  const submit = page.getByRole("button", { name: "申請", exact: true });
+  await expect(submit).toBeEnabled();
+  await page.getByLabel("件名", { exact: true }).fill("");
+  await expect(submit).toBeDisabled();
+  await page.getByLabel("件名", { exact: true }).fill(`自動入力E2E-${Date.now()}（最終確認）`);
+  await expect(submit).toBeEnabled();
   const submitResponse = page.waitForResponse((candidate) =>
     candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/submit`)
       && candidate.request().method() === "POST",
   );
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "申請", exact: true }).click();
+  await submit.click();
   expect((await submitResponse).ok()).toBeTruthy();
   await expect(page).toHaveURL(new RegExp(`/expenses/${created.application.id}$`));
   await expect(page.getByText("承認待ち", { exact: true }).first()).toBeVisible();
