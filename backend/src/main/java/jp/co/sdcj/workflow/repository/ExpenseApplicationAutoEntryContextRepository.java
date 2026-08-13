@@ -24,6 +24,14 @@ public interface ExpenseApplicationAutoEntryContextRepository
 
     boolean existsBySourceAttachmentId(UUID sourceAttachmentId);
 
+    @Query("""
+            select context.sourceAttachmentId
+            from ExpenseApplicationAutoEntryContext context
+            where context.expenseApplicationId = :applicationId
+            """)
+    Optional<UUID> findSourceAttachmentIdByExpenseApplicationId(
+            @Param("applicationId") UUID applicationId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select context from ExpenseApplicationAutoEntryContext context

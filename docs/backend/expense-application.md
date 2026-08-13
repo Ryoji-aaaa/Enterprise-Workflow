@@ -141,7 +141,7 @@ index、重複index、未対応field pathは`400 EXPENSE_AUTO_ENTRY_SOURCE_MAPPI
 | `NOT_REQUIRED` | AI statusが`OK`で値が同じ |
 | `UNRESOLVED` | `REVIEW`で値が同じかつ未確認、または`MISSING`の必須対象が未入力 |
 | `CONFIRMED` | `REVIEW`で値が同じかつ確認済み |
-| `EDITED` | AI原値と人の現在値が異なる |
+| `EDITED` | AI原値と人の現在値が異なる、または対応するAI明細を人が削除した |
 
 AI原値は人の値で上書きしない。`UNRESOLVED`は注意表示用であり、既存submit APIの追加gateにはしない。
 Expenseの正式金額は従来どおり明細合計である。人が入力した請求書総額と明細合計が異なる場合は
@@ -156,7 +156,7 @@ Content-Type、sizeを維持して`expense-evidence/{applicationId}/{attachmentI
 
 Blob読込・書込中にDB transactionを保持しない。target Blobを先に保存し、経費申請、明細、添付metadata、
 AUTO_ENTRY context、成功監査を短い同一transactionでcommitする。DB失敗時はtarget Blobをbest-effortで
-削除する。contextが参照する原本添付は論理削除できない。
+削除する。contextが参照する原本添付は論理削除できず、添付一覧でもその原本だけ`deletable=false`を返す。
 
 `GET /api/expense-applications/{id}/auto-entry-draft`は申請者本人かつ
 `EXPENSE_APPLICATION_READ_OWN`だけに、正式draft、対応するAI原値、現在値、人間状態、warning、添付ID、

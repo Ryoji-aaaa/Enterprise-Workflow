@@ -279,6 +279,29 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         assertThat(count("expense_application_attachments")).isEqualTo(1);
         assertThat(storedAttachments).hasSize(1);
 
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(attachmentId.toString()))
+                .andExpect(jsonPath("$[0].deletable").value(false));
+
+        String uploaded = mockMvc.perform(multipart(
+                        "/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf())
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.deletable").value(true))
+                .andReturn().getResponse().getContentAsString();
+        UUID uploadedAttachmentId = UUID.fromString(
+                objectMapper.readTree(uploaded).path("id").asText());
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(attachmentId.toString()))
+                .andExpect(jsonPath("$[0].deletable").value(false))
+                .andExpect(jsonPath("$[1].id").value(uploadedAttachmentId.toString()))
+                .andExpect(jsonPath("$[1].deletable").value(true));
+
         mockMvc.perform(delete(
                         "/api/expense-applications/{id}/attachments/{attachmentId}",
                         applicationId, attachmentId)

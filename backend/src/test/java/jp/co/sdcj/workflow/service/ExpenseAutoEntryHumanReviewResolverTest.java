@@ -95,6 +95,27 @@ class ExpenseAutoEntryHumanReviewResolverTest {
     }
 
     @Test
+    void removedSourceItemIsEditedEvenWhenOriginalFieldIsMissing() {
+        AutoEntryReviewResponse.AutoEntryLineItem removed =
+                mock(AutoEntryReviewResponse.AutoEntryLineItem.class);
+        when(removed.itemDescription()).thenReturn(field(null, MISSING));
+        when(removed.lineAmount()).thenReturn(field(new BigDecimal("100"), OK));
+
+        ExpenseAutoEntryHumanReviewState state = resolver.resolve(
+                review(List.of(removed)),
+                application(List.of(manualItem())),
+                document(),
+                List.of());
+
+        assertThat(state.fields().get(
+                ExpenseAutoEntryHumanReviewResolver.descriptionPath(0)).resolution())
+                .isEqualTo(EDITED);
+        assertThat(state.fields().get(
+                ExpenseAutoEntryHumanReviewResolver.amountPath(0)).resolution())
+                .isEqualTo(EDITED);
+    }
+
+    @Test
     void invoiceAndDraftTotalMismatchIsNonblockingWarning() {
         ExpenseAutoEntryHumanReviewState state = new ExpenseAutoEntryHumanReviewState(
                 1,

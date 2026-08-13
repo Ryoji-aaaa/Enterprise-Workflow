@@ -128,12 +128,15 @@ public class ExpenseApplicationAttachmentService {
         return transactionTemplate.execute(status -> {
             ExpenseApplication application = accessService.accessible(
                     applicationId, user, "EXPENSE_ATTACHMENT_READ_DENIED");
-            boolean deletable = application.getApplicantUserId().equals(user.getId())
+            boolean applicationDeletable = application.getApplicantUserId().equals(user.getId())
                     && (application.getStatus() == ExpenseApplicationStatus.DRAFT
                             || application.getStatus() == ExpenseApplicationStatus.RETURNED);
+            UUID sourceAttachmentId = autoEntryContextRepository
+                    .findSourceAttachmentIdByExpenseApplicationId(applicationId)
+                    .orElse(null);
             return new ExpenseAttachmentList(attachmentRepository
                     .findAllByExpenseApplicationIdAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(
-                            applicationId), deletable);
+                            applicationId), applicationDeletable, sourceAttachmentId);
         });
     }
 

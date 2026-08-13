@@ -64,10 +64,15 @@ public class ExpenseAutoEntryHumanReviewResolver {
         for (int index = 0; index < originalItems.size(); index++) {
             AutoEntryReviewResponse.AutoEntryLineItem original = originalItems.get(index);
             ExpenseAutoEntryDraftContentRequest.Item current = currentBySource.get(index);
+            if (current == null) {
+                fields.put(descriptionPath(index), new FieldState(EDITED));
+                fields.put(amountPath(index), new FieldState(EDITED));
+                continue;
+            }
             put(fields, descriptionPath(index), original.itemDescription(),
-                    current == null ? null : normalize(current.description()), confirmed);
+                    normalize(current.description()), confirmed);
             put(fields, amountPath(index), original.lineAmount(),
-                    current == null ? null : current.amount(), confirmed);
+                    current.amount(), confirmed);
         }
 
         ExpenseAutoEntryHumanReviewState.Document normalizedDocument =
