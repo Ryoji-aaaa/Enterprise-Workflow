@@ -69,6 +69,12 @@ AUTO_ENTRY Formal Handoffを含むrevisionでは続けてV017を適用する。V
 Blob containerやBlob objectも操作しない。適用後はFlyway V017成功、tableとapplication/analysis/source
 attachmentの3つの一意制約、context schema versionのcheck constraintを確認する。
 
+AUTO_ENTRY原本添付のprovenance強化を含むrevisionでは続けてV018を適用する。V018は
+`expense_application_attachments (id, expense_application_id)`の一意制約と、contextの
+`(source_attachment_id, expense_application_id)`からの複合外部キーを追加する。データやBlobを移動せず、
+既存V017データが同一申請に対応していない場合はmigrationを安全に失敗させる。適用後はFlyway V018成功、
+両制約の存在、同一申請の関連付け成功、異なる申請の関連付けが外部キー違反になることを確認する。
+
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
 `SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから

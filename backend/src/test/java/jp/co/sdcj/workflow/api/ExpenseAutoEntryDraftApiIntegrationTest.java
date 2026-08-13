@@ -27,12 +27,18 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -65,6 +71,8 @@ import jp.co.sdcj.workflow.domain.UserOrganizationAssignment;
 import jp.co.sdcj.workflow.domain.UserRoleAssignment;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationAutoEntryContextRepository;
+import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
+import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
 import jp.co.sdcj.workflow.repository.OrganizationRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
@@ -96,6 +104,7 @@ import jp.co.sdcj.workflow.storage.StoredDocumentAnalysisContent;
 })
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class ExpenseAutoEntryDraftApiIntegrationTest {
 
     private static final String ISSUER = "http://localhost:8180/realms/workflow";
@@ -117,6 +126,8 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
     @Autowired PermissionRepository permissionRepository;
     @Autowired RolePermissionRepository rolePermissionRepository;
     @Autowired UserRoleAssignmentRepository roleAssignmentRepository;
+    @Autowired ExpenseApprovalRunRepository runRepository;
+    @Autowired ExpenseApprovalStepRepository stepRepository;
     @Autowired DocumentAnalysisDispatcher dispatcher;
     @MockitoBean DocumentAnalysisStorage documentStorage;
     @MockitoBean AttachmentStorage attachmentStorage;
@@ -130,6 +141,16 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
     private AppUser applicant;
     private AppUser otherUser;
     private AppUser expenseOnlyUser;
+    private AppUser noCreateUser;
+    private AppUser noDocumentReadUser;
+    private AppUser manager;
+    private AppUser accountant;
+    private Role applicantRole;
+    private Role expenseOnlyRole;
+    private Permission expenseCreate;
+    private Permission expenseRead;
+    private Permission documentRead;
+    private Permission contentAnalyze;
 
     @BeforeEach
     void setUp() {
@@ -164,32 +185,43 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         otherUser = user("other@sdcj.co.jp", "Other User", "other", now);
         expenseOnlyUser = user(
                 "expense.only@sdcj.co.jp", "Expense Only User", "expense-only", now);
-        AppUser manager = user("manager@sdcj.co.jp", "Manager", "manager", now);
-        AppUser accountant = user("accountant@sdcj.co.jp", "Accountant", "accountant", now);
+        noCreateUser = user("no.create@sdcj.co.jp", "No Create User", "no-create", now);
+        noDocumentReadUser = user(
+                "no.document.read@sdcj.co.jp", "No Document Read User", "no-document-read", now);
+        manager = user("manager@sdcj.co.jp", "Manager", "manager", now);
+        accountant = user("accountant@sdcj.co.jp", "Accountant", "accountant", now);
         assign(applicant, section, memberPosition);
         assign(otherUser, section, memberPosition);
         assign(expenseOnlyUser, section, memberPosition);
+        assign(noCreateUser, section, memberPosition);
+        assign(noDocumentReadUser, section, memberPosition);
         assign(manager, section, managerPosition);
         assign(accountant, accounting, memberPosition);
 
-        Permission expenseCreate = permission(
+        expenseCreate = permission(
                 PermissionCodes.EXPENSE_APPLICATION_CREATE, "EXPENSE_APPLICATION", "CREATE");
-        Permission expenseRead = permission(
+        expenseRead = permission(
                 PermissionCodes.EXPENSE_APPLICATION_READ_OWN, "EXPENSE_APPLICATION", "READ_OWN");
         Permission expenseApprove = permission(
                 PermissionCodes.EXPENSE_APPLICATION_APPROVE, "EXPENSE_APPLICATION", "APPROVE");
-        Permission documentRead = permission(
+        documentRead = permission(
                 PermissionCodes.DOCUMENT_ANALYSIS_READ_OWN, "DOCUMENT_ANALYSIS", "READ_OWN");
-        Permission contentAnalyze = permission(
+        contentAnalyze = permission(
                 PermissionCodes.CONTENT_UNDERSTANDING_ANALYZE,
                 "CONTENT_UNDERSTANDING", "ANALYZE");
-        Role applicantRole = role(
+        applicantRole = role(
                 "AUTO_ENTRY_APPLICANT", expenseCreate, expenseRead, documentRead, contentAnalyze);
         Role approverRole = role("AUTO_ENTRY_APPROVER", expenseApprove);
-        Role expenseOnlyRole = role("EXPENSE_ONLY", expenseCreate, expenseRead);
+        expenseOnlyRole = role("EXPENSE_ONLY", expenseCreate, expenseRead);
+        Role noCreateRole = role(
+                "AUTO_ENTRY_NO_CREATE", expenseRead, documentRead, contentAnalyze);
+        Role noDocumentReadRole = role(
+                "AUTO_ENTRY_NO_DOCUMENT_READ", expenseCreate, expenseRead, contentAnalyze);
         assignRole(applicant, applicantRole, now);
         assignRole(otherUser, applicantRole, now);
         assignRole(expenseOnlyUser, expenseOnlyRole, now);
+        assignRole(noCreateUser, noCreateRole, now);
+        assignRole(noDocumentReadUser, noDocumentReadRole, now);
         assignRole(manager, approverRole, now);
         assignRole(accountant, approverRole, now);
     }
@@ -278,12 +310,23 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         assertThat(count("expense_application_auto_entry_contexts")).isEqualTo(1);
         assertThat(count("expense_application_attachments")).isEqualTo(1);
         assertThat(storedAttachments).hasSize(1);
+        assertThat(auditCount("DOCUMENT_ANALYSIS_SOURCE_ACCESSED")).isEqualTo(1);
+        assertThat(auditCount("EXPENSE_APPLICATION_CREATED")).isEqualTo(1);
+        assertThat(auditCount("EXPENSE_ATTACHMENT_UPLOADED")).isEqualTo(1);
+        assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_CREATED")).isEqualTo(1);
 
         mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
                         .with(validJwt(applicant, "auto-entry")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(attachmentId.toString()))
                 .andExpect(jsonPath("$[0].deletable").value(false));
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", MediaType.APPLICATION_PDF_VALUE))
+                .andExpect(header().string("Content-Length", String.valueOf(SOURCE_BYTES.length)));
 
         String uploaded = mockMvc.perform(multipart(
                         "/api/expense-applications/{id}/attachments", applicationId)
@@ -309,6 +352,26 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code")
                         .value("EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED"));
+        Map<String, Object> deleteDenial = jdbcTemplate.queryForMap("""
+                select target_id, reason, result
+                from audit_logs
+                where action_type = 'EXPENSE_ATTACHMENT_DELETE_DENIED'
+                  and target_id = ?
+                """, attachmentId.toString());
+        assertThat(deleteDenial)
+                .containsEntry("TARGET_ID", attachmentId.toString())
+                .containsEntry("REASON", "EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED")
+                .containsEntry("RESULT", "DENIED");
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, uploadedAttachmentId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isNoContent());
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from expense_application_attachments
+                where id = ? and deleted_at is not null
+                """, Integer.class, uploadedAttachmentId)).isEqualTo(1);
     }
 
     @Test
@@ -367,6 +430,144 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         assertThat(count("expense_application_auto_entry_contexts")).isZero();
         assertThat(count("expense_application_attachments")).isZero();
         assertThat(storedAttachments).isEmpty();
+    }
+
+    @Test
+    void handoffRequiresCreateAndDocumentReadButNotAnalyzeAfterAnalysisExists()
+            throws Exception {
+        UUID noCreateAnalysis = succeededAutoEntry(noCreateUser, "no-create");
+        mockMvc.perform(post("/api/expense-applications/from-auto-entry")
+                        .with(validJwt(noCreateUser, "no-create"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequest(noCreateAnalysis, "10000", "10500", false)))
+                .andExpect(status().isForbidden());
+
+        UUID noDocumentReadAnalysis = succeededAutoEntry(
+                noDocumentReadUser, "no-document-read");
+        mockMvc.perform(post("/api/expense-applications/from-auto-entry")
+                        .with(validJwt(noDocumentReadUser, "no-document-read"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequest(
+                                noDocumentReadAnalysis, "10000", "10500", false)))
+                .andExpect(status().isForbidden());
+
+        assertThat(jdbcTemplate.queryForList("""
+                select target_id from audit_logs
+                where action_type = 'AUTHORIZATION_DENIED'
+                  and result = 'DENIED'
+                """, String.class))
+                .contains(
+                        PermissionCodes.EXPENSE_APPLICATION_CREATE,
+                        PermissionCodes.DOCUMENT_ANALYSIS_READ_OWN);
+
+        UUID ownedAnalysis = succeededAutoEntry(applicant, "auto-entry");
+        removeRolePermission(applicantRole, contentAnalyze);
+        mockMvc.perform(post("/api/expense-applications/from-auto-entry")
+                        .with(validJwt(applicant, "auto-entry"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequest(ownedAnalysis, "10000", "10500", false)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void persistedDraftUsesExpensePermissionsAndApplicantOwnershipOnly() throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        JsonNode created = objectMapper.readTree(mockMvc.perform(
+                        post("/api/expense-applications/from-auto-entry")
+                                .with(validJwt(applicant, "auto-entry"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createRequest(analysisId, "10000", "10500", false)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString());
+        UUID applicationId = UUID.fromString(created.path("application").path("id").asText());
+        long applicationVersion = created.path("application").path("version").asLong();
+        long contextVersion = created.path("autoEntry").path("contextVersion").asLong();
+
+        removeRolePermission(applicantRole, documentRead);
+        removeRolePermission(applicantRole, contentAnalyze);
+        mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(otherUser, "other")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(otherUser, "other"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateRequest(
+                                applicationVersion, contextVersion, "9000", "10500", false)))
+                .andExpect(status().isNotFound());
+        assertThat(jdbcTemplate.queryForList("""
+                select reason from audit_logs
+                where action_type in (
+                    'EXPENSE_AUTO_ENTRY_DRAFT_READ_DENIED',
+                    'EXPENSE_APPLICATION_UPDATE_DENIED'
+                ) and result = 'DENIED'
+                """, String.class)).contains("NOT_OWNER");
+
+        removeRolePermission(applicantRole, expenseCreate);
+        mockMvc.perform(put("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(applicant, "auto-entry"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateRequest(
+                                applicationVersion, contextVersion, "9000", "10500", false)))
+                .andExpect(status().isForbidden());
+
+        removeRolePermission(applicantRole, expenseRead);
+        mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void currentCandidateCanReadFormalEvidenceButCannotReadOrModifyAutoEntryContext()
+            throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        JsonNode created = objectMapper.readTree(mockMvc.perform(
+                        post("/api/expense-applications/from-auto-entry")
+                                .with(validJwt(applicant, "auto-entry"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createRequest(analysisId, "10000", "10500", false)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString());
+        UUID applicationId = UUID.fromString(created.path("application").path("id").asText());
+        UUID attachmentId = UUID.fromString(
+                created.path("autoEntry").path("sourceAttachmentId").asText());
+
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(manager, "manager")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(attachmentId.toString()));
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(validJwt(manager, "manager")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(manager, "manager")))
+                .andExpect(status().isForbidden());
+
+        assignRole(manager, expenseOnlyRole, Instant.now());
+        mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(manager, "manager")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf())
+                        .with(validJwt(manager, "manager")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(validJwt(manager, "manager")))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(validJwt(otherUser, "other")))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -438,6 +639,120 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         assertNoFormalDraft();
         assertThat(storedAttachments).isEmpty();
         assertThat(attachmentDeleteTransactions).containsExactly(false);
+        assertThat(auditCount("DOCUMENT_ANALYSIS_SOURCE_ACCESSED")).isZero();
+        assertThat(auditCount("EXPENSE_APPLICATION_CREATED")).isZero();
+        assertThat(auditCount("EXPENSE_ATTACHMENT_UPLOADED")).isZero();
+        assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_CREATED")).isZero();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void parallelHandoffCreatesOneWinnerAndCompensatesTheLoserBlob() throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        CountDownLatch requestReady = new CountDownLatch(2);
+        CountDownLatch requestStart = new CountDownLatch(1);
+        CountDownLatch storesReady = new CountDownLatch(2);
+        CountDownLatch storesRelease = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            attachmentStoreTransactions.add(
+                    TransactionSynchronizationManager.isActualTransactionActive());
+            String objectName = invocation.getArgument(0);
+            byte[] content = invocation.getArgument(1);
+            String contentType = invocation.getArgument(2);
+            Map<String, String> metadata = invocation.getArgument(3);
+            storedAttachments.put(objectName, new StoredExpenseAttachment(
+                    content.clone(), contentType, Map.copyOf(metadata)));
+            storesReady.countDown();
+            if (!storesRelease.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("parallel handoff store barrier timed out");
+            }
+            return null;
+        }).when(attachmentStorage).store(
+                anyString(), any(byte[].class), anyString(), any(Map.class));
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> concurrentHandoff(
+                    analysisId, requestReady, requestStart));
+            var second = executor.submit(() -> concurrentHandoff(
+                    analysisId, requestReady, requestStart));
+            assertThat(requestReady.await(5, TimeUnit.SECONDS)).isTrue();
+            requestStart.countDown();
+            assertThat(storesReady.await(10, TimeUnit.SECONDS)).isTrue();
+            storesRelease.countDown();
+
+            List<HandoffResult> results = List.of(
+                    first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+            assertThat(results).extracting(HandoffResult::status)
+                    .containsExactlyInAnyOrder(200, 201);
+            assertThat(results).extracting(HandoffResult::applicationId)
+                    .containsOnly(results.getFirst().applicationId());
+        }
+
+        assertThat(count("expense_applications")).isEqualTo(1);
+        assertThat(count("expense_application_auto_entry_contexts")).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from expense_application_attachments where deleted_at is null
+                """, Integer.class)).isEqualTo(1);
+        assertThat(storedAttachments).hasSize(1);
+        assertThat(attachmentStoreTransactions).containsExactlyInAnyOrder(false, false);
+        assertThat(attachmentDeleteTransactions).containsExactly(false);
+        assertThat(auditCount("DOCUMENT_ANALYSIS_SOURCE_ACCESSED")).isEqualTo(1);
+        assertThat(auditCount("EXPENSE_APPLICATION_CREATED")).isEqualTo(1);
+        assertThat(auditCount("EXPENSE_ATTACHMENT_UPLOADED")).isEqualTo(1);
+        assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_CREATED")).isEqualTo(1);
+    }
+
+    @Test
+    void compensationDeleteFailureKeepsOriginalFailureAndRecordsSafeFailureAudit(
+            CapturedOutput output) throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        doThrow(new DataIntegrityViolationException("original database failure"))
+                .when(contextRepository).save(any());
+        doThrow(new AttachmentStorageException(new IllegalStateException(
+                "raw delete failure https://storage.invalid/private-object?sig=credential")))
+                .when(attachmentStorage).delete(anyString());
+
+        mockMvc.perform(post("/api/expense-applications/from-auto-entry")
+                        .with(validJwt(applicant, "auto-entry"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequest(analysisId, "10000", "10500", false)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        assertNoFormalDraft();
+        assertThat(storedAttachments).hasSize(1);
+        String objectName = storedAttachments.keySet().iterator().next();
+        String attachmentId = objectName.substring(objectName.lastIndexOf('/') + 1);
+        Map<String, Object> failureAudit = jdbcTemplate.queryForMap("""
+                select target_id, reason, result
+                from audit_logs
+                where action_type = 'EXPENSE_ATTACHMENT_STORAGE_FAILED'
+                  and result = 'FAILURE'
+                  and target_id = ?
+                """, attachmentId);
+        assertThat(failureAudit)
+                .containsEntry("TARGET_ID", attachmentId)
+                .containsEntry("RESULT", "FAILURE");
+        assertThat(String.valueOf(failureAudit.get("REASON")))
+                .contains("COMPENSATION_DELETE_FAILED_RETRY_REQUIRED")
+                .doesNotContain(
+                        objectName,
+                        "storage.invalid",
+                        "private-object",
+                        "credential",
+                        "raw delete failure");
+        assertThat(output.getAll())
+                .contains("Expense AUTO_ENTRY Blob compensation failed")
+                .contains("applicationId=")
+                .contains("attachmentId=" + attachmentId)
+                .doesNotContain(
+                        objectName,
+                        "storage.invalid",
+                        "private-object",
+                        "credential",
+                        "raw delete failure");
+        assertThat(auditCount("EXPENSE_APPLICATION_CREATED")).isZero();
+        assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_CREATED")).isZero();
     }
 
     @Test
@@ -488,10 +803,17 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         assertThat(updatedJson.path("autoEntry").path("contextVersion").asLong())
                 .isGreaterThan(contextVersion);
         assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_UPDATED")).isEqualTo(1);
+        String persistedHumanState = jdbcTemplate.queryForObject("""
+                select human_review_state from expense_application_auto_entry_contexts
+                where expense_application_id = ?
+                """, String.class, applicationId);
 
         mockMvc.perform(put("/api/expense-applications/{id}/auto-entry-draft", applicationId)
                         .with(validJwt(applicant, "auto-entry"))
-                        .contentType(MediaType.APPLICATION_JSON).content(update))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateRequest(
+                                applicationVersion, contextVersion,
+                                "8000", "9999", false)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"));
 
@@ -501,13 +823,17 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateRequest(
                                 currentApplicationVersion, contextVersion,
-                                "9000", "10500", true)))
+                                "7000", "9999", false)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"));
         mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
                         .with(validJwt(applicant, "auto-entry")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.application.totalAmount").value(9000));
+        assertThat(jdbcTemplate.queryForObject("""
+                select human_review_state from expense_application_auto_entry_contexts
+                where expense_application_id = ?
+                """, String.class, applicationId)).isEqualTo(persistedHumanState);
         assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_UPDATED")).isEqualTo(1);
     }
 
@@ -528,12 +854,245 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                         .with(validJwt(applicant, "auto-entry")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
+        String audit = jdbcTemplate.queryForObject("""
+                select after_data from audit_logs
+                where action_type = 'EXPENSE_APPLICATION_SUBMITTED'
+                  and target_id = ?
+                """, String.class, applicationId.toString());
+        assertThat(audit)
+                .contains("\"autoEntry\":true", "\"autoEntryUnresolvedCount\":2")
+                .doesNotContain(
+                        "サンプル商事株式会社",
+                        "業務用備品",
+                        "invoiceTotalAmount",
+                        "human_review_state",
+                        "confidence",
+                        "findings");
+    }
+
+    @Test
+    void fullyResolvedAutoEntryAndResubmitRecordOnlySafeReviewSummary() throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        String request = createRequest(analysisId, "10000", "10500", true)
+                .replace(
+                        "\"issuerTaxRegistrationNumber\":null",
+                        "\"issuerTaxRegistrationNumber\":\"T1234567890123\"");
+        JsonNode created = objectMapper.readTree(mockMvc.perform(
+                        post("/api/expense-applications/from-auto-entry")
+                                .with(validJwt(applicant, "auto-entry"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(request))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.autoEntry.unresolvedCount").value(0))
+                .andReturn().getResponse().getContentAsString());
+        UUID applicationId = UUID.fromString(created.path("application").path("id").asText());
+
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk());
+        String submittedAudit = submissionAudit(
+                "EXPENSE_APPLICATION_SUBMITTED", applicationId);
+        assertThat(submittedAudit)
+                .contains("\"autoEntry\":true", "\"autoEntryUnresolvedCount\":0")
+                .doesNotContain("T1234567890123", "サンプル商事株式会社", "業務用備品");
+
+        var firstRun = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
+                applicationId).orElseThrow();
+        UUID managerStepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(
+                firstRun.getId()).getFirst().getId();
+        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", managerStepId)
+                        .with(validJwt(manager, "manager"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"comment\":\"内容を再確認してください\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RETURNED"));
+
+        mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
+                        .with(validJwt(otherUser, "other")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.approvalRun.runNumber").value(2));
+        String resubmittedAudit = submissionAudit(
+                "EXPENSE_APPLICATION_RESUBMITTED", applicationId);
+        assertThat(resubmittedAudit)
+                .contains("\"autoEntry\":true", "\"autoEntryUnresolvedCount\":0")
+                .doesNotContain("T1234567890123", "サンプル商事株式会社", "業務用備品");
+        assertThat(runRepository.findAllByExpenseApplicationIdOrderByRunNumberDesc(applicationId))
+                .extracting("runNumber", "status")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                2, jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.PENDING),
+                        org.assertj.core.groups.Tuple.tuple(
+                                1, jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.RETURNED));
+    }
+
+    @Test
+    void genericPutAndDelayedAutoEntryPutCannotBypassContextOrSubmittedState()
+            throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        JsonNode created = objectMapper.readTree(mockMvc.perform(
+                        post("/api/expense-applications/from-auto-entry")
+                                .with(validJwt(applicant, "auto-entry"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createRequest(analysisId, "10000", "10500", false)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString());
+        UUID applicationId = UUID.fromString(created.path("application").path("id").asText());
+        long applicationVersion = created.path("application").path("version").asLong();
+        long contextVersion = created.path("autoEntry").path("contextVersion").asLong();
+        String humanState = jdbcTemplate.queryForObject("""
+                select human_review_state from expense_application_auto_entry_contexts
+                where expense_application_id = ?
+                """, String.class, applicationId);
+
+        mockMvc.perform(put("/api/expense-applications/{id}", applicationId)
+                        .with(validJwt(applicant, "auto-entry"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(genericUpdateRequest(applicationVersion)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code")
+                        .value("EXPENSE_AUTO_ENTRY_DRAFT_REQUIRES_CONTEXT_UPDATE"));
+
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
+        mockMvc.perform(put("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(applicant, "auto-entry"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateRequest(
+                                applicationVersion, contextVersion, "7000", "9999", true)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("EXPENSE_AUTO_ENTRY_DRAFT_NOT_EDITABLE"));
+
+        assertThat(jdbcTemplate.queryForObject("""
+                select status from expense_applications where id = ?
+                """, String.class, applicationId)).isEqualTo("PENDING_APPROVAL");
+        assertThat(jdbcTemplate.queryForObject("""
+                select total_amount from expense_applications where id = ?
+                """, java.math.BigDecimal.class, applicationId)).isEqualByComparingTo("10000");
+        assertThat(jdbcTemplate.queryForObject("""
+                select human_review_state from expense_application_auto_entry_contexts
+                where expense_application_id = ?
+                """, String.class, applicationId)).isEqualTo(humanState);
+        assertThat(auditCount("EXPENSE_AUTO_ENTRY_DRAFT_UPDATED")).isZero();
+    }
+
+    @Test
+    void persistedContextFailsClosedWhenSourceAttachmentIsNotActive() throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        JsonNode created = objectMapper.readTree(mockMvc.perform(
+                        post("/api/expense-applications/from-auto-entry")
+                                .with(validJwt(applicant, "auto-entry"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createRequest(analysisId, "10000", "10500", false)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString());
+        UUID applicationId = UUID.fromString(created.path("application").path("id").asText());
+        UUID attachmentId = UUID.fromString(
+                created.path("autoEntry").path("sourceAttachmentId").asText());
+        jdbcTemplate.update("""
+                update expense_application_attachments
+                set deleted_by = ?, deleted_at = current_timestamp
+                where id = ?
+                """, applicant.getId(), attachmentId);
+
+        mockMvc.perform(get("/api/expense-applications/{id}/auto-entry-draft", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code")
+                        .value("EXPENSE_AUTO_ENTRY_SOURCE_INTEGRITY_FAILURE"));
+    }
+
+    @Test
+    void parallelSubmitCreatesExactlyOneApprovalRunAuditAndNotificationSet()
+            throws Exception {
+        UUID analysisId = succeededAutoEntry(applicant, "auto-entry");
+        JsonNode created = objectMapper.readTree(mockMvc.perform(
+                        post("/api/expense-applications/from-auto-entry")
+                                .with(validJwt(applicant, "auto-entry"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createRequest(analysisId, "10000", "10500", false)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString());
+        UUID applicationId = UUID.fromString(created.path("application").path("id").asText());
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> concurrentSubmit(applicationId, ready, start));
+            var second = executor.submit(() -> concurrentSubmit(applicationId, ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<SubmitResult> results = List.of(
+                    first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+            assertThat(results).extracting(SubmitResult::status)
+                    .containsExactlyInAnyOrder(200, 409);
+            assertThat(results).filteredOn(result -> result.status() == 409)
+                    .singleElement()
+                    .extracting(SubmitResult::code)
+                    .isEqualTo("EXPENSE_APPLICATION_INVALID_STATUS");
+        }
+
+        assertThat(runRepository.countByExpenseApplicationId(applicationId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from expense_approval_steps step
+                join expense_approval_runs run on run.id = step.approval_run_id
+                where run.expense_application_id = ?
+                """, Integer.class, applicationId)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from expense_approval_candidates candidate
+                join expense_approval_steps step on step.id = candidate.approval_step_id
+                join expense_approval_runs run on run.id = step.approval_run_id
+                where run.expense_application_id = ?
+                """, Integer.class, applicationId)).isEqualTo(2);
+        assertThat(auditCount("EXPENSE_APPLICATION_SUBMITTED")).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from notification_outbox
+                where expense_application_id = ?
+                """, Integer.class, applicationId)).isEqualTo(1);
     }
 
     private UUID succeededAutoEntry(AppUser user, String subject) throws Exception {
         UUID id = createAnalysis(user, subject, true);
         dispatcher.dispatchOnce();
         return id;
+    }
+
+    private HandoffResult concurrentHandoff(
+            UUID analysisId,
+            CountDownLatch ready,
+            CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("parallel handoff request barrier timed out");
+        }
+        var response = mockMvc.perform(post("/api/expense-applications/from-auto-entry")
+                        .with(validJwt(applicant, "auto-entry"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequest(analysisId, "10000", "10500", false)))
+                .andReturn().getResponse();
+        JsonNode body = objectMapper.readTree(response.getContentAsString());
+        return new HandoffResult(
+                response.getStatus(),
+                UUID.fromString(body.path("application").path("id").asText()));
+    }
+
+    private SubmitResult concurrentSubmit(
+            UUID applicationId,
+            CountDownLatch ready,
+            CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("parallel submit request barrier timed out");
+        }
+        var response = mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(validJwt(applicant, "auto-entry")))
+                .andReturn().getResponse();
+        JsonNode body = objectMapper.readTree(response.getContentAsString());
+        return new SubmitResult(response.getStatus(), body.path("code").asText(null));
     }
 
     private UUID createAnalysis(AppUser user, String subject, boolean autoEntry) throws Exception {
@@ -600,6 +1159,25 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         return objectMapper.writeValueAsString(request);
     }
 
+    private String genericUpdateRequest(long version) {
+        return """
+                {
+                  "category":"OTHER",
+                  "title":"通常PUTでの迂回を拒否",
+                  "purpose":"AUTO_ENTRY context保護",
+                  "expenseDate":"2026-08-13",
+                  "remarks":null,
+                  "items":[{
+                    "expenseDate":"2026-08-13",
+                    "description":"業務用備品",
+                    "amount":10000,
+                    "merchantName":"サンプル商事株式会社"
+                  }],
+                  "version":%d
+                }
+                """.formatted(version);
+    }
+
     private void mutateNormalizedView(
             UUID analysisId,
             java.util.function.Consumer<JsonNode> mutation) throws Exception {
@@ -630,6 +1208,13 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                 "select count(*) from audit_logs where action_type = ?",
                 Integer.class,
                 actionType);
+    }
+
+    private String submissionAudit(String actionType, UUID applicationId) {
+        return jdbcTemplate.queryForObject("""
+                select after_data from audit_logs
+                where action_type = ? and target_id = ?
+                """, String.class, actionType, applicationId.toString());
     }
 
     private OrganizationUnit unit(
@@ -678,6 +1263,12 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
         roleAssignmentRepository.save(new UserRoleAssignment(
                 user.getId(), role.getId(), null, now.minus(1, ChronoUnit.DAYS), null,
                 "test", SYSTEM, SYSTEM));
+    }
+
+    private void removeRolePermission(Role role, Permission permission) {
+        jdbcTemplate.update(
+                "delete from role_permissions where role_id = ? and permission_id = ?",
+                role.getId(), permission.getId());
     }
 
     private JwtRequestPostProcessor validJwt(AppUser user, String subject) {
@@ -812,5 +1403,11 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
             byte[] content,
             String contentType,
             Map<String, String> metadata) {
+    }
+
+    private record HandoffResult(int status, UUID applicationId) {
+    }
+
+    private record SubmitResult(int status, String code) {
     }
 }

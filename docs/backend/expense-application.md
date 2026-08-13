@@ -28,6 +28,10 @@ Analysis Job、原本文書から複製した1つの経費添付にそれぞれ�
 作成しない。Backendで生成した`AutoEntryReviewResponse`のsnapshotと、人間の現在値・確認状態を
 別々のJSONBへ保存する。Azure Raw response、Blob URL、credentialは保存しない。
 
+V018は`expense_application_attachments (id, expense_application_id)`へ一意制約を追加し、
+AUTO_ENTRY contextの`(source_attachment_id, expense_application_id)`から複合外部キーで参照する。
+これにより原本添付が同じ経費申請に属することをDBでも保証し、異なる申請の添付をcontextへ対応付けない。
+
 Runは申請・再申請ごとに作成し、Stepは`DEPARTMENT_MANAGER`と`ACCOUNTING`、Candidateは
 そのStepを処理できるユーザーを表す。再申請時も旧Run・Step・Candidateを更新せず、新しい
 Runを追加する。Application、Run、Stepはversionを持ち、承認時にはStepとApplicationを
@@ -71,6 +75,23 @@ DRAFT -> PENDING_APPROVAL -> APPROVED
 `EXPENSE_APPLICATION_CREATE`と`EXPENSE_APPLICATION_READ_OWN`は`APPLICATION_USER`、
 `EXPENSE_APPLICATION_APPROVE`は`WORKFLOW_APPROVER`へ割り当てる。承認にはDB Permissionと
 Candidate登録の両方を要求し、自己承認を拒否する。Keycloak Roleは使用しない。
+
+AUTO_ENTRYの認可境界は次のとおりである。新しいAUTO_ENTRY専用Permissionは設けない。
+
+| 操作 | 必須Permission | 所有・状態条件 |
+| --- | --- | --- |
+| 補助入力画面 | `EXPENSE_APPLICATION_CREATE`、`DOCUMENT_ANALYSIS_READ_OWN`、`CONTENT_UNDERSTANDING_ANALYZE` | Frontendの可用性制御。Backendが各操作を再認可する |
+| Content Understanding分析作成 | `CONTENT_UNDERSTANDING_ANALYZE` | 認証済みユーザー |
+| Formal Handoff | `EXPENSE_APPLICATION_CREATE`、`DOCUMENT_ANALYSIS_READ_OWN` | 本人所有の完了済みAUTO_ENTRY分析。`CONTENT_UNDERSTANDING_ANALYZE`は要求しない |
+| 保存済みAUTO_ENTRY GET | `EXPENSE_APPLICATION_READ_OWN` | 申請者本人。分析Permissionは要求しない |
+| 保存済みAUTO_ENTRY PUT | `EXPENSE_APPLICATION_CREATE` | 申請者本人、`DRAFT`または`RETURNED`、両version一致 |
+| 原本添付一覧・content | `EXPENSE_APPLICATION_READ_OWN`または`EXPENSE_APPLICATION_APPROVE` | 申請者本人または現在RunのCandidate |
+| 添付追加・削除 | `EXPENSE_APPLICATION_CREATE` | 申請者本人、`DRAFT`または`RETURNED`。原本添付は削除不可 |
+| 申請・再申請 | `EXPENSE_APPLICATION_CREATE` | 申請者本人、対応する`DRAFT`または`RETURNED` |
+| 承認・差戻し | `EXPENSE_APPLICATION_APPROVE` | 現在Candidateかつ自己承認ではない |
+
+正式な経費証憑とAI原値・人間確認状態は開示境界が異なる。現在Candidateは原本添付を閲覧できるが、
+申請者本人でないCandidateへ`auto-entry-draft` contextを返さない。過去RunだけのCandidateも閲覧できない。
 
 添付の追加・削除は申請者本人かつ`DRAFT`または`RETURNED`の場合だけ許可する。閲覧は申請者本人と
 現在RunのCandidateだけに許可し、Candidate外には申請の存在を開示しない。Frontendの表示制御に
@@ -151,19 +172,23 @@ Reviewの通貨が明示的にJPY以外なら`422 EXPENSE_AUTO_ENTRY_CURRENCY_UN
 
 POSTは`analysisId`を冪等性keyとして扱う。既存contextが本人に存在すれば新しい申請・添付を作らず、
 既存draftを返す。同時要求が`analysis_id`一意制約で競合した場合は、loser側のBlobを削除してwinnerを
-返す。原本文書はBrowserに再uploadさせず、BackendがDocument Analysis input Blobを読み、SHA-256、
+返す。競合した要求のpayloadが異なってもwinnerを更新しない。原本文書はBrowserに再uploadさせず、BackendがDocument Analysis input Blobを読み、SHA-256、
 Content-Type、sizeを維持して`expense-evidence/{applicationId}/{attachmentId}`へ保存する。
 
 Blob読込・書込中にDB transactionを保持しない。target Blobを先に保存し、経費申請、明細、添付metadata、
 AUTO_ENTRY context、成功監査を短い同一transactionでcommitする。DB失敗時はtarget Blobをbest-effortで
-削除する。contextが参照する原本添付は論理削除できず、添付一覧でもその原本だけ`deletable=false`を返す。
+削除する。補償削除にも失敗した場合は元の業務エラーを維持し、固定理由コードを持つ独立した失敗監査で
+orphan Blobの回収が必要なことを追跡する。contextが参照する原本添付は論理削除できず、添付一覧でも
+その原本だけ`deletable=false`を返す。
 
 `GET /api/expense-applications/{id}/auto-entry-draft`は申請者本人かつ
 `EXPENSE_APPLICATION_READ_OWN`だけに、正式draft、対応するAI原値、現在値、人間状態、warning、添付ID、
 application/context versionを返す。`PUT`は申請者本人、`DRAFT`または`RETURNED`、
 `EXPENSE_APPLICATION_CREATE`を要求し、両versionのどちらかが古ければ
 `409 OPTIMISTIC_LOCK_CONFLICT`にする。経費内容・明細とhuman review stateは同じtransactionで更新する。
-AUTO_ENTRY contextを持つ申請を通常PUTで更新することは拒否し、専用PUTでprovenanceとの整合を維持する。
+GETとPUTではcontextの原本添付が同じ申請に属し、論理削除されていないことも検証する。不整合時は
+`500 EXPENSE_AUTO_ENTRY_SOURCE_INTEGRITY_FAILURE`として安全に失敗する。AUTO_ENTRY contextを持つ申請を
+通常PUTで更新することは拒否し、専用PUTでprovenanceとの整合を維持する。
 
 ## 監査
 
@@ -181,4 +206,12 @@ Formal Handoffでは既存の`EXPENSE_APPLICATION_CREATED`、`EXPENSE_APPLICATIO
 `EXPENSE_ATTACHMENT_UPLOADED`に加え、`EXPENSE_AUTO_ENTRY_DRAFT_CREATED`と
 `EXPENSE_AUTO_ENTRY_DRAFT_UPDATED`を記録する。追加監査はapplication ID、analysis ID、AUTO_ENTRY
 schema version、source attachment ID、unresolved件数だけをallowlistで保存し、請求書field値とReview
-snapshotを複製しない。
+snapshotを複製しない。Document Analysis原本の取得成功監査も、Formal Handoffのwinner transactionだけで
+1件記録する。順次・同時の冪等再試行は新たな作成成功監査として記録しない。
+
+AUTO_ENTRY申請・再申請の`after_data`には通常の申請番号、状態、Run番号に加えて、`autoEntry=true`、
+未解決件数、AUTO_ENTRY schema versionだけを含める。発行元、明細、AI原値、request JSONは含めない。
+原本添付の削除拒否は`EXPENSE_ATTACHMENT_DELETE_DENIED`と固定理由
+`EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED`で記録する。補償削除失敗は
+`EXPENSE_ATTACHMENT_STORAGE_FAILED`の`FAILURE`として固定理由だけを保存し、object名、Blob URL、
+credential、SDKの生例外メッセージは保存しない。

@@ -12,9 +12,14 @@ import jakarta.persistence.UniqueConstraint;
 @Entity
 @Table(
         name = "expense_application_attachments",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_expense_application_attachments_storage_object",
-                columnNames = "storage_object_name"))
+        uniqueConstraints = {
+            @UniqueConstraint(
+                    name = "uk_expense_application_attachments_storage_object",
+                    columnNames = "storage_object_name"),
+            @UniqueConstraint(
+                    name = "uk_expense_attachment_id_application",
+                    columnNames = {"id", "expense_application_id"})
+        })
 public class ExpenseApplicationAttachment extends AuditedEntity {
 
     @Column(name = "expense_application_id", nullable = false)

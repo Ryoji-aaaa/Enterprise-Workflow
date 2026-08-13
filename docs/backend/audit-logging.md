@@ -146,6 +146,19 @@ Authorization header
 記録しない。content取得は認可成功かつBlob streamを開けた時点を成功とし、Browserが最後まで受信した
 ことは監査の保証対象外とする。
 
+AUTO_ENTRY Formal Handoffではwinnerの業務transactionだけが
+`DOCUMENT_ANALYSIS_SOURCE_ACCESSED`、`EXPENSE_APPLICATION_CREATED`、
+`EXPENSE_ATTACHMENT_UPLOADED`、`EXPENSE_AUTO_ENTRY_DRAFT_CREATED`を成功記録する。同じ`analysisId`の
+順次・同時再試行は作成成功監査を増やさない。`EXPENSE_AUTO_ENTRY_DRAFT_UPDATED`は経費内容と人間確認状態の
+更新と同じtransactionに含める。申請・再申請監査には`autoEntry=true`、未解決件数、schema versionだけを
+追加し、発行元、明細、AI原値、Review snapshot、request JSONは複製しない。
+
+原本添付の削除拒否は`EXPENSE_ATTACHMENT_DELETE_DENIED`と固定理由
+`EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED`で記録する。Formal HandoffのDB失敗後に補償Blob削除も
+失敗した場合は、元の業務エラーを変えず、独立transactionで`EXPENSE_ATTACHMENT_STORAGE_FAILED`の
+`FAILURE`を記録する。対象は申請ID、添付IDと固定理由だけとし、object名、Blob URL、元ファイル名、
+credential、SDKの生例外メッセージを記録しない。
+
 ローカルメール通知履歴では一覧検索を`MAIL_NOTIFICATION_HISTORY_READ`、詳細参照を
 `MAIL_NOTIFICATION_DETAIL_READ`として記録する。検索監査には指定された状態、種別、宛先、申請、
 期間、page、sizeだけを含め、メール本文と配送error messageは監査ログへ複製しない。権限拒否は

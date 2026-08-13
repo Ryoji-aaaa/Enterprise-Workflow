@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
@@ -19,6 +19,11 @@ import {
   type ExpenseItem,
   yen,
 } from "@/lib/expense-application";
+import {
+  ExpenseSubmitResultError,
+  submitExpenseApplicationWithReconciliation,
+} from "@/lib/expense-submit";
+import { createSynchronousMutationGuard } from "@/lib/synchronous-mutation-guard";
 
 const today = new Date().toISOString().slice(0, 10);
 const emptyItem = (): ExpenseItem => ({
@@ -42,11 +47,14 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   const [expenseDate, setExpenseDate] = useState(today);
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<ExpenseItem[]>([emptyItem()]);
+  const [persistedApplicationId, setPersistedApplicationId] = useState(applicationId);
   const [version, setVersion] = useState<number | undefined>();
   const [originalStatus, setOriginalStatus] = useState<ExpenseApplication["status"]>("DRAFT");
   const [loading, setLoading] = useState(Boolean(applicationId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitResultUnknownApplicationId, setSubmitResultUnknownApplicationId] = useState<string | null>(null);
+  const mutationGuardRef = useRef(createSynchronousMutationGuard());
 
   useEffect(() => {
     if (!applicationId) return;
@@ -63,6 +71,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       setExpenseDate(application.expenseDate);
       setRemarks(application.remarks ?? "");
       setItems(application.items);
+      setPersistedApplicationId(application.id);
       setVersion(application.version);
       setOriginalStatus(application.status);
       setLoading(false);
@@ -84,21 +93,28 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   }
 
   async function persist(submit: boolean) {
+    if (submitResultUnknownApplicationId) return;
     if (!valid) {
       setError("共通項目、カテゴリ別項目、1円以上の明細金額を入力してください。");
       return;
     }
-    if (submit && !window.confirm("申請後は承認待ちになります。申請しますか？")) return;
+    if (!mutationGuardRef.current.tryStart()) return;
+    if (submit && !window.confirm("申請後は承認待ちになります。申請しますか？")) {
+      mutationGuardRef.current.finish();
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = { category, title, purpose, expenseDate, remarks, items, version };
+    const saveTargetApplicationId = persistedApplicationId;
+    let applicationIdForResult = persistedApplicationId;
     try {
       const saveResponse = await fetchBackend(
-        applicationId
-          ? `/api/backend/expense-applications/${applicationId}`
+        saveTargetApplicationId
+          ? `/api/backend/expense-applications/${saveTargetApplicationId}`
           : "/api/backend/expense-applications",
         {
-          method: applicationId ? "PUT" : "POST",
+          method: saveTargetApplicationId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
@@ -107,28 +123,29 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       if (!saveResponse.ok) {
         throw new Error(expenseErrorMessage(saved.code, saved.message ?? "下書きを保存できませんでした。"));
       }
+      applicationIdForResult = saved.id;
+      setPersistedApplicationId(saved.id);
+      setVersion(saved.version);
+      setOriginalStatus(saved.status);
       if (!submit) {
         router.push(`/expenses/${saved.id}`);
         return;
       }
       const action = originalStatus === "RETURNED" ? "resubmit" : "submit";
-      const submitResponse = await fetchBackend(
-        `/api/backend/expense-applications/${saved.id}/${action}`,
-        { method: "POST" },
-      );
-      const submitted = (await submitResponse.json()) as ExpenseApplication & ErrorBody;
-      if (!submitResponse.ok) {
-        throw new Error(expenseErrorMessage(
-          submitted.code, submitted.message ?? "申請できませんでした。下書きは保存されています。",
-        ));
-      }
+      const submitted = await submitExpenseApplicationWithReconciliation(saved.id, action);
       router.push(`/expenses/${submitted.id}`);
     } catch (cause) {
       if (!(cause instanceof AuthenticationRequiredError)) {
-        setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
+        if (cause instanceof ExpenseSubmitResultError && cause.resultUnknown) {
+          setError(cause.message);
+          setSubmitResultUnknownApplicationId(applicationIdForResult ?? null);
+        } else {
+          setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
+        }
       }
     } finally {
       setSaving(false);
+      mutationGuardRef.current.finish();
     }
   }
 
@@ -148,6 +165,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   return (
     <form className="space-y-6" onSubmit={onSubmit}>
       {error && <Card><CardContent className="text-destructive">{error}</CardContent></Card>}
+      {submitResultUnknownApplicationId ? <Card><CardContent className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm">申請・再申請を再実行せず、現在の状態と承認履歴を確認してください。</p><LinkButton href={`/expenses/${submitResultUnknownApplicationId}`}>申請詳細を確認</LinkButton></CardContent></Card> : null}
       <Card>
         <CardHeader><CardTitle>申請内容</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -189,8 +207,8 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
         </CardContent>
       </Card>
       <div className="flex flex-wrap justify-end gap-3">
-        <Button disabled={saving || !valid} onClick={() => void persist(false)} type="button" variant="outline">下書き保存</Button>
-        <Button disabled={saving || !valid} type="submit">{originalStatus === "RETURNED" ? "再申請" : "申請"}</Button>
+        <Button disabled={saving || !valid || submitResultUnknownApplicationId !== null} onClick={() => void persist(false)} type="button" variant="outline">下書き保存</Button>
+        <Button disabled={saving || !valid || submitResultUnknownApplicationId !== null} type="submit">{originalStatus === "RETURNED" ? "再申請" : "申請"}</Button>
       </div>
     </form>
   );

@@ -16,6 +16,12 @@
 `/api/me.permissions`に応じてトップの経費申請・承認待ちリンクを表示する。非表示はUI制御だけで、
 Backendも各APIでDB PermissionとCandidateを検証する。
 
+`/expenses/{id}/edit`は最初に保存済みAUTO_ENTRY contextを取得する。取得成功時は
+`/expenses/auto-entry/confirm/{id}`へ置き換え遷移し、正確に
+`404 EXPENSE_AUTO_ENTRY_DRAFT_NOT_FOUND`の場合だけ通常編集フォームを表示する。403、任意の404、5xxは
+通常申請と推測せず安全にエラー表示する。これにより`DRAFT`と`RETURNED`のAUTO_ENTRY申請は専用PUTだけで
+編集し、通常の経費PUTを使わない。
+
 ## 請求/注文書申請（自動入力）
 
 `/expenses/auto-entry`は、請求書または注文書の値を確認しながら経費下書きを作成する業務画面である。
@@ -73,12 +79,29 @@ AI未確認と請求書総額差異は非blockingであり、経費の必須入�
 `applicationVersion`と`contextVersion`、現在の業務入力、文書入力、有効な`confirmedFieldPaths`を送る。
 AI metadata、原値、response専用の明細ID/display orderは送らない。成功時はBackend応答で両versionと
 人間確認状態を置き換え、同じ確認画面に留まる。`409 OPTIMISTIC_LOCK_CONFLICT`は自動再試行せず、利用者が
-明示的に再読み込みできる。
+明示的に再読み込みできる。503やtimeoutもPUTをblind retryせず、
+「保存結果を確認できませんでした。最新内容を再読み込みしてください。」と表示して再読み込みを求める。
 
 申請前に未解決項目があれば確認ダイアログを表示するが、継続できる。未保存の編集がある場合は専用PUTで
 先に保存してから、`DRAFT`には既存`POST /expense-applications/{id}/submit`、`RETURNED`には既存
 `POST /expense-applications/{id}/resubmit`を呼ぶ。成功時は`/expenses/{id}`へ遷移する。保存成功後に申請が
 失敗しても保存済み下書きを戻さず、その状態を明示して確認画面に留まる。
+
+作成、保存、申請、再申請にはReact state更新前にも作動する同期in-flight guardを置き、同じtickの連打を
+1回へまとめる。guardは成功・失敗後に解除するが、Backendの冪等性、version、状態遷移を代替しない。
+Formal Handoff POSTは`analysisId`が冪等性keyであるため、503やtimeout後も入力を保持して利用者が「決定」を
+再実行できる。自動再送はしない。AUTO_ENTRY PUTは結果が不明なため自動再送せず、明示的に再読み込みする。
+submit/resubmitの503または先行要求が成立した可能性のある`EXPENSE_APPLICATION_INVALID_STATUS`では、
+POSTを再送せず現在申請を1回だけGETする。`PENDING_APPROVAL`、`APPROVED`、`CANCELLED`なら現在状態を正本として
+詳細へ遷移し、`DRAFT`なら利用者が再試行できるエラーに留める。最初のsubmit後に`RETURNED`なら、submitは
+成立後に差し戻されたものとして現在状態を正本に詳細へ遷移する。resubmit後の`RETURNED`は未実行と、
+再申請成立後に新しいRunも差し戻された状態を区別できないため、再試行可能と断定せず結果不明とする。
+GETも失敗した場合も結果不明と明示し、自動再申請しない。結果不明では「申請できなかった」と断定せず、
+通常編集画面とAUTO_ENTRY確認画面の申請・再申請操作を無効化して「申請詳細を確認」を表示する。利用者が
+詳細の現在状態と承認Run履歴を確認するまで、同じ画面からmutationを再実行させない。
+通常経費の新規作成は、最初のDRAFT保存が成功した時点でそのApplication IDとversionを画面内に保持する。
+submitの照合結果が`DRAFT`で再試行可能な場合も、新しいDRAFTをPOSTせず、同じApplication IDへPUTしてから
+submitを再実行する。
 
 ## 入力と表示
 

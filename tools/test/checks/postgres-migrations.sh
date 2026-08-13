@@ -26,6 +26,7 @@ readonly MIGRATION_SECTIONS=(
   "Contract migration reconciliation safeguards"
   "PostgreSQL database constraints"
   "V014 Document Analysis authorization upgrade"
+  "V017 AUTO_ENTRY provenance constraint upgrade"
   "Fresh migration and startup idempotency"
 )
 CURRENT_MIGRATION_SECTION=""
@@ -194,7 +195,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V017 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V018 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -224,7 +225,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V017 schema.
+# validates the complete V018 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -655,8 +656,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 17 THEN
-        RAISE EXCEPTION 'expected 17 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 18 THEN
+        RAISE EXCEPTION 'expected 18 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -1082,8 +1083,8 @@ DO $$
 DECLARE
     retired_role_id UUID;
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 17 THEN
-        RAISE EXCEPTION 'V014 database did not upgrade through V017';
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18 THEN
+        RAISE EXCEPTION 'V014 database did not upgrade through V018';
     END IF;
     IF (SELECT count(*)
         FROM role_permissions mapping
@@ -1154,6 +1155,145 @@ $$;
 SQL
 docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 
+# A database already migrated through V017 must accept V018 without rewriting
+# existing migrations. PostgreSQL must enforce same-application provenance for
+# the AUTO_ENTRY source attachment.
+migration_section "V017 AUTO_ENTRY provenance constraint upgrade"
+create_database workflow_v017_upgrade
+start_backend workflow_v017_upgrade 017
+workflow_psql workflow_v017_upgrade <<'SQL' >/dev/null
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 17 THEN
+        RAISE EXCEPTION 'V017 baseline database was not created';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_expense_auto_entry_source_attachment_application'
+    ) THEN
+        RAISE EXCEPTION 'V018 provenance constraint exists before upgrade';
+    END IF;
+END;
+$$;
+SQL
+docker rm --force "${BACKEND_CONTAINER}" >/dev/null
+start_backend workflow_v017_upgrade
+workflow_psql workflow_v017_upgrade <<'SQL' >/dev/null
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18 THEN
+        RAISE EXCEPTION 'V017 database did not upgrade through V018';
+    END IF;
+    IF (SELECT count(*) FROM pg_constraint WHERE conname IN (
+        'uk_expense_attachment_id_application',
+        'fk_expense_auto_entry_source_attachment_application'
+    )) <> 2 THEN
+        RAISE EXCEPTION 'V018 provenance constraints are missing';
+    END IF;
+END;
+$$;
+
+INSERT INTO expense_applications (
+    id, application_number, applicant_user_id, applicant_name_snapshot,
+    applicant_email_snapshot, organization_id_snapshot,
+    organization_unit_id_snapshot, organization_unit_name_snapshot,
+    division_unit_id_snapshot, division_unit_name_snapshot,
+    category, title, purpose, expense_date, total_amount, currency_code,
+    status, created_by, updated_by
+)
+SELECT application_id, application_number, workflow_system_user_id(), 'SYSTEM',
+       'system@localhost', unit.organization_id, unit.id, unit.unit_name,
+       unit.id, unit.unit_name, 'OTHER', 'Provenance migration test',
+       'PostgreSQL composite foreign key verification', CURRENT_DATE, 1, 'JPY',
+       'DRAFT', workflow_system_user_id(), workflow_system_user_id()
+FROM (
+    VALUES
+        ('18181818-0000-0000-0000-000000000001'::UUID, 'EXP-20990101-000001'),
+        ('18181818-0000-0000-0000-000000000002'::UUID, 'EXP-20990101-000002')
+) applications(application_id, application_number)
+CROSS JOIN LATERAL (
+    SELECT organization_id, id, unit_name
+    FROM organization_units
+    ORDER BY id
+    LIMIT 1
+) unit;
+
+INSERT INTO document_analysis_jobs (
+    id, provider, model_id, provider_api_version, normalized_schema_version,
+    status, requested_by_user_id, original_file_name, content_type, file_size,
+    sha256, input_object_name, attempt_count, expires_at, created_by, updated_by,
+    analysis_profile, completion_model_deployment_name,
+    embedding_model_deployment_name
+) VALUES (
+    '18181818-0000-0000-0000-000000000010', 'CONTENT_UNDERSTANDING',
+    'migration-test', '2025-11-01', 1, 'SUCCEEDED', workflow_system_user_id(),
+    'provenance.pdf', 'application/pdf', 1,
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    'input/18181818-0000-0000-0000-000000000010/source', 1,
+    CURRENT_TIMESTAMP + INTERVAL '1 day', workflow_system_user_id(),
+    workflow_system_user_id(), 'AUTO_ENTRY', 'migration-completion',
+    'migration-embedding'
+);
+
+INSERT INTO expense_application_attachments (
+    id, expense_application_id, original_file_name,
+    uploaded_by_name_snapshot, storage_object_name, content_type, file_size,
+    sha256, created_by, updated_by
+) VALUES
+(
+    '18181818-0000-0000-0000-000000000011',
+    '18181818-0000-0000-0000-000000000001', 'source-a.pdf', 'SYSTEM',
+    'expense-evidence/18181818-0000-0000-0000-000000000001/source',
+    'application/pdf', 1,
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    workflow_system_user_id(), workflow_system_user_id()
+),
+(
+    '18181818-0000-0000-0000-000000000012',
+    '18181818-0000-0000-0000-000000000002', 'source-b.pdf', 'SYSTEM',
+    'expense-evidence/18181818-0000-0000-0000-000000000002/source',
+    'application/pdf', 1,
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    workflow_system_user_id(), workflow_system_user_id()
+);
+
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO expense_application_auto_entry_contexts (
+            id, expense_application_id, analysis_id, source_attachment_id,
+            context_schema_version, auto_entry_schema_version,
+            review_snapshot, human_review_state, created_by, updated_by
+        ) VALUES (
+            '18181818-0000-0000-0000-000000000020',
+            '18181818-0000-0000-0000-000000000001',
+            '18181818-0000-0000-0000-000000000010',
+            '18181818-0000-0000-0000-000000000012',
+            1, '2.1', '{}'::JSONB, '{}'::JSONB,
+            workflow_system_user_id(), workflow_system_user_id()
+        );
+        RAISE EXCEPTION 'cross-application source provenance unexpectedly succeeded';
+    EXCEPTION WHEN foreign_key_violation THEN
+        NULL;
+    END;
+
+    INSERT INTO expense_application_auto_entry_contexts (
+        id, expense_application_id, analysis_id, source_attachment_id,
+        context_schema_version, auto_entry_schema_version,
+        review_snapshot, human_review_state, created_by, updated_by
+    ) VALUES (
+        '18181818-0000-0000-0000-000000000021',
+        '18181818-0000-0000-0000-000000000001',
+        '18181818-0000-0000-0000-000000000010',
+        '18181818-0000-0000-0000-000000000011',
+        1, '2.1', '{}'::JSONB, '{}'::JSONB,
+        workflow_system_user_id(), workflow_system_user_id()
+    );
+END;
+$$;
+SQL
+docker rm --force "${BACKEND_CONTAINER}" >/dev/null
+
 # A completely empty database must also migrate, validate against Hibernate,
 # and remain unchanged on a second application startup.
 migration_section "Fresh migration and startup idempotency"
@@ -1162,7 +1302,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 17 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -1214,6 +1354,7 @@ BEGIN
             'ck_expense_approval_steps_order', 'ck_expense_approval_steps_type',
             'ck_expense_approval_steps_status', 'uk_expense_approval_candidates_user',
             'uk_expense_application_attachments_storage_object',
+            'uk_expense_attachment_id_application',
             'ck_expense_application_attachments_file_size',
             'ck_expense_application_attachments_sha256',
             'ck_expense_application_attachments_deleted',
@@ -1221,8 +1362,9 @@ BEGIN
             'uk_expense_auto_entry_context_analysis',
             'uk_expense_auto_entry_context_source_attachment',
             'ck_expense_auto_entry_context_schema_version',
-            'ck_expense_auto_entry_context_auto_entry_schema_version'
-        )) <> 25 THEN
+            'ck_expense_auto_entry_context_auto_entry_schema_version',
+            'fk_expense_auto_entry_source_attachment_application'
+        )) <> 27 THEN
         RAISE EXCEPTION 'expense application constraints are invalid';
     END IF;
     IF NOT EXISTS (
@@ -1333,7 +1475,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 17
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 21

@@ -216,8 +216,7 @@ public class ExpenseApplicationService {
         auditLogService.recordSuccess(
                 AuditActor.user(applicant), action, "EXPENSE_APPLICATION",
                 applicationId.toString(), Map.of("status", required.name()),
-                Map.of("applicationNumber", application.getApplicationNumber(),
-                        "status", application.getStatus().name(), "runNumber", runNumber), null);
+                submissionAuditData(application, runNumber), null);
         if (firstStep == null) {
             throw new IllegalStateException("Resolved approval route has no first step");
         }
@@ -360,6 +359,37 @@ public class ExpenseApplicationService {
             return objectMapper.writeValueAsString(snapshot);
         } catch (JacksonException exception) {
             throw new IllegalStateException("Could not serialize expense organization snapshot", exception);
+        }
+    }
+
+    private Map<String, Object> submissionAuditData(
+            ExpenseApplication application,
+            int runNumber) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("applicationNumber", application.getApplicationNumber());
+        data.put("status", application.getStatus().name());
+        data.put("runNumber", runNumber);
+        autoEntryContextRepository.findByExpenseApplicationId(application.getId())
+                .ifPresent(context -> {
+                    ExpenseAutoEntryHumanReviewState state = deserializeAutoEntryHumanState(
+                            context.getHumanReviewState());
+                    long unresolvedCount = state.fields().values().stream()
+                            .filter(field -> field.resolution()
+                                    == ExpenseAutoEntryHumanReviewState.HumanResolution.UNRESOLVED)
+                            .count();
+                    data.put("autoEntry", true);
+                    data.put("autoEntryUnresolvedCount", unresolvedCount);
+                    data.put("autoEntrySchemaVersion", context.getAutoEntrySchemaVersion());
+                });
+        return data;
+    }
+
+    private ExpenseAutoEntryHumanReviewState deserializeAutoEntryHumanState(String value) {
+        try {
+            return objectMapper.readValue(value, ExpenseAutoEntryHumanReviewState.class);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException(
+                    "Could not read Expense AUTO_ENTRY human state for submission", exception);
         }
     }
 

@@ -27,7 +27,6 @@ import jp.co.sdcj.workflow.api.ExpenseAutoEntryDraftContentRequest;
 import jp.co.sdcj.workflow.api.ExpenseAutoEntryDraftCreateRequest;
 import jp.co.sdcj.workflow.api.ExpenseAutoEntryDraftUpdateRequest;
 import jp.co.sdcj.workflow.domain.AppUser;
-import jp.co.sdcj.workflow.domain.DocumentAnalysisProfile;
 import jp.co.sdcj.workflow.domain.ExpenseApplication;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationAttachment;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationAutoEntryContext;
@@ -119,7 +118,7 @@ public class ExpenseAutoEntryDraftService {
             }
             return created;
         } catch (RuntimeException exception) {
-            compensateAttachment(objectName, applicationId, attachmentId);
+            compensateAttachment(objectName, applicationId, attachmentId, user);
             if (exception instanceof DataIntegrityViolationException) {
                 ExpenseApplicationAutoEntryContext winner = existingOwnedContext(
                         request.analysisId(), user);
@@ -223,6 +222,14 @@ public class ExpenseAutoEntryDraftService {
                 null);
         auditLogService.recordSuccess(
                 AuditActor.user(user),
+                "DOCUMENT_ANALYSIS_SOURCE_ACCESSED",
+                "DOCUMENT_ANALYSIS",
+                review.analysisId().toString(),
+                null,
+                sourceAuditData(review.analysisId(), source),
+                null);
+        auditLogService.recordSuccess(
+                AuditActor.user(user),
                 "EXPENSE_AUTO_ENTRY_DRAFT_CREATED",
                 AUTO_ENTRY_TARGET_TYPE,
                 applicationId.toString(),
@@ -275,8 +282,8 @@ public class ExpenseAutoEntryDraftService {
     }
 
     private CopiedSource readSource(UUID analysisId, AppUser user) {
-        OpenedDocumentAnalysisContent opened = documentAnalysisService.openSource(
-                analysisId, DocumentAnalysisProfile.AUTO_ENTRY, user);
+        OpenedDocumentAnalysisContent opened = documentAnalysisService
+                .openSourceForAutoEntryHandoff(analysisId, user);
         try (var stream = opened.content().stream()) {
             byte[] content = stream.readAllBytes();
             if (content.length != opened.content().length()
@@ -319,7 +326,8 @@ public class ExpenseAutoEntryDraftService {
     private void compensateAttachment(
             String objectName,
             UUID applicationId,
-            UUID attachmentId) {
+            UUID attachmentId,
+            AppUser user) {
         try {
             attachmentStorage.delete(objectName);
         } catch (AttachmentStorageException exception) {
@@ -327,10 +335,31 @@ public class ExpenseAutoEntryDraftService {
             LOGGER.error(
                     "Expense AUTO_ENTRY Blob compensation failed applicationId={} attachmentId={} errorType={}",
                     applicationId, attachmentId, exception.getClass().getSimpleName());
+            recordCompensationFailure(user, applicationId, attachmentId);
         } catch (RuntimeException exception) {
             LOGGER.error(
                     "Expense AUTO_ENTRY Blob compensation failed applicationId={} attachmentId={} errorType={}",
                     applicationId, attachmentId, exception.getClass().getSimpleName());
+            recordCompensationFailure(user, applicationId, attachmentId);
+        }
+    }
+
+    private void recordCompensationFailure(
+            AppUser user,
+            UUID applicationId,
+            UUID attachmentId) {
+        try {
+            auditLogService.recordFailure(
+                    AuditActor.user(user),
+                    "EXPENSE_ATTACHMENT_STORAGE_FAILED",
+                    ATTACHMENT_TARGET_TYPE,
+                    attachmentId.toString(),
+                    "%s:COMPENSATION_DELETE_FAILED_RETRY_REQUIRED".formatted(applicationId));
+        } catch (RuntimeException auditFailure) {
+            LOGGER.error(
+                    "Expense AUTO_ENTRY Blob compensation failure audit could not be recorded "
+                            + "applicationId={} attachmentId={} errorType={}",
+                    applicationId, attachmentId, auditFailure.getClass().getSimpleName());
         }
     }
 
@@ -372,7 +401,7 @@ public class ExpenseAutoEntryDraftService {
         }
     }
 
-    private static void validateStoredContext(
+    private void validateStoredContext(
             ExpenseApplicationAutoEntryContext context,
             AutoEntryReviewResponse review,
             ExpenseAutoEntryHumanReviewState humanState) {
@@ -381,6 +410,13 @@ public class ExpenseAutoEntryDraftService {
                 || humanState.schemaVersion()
                         != ExpenseAutoEntryHumanReviewState.CURRENT_SCHEMA_VERSION) {
             throw new IllegalStateException("Expense AUTO_ENTRY context is inconsistent");
+        }
+        if (attachmentRepository.findByIdAndExpenseApplicationIdAndDeletedAtIsNull(
+                context.getSourceAttachmentId(), context.getExpenseApplicationId()).isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "EXPENSE_AUTO_ENTRY_SOURCE_INTEGRITY_FAILURE",
+                    "自動入力の原本文書との整合性を確認できません。");
         }
     }
 
@@ -402,6 +438,16 @@ public class ExpenseAutoEntryDraftService {
                 "contentType", attachment.getContentType(),
                 "fileSize", attachment.getFileSize(),
                 "sha256", attachment.getSha256());
+    }
+
+    private static Map<String, Object> sourceAuditData(
+            UUID analysisId,
+            CopiedSource source) {
+        return Map.of(
+                "analysisId", analysisId,
+                "contentType", source.contentType(),
+                "fileSize", source.content().length,
+                "sha256", source.sha256());
     }
 
     private static Map<String, Object> autoEntryAuditData(

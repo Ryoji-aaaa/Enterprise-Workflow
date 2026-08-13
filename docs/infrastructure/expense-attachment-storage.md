@@ -65,7 +65,7 @@ object名・ファイル名・メタデータ・HTTP response body・credential�
 削除は申請と添付をlockし、DBの論理削除と成功監査を同じtransactionで先にcommitしてからBlobを
 best-effortで削除する。DB更新またはcommitに失敗した場合はBlob削除を開始せず、有効なmetadataと
 Blobを維持する。Blob削除に失敗してもAPIは204を返し、論理削除済み添付は一覧、content取得、再削除で
-404として扱う。申請ID、添付ID、object名、例外型、再試行が必要であることを運用ログへ記録し、
+404として扱う。申請ID、添付ID、例外型、再試行が必要であることを運用ログへ記録し、
 失敗監査も追加するが、credential、connection string、SDKの生例外messageは記録しない。
 
 object名は`expense-evidence/{applicationId}/{attachmentId}`で再利用しない。削除失敗で残るorphan Blobは
