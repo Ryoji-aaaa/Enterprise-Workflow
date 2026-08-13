@@ -14,6 +14,7 @@ import {
   hasInvoiceTotalMismatch,
   initializeExpenseAutoEntryForm,
   resolveAutoEntryField,
+  shouldShowAutoEntryField,
 } from "./expense-auto-entry.ts";
 
 function field<T>(value: T | null, status: AutoEntryFieldStatus = "OK"): AutoEntryField<T> {
@@ -107,6 +108,30 @@ test("確認済みパスは未編集のREVIEW fieldだけになり、attention�
   const resolvedAfterEdit = getResolvedAutoEntryFields(source, edited, new Set(["document.issuerName"]));
   assert.deepEqual(getConfirmedAutoEntryFieldPaths(resolvedAfterEdit), []);
   assert.equal(resolvedAfterEdit.find((item) => item.path === "document.issuerName")?.resolution, "EDITED");
+});
+
+test("要確認のみでは元から要確認または未取得のAI項目を編集後も表示する", () => {
+  const source = review();
+  const form = initializeExpenseAutoEntryForm(source, "2026-08-13");
+  const initial = getResolvedAutoEntryFields(source, form, new Set());
+  const missing = initial.find((item) => item.path === "document.issuerTaxRegistrationNumber");
+  const ok = initial.find((item) => item.path === "document.lineItems[0].itemDescription");
+
+  assert.ok(missing);
+  assert.ok(ok);
+  assert.equal(shouldShowAutoEntryField(missing, true), true);
+  assert.equal(shouldShowAutoEntryField(ok, true), false);
+
+  const edited = {
+    ...form,
+    document: { ...form.document, issuerTaxRegistrationNumber: "T1234567890123" },
+  };
+  const editedMissing = getResolvedAutoEntryFields(source, edited, new Set())
+    .find((item) => item.path === "document.issuerTaxRegistrationNumber");
+
+  assert.equal(editedMissing?.resolution, "EDITED");
+  assert.ok(editedMissing);
+  assert.equal(shouldShowAutoEntryField(editedMissing, true), true);
 });
 
 test("請求書総額との差異はnon-blocking warning用にだけ判定する", () => {

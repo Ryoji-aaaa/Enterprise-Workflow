@@ -245,7 +245,7 @@ export function shouldShowAutoEntryField(
   field: ResolvedAutoEntryField,
   showAttentionOnly: boolean,
 ): boolean {
-  return !showAttentionOnly || field.resolution === "UNRESOLVED";
+  return !showAttentionOnly || field.field.status !== "OK";
 }
 
 export function hasInvoiceTotalMismatch(

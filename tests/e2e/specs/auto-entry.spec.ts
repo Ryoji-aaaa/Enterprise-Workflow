@@ -45,6 +45,42 @@ async function login(
   await expect(page).toHaveURL(/\/top$/);
 }
 
+async function makeAutoEntryLineItemMissing(page: Page): Promise<void> {
+  await page.route("**/api/backend/document-analyses/*/auto-entry-review", async (route) => {
+    const response = await route.fetch();
+    const review = await response.json() as {
+      document: {
+        lineItems: {
+          value: Array<{
+            itemDescription: Record<string, unknown>;
+            lineAmount: Record<string, unknown>;
+          }> | null;
+        };
+      };
+    };
+    const lineItem = review.document.lineItems.value?.[0];
+    if (!lineItem) throw new Error("AUTO_ENTRY review must include a line item.");
+
+    lineItem.itemDescription = {
+      ...lineItem.itemDescription,
+      confidence: null,
+      findings: [],
+      sources: [],
+      status: "MISSING",
+      value: null,
+    };
+    lineItem.lineAmount = {
+      ...lineItem.lineAmount,
+      confidence: null,
+      findings: [],
+      sources: [],
+      status: "MISSING",
+      value: null,
+    };
+    await route.fulfill({ response, json: review });
+  });
+}
+
 test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元できる", async ({ page }) => {
   test.setTimeout(90_000);
 
@@ -107,6 +143,28 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
   await expect(page.getByRole("button", { name: "分析を実行", exact: true })).toBeEnabled();
 });
 
+test("要確認のみではMISSINGの自動入力明細を最後まで修正できる", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await login(page, expenseUserEmail, expenseUserPassword);
+  await makeAutoEntryLineItemMissing(page);
+  await page.goto("/expenses/auto-entry");
+  await page.locator("#expense-auto-entry-file").setInputFiles(resolve("fixtures/receipt.pdf"));
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  const description = page.getByLabel("内容", { exact: true });
+  const amount = page.getByLabel("金額（円）", { exact: true });
+  await expect(description).toBeVisible();
+  await expect(amount).toBeVisible();
+  await description.pressSequentially("業務用備品");
+  await expect(description).toHaveValue("業務用備品");
+  await amount.pressSequentially("1200");
+  await expect(amount).toHaveValue("1200");
+  await expect(page.getByText("修正済み", { exact: true })).toHaveCount(2);
+});
+
 test("請求/注文書申請（自動入力）はBFF経由でFormal Expense下書きを作成する", async ({ page }) => {
   test.setTimeout(90_000);
 
@@ -129,6 +187,21 @@ test("請求/注文書申請（自動入力）はBFF経由でFormal Expense下�
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
     timeout: 60_000,
   });
+
+  await expect(page.getByLabel("内容", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("金額（円）", { exact: true })).toBeVisible();
+  await page.locator("select").first().selectOption("MEAL");
+  await expect(page.getByLabel("店舗名", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("参加者", { exact: true })).toBeVisible();
+  await page.locator("select").first().selectOption("OTHER");
+
+  const originalConfirmation = page.getByLabel("原本を確認しました", { exact: true });
+  await originalConfirmation.check();
+  await expect(originalConfirmation).toBeVisible();
+  await expect(originalConfirmation).toBeChecked();
+  await originalConfirmation.uncheck();
+  await expect(originalConfirmation).toBeVisible();
+  await expect(originalConfirmation).not.toBeChecked();
 
   await page.getByLabel("件名", { exact: true }).fill(`自動入力E2E-${Date.now()}`);
   await page.getByLabel("利用目的", { exact: true }).fill("請求書に基づく業務用備品の精算");
