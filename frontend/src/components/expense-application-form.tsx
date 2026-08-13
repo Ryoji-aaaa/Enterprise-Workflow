@@ -47,6 +47,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   const [expenseDate, setExpenseDate] = useState(today);
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<ExpenseItem[]>([emptyItem()]);
+  const [persistedApplicationId, setPersistedApplicationId] = useState(applicationId);
   const [version, setVersion] = useState<number | undefined>();
   const [originalStatus, setOriginalStatus] = useState<ExpenseApplication["status"]>("DRAFT");
   const [loading, setLoading] = useState(Boolean(applicationId));
@@ -70,6 +71,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       setExpenseDate(application.expenseDate);
       setRemarks(application.remarks ?? "");
       setItems(application.items);
+      setPersistedApplicationId(application.id);
       setVersion(application.version);
       setOriginalStatus(application.status);
       setLoading(false);
@@ -104,14 +106,15 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
     setSaving(true);
     setError(null);
     const payload = { category, title, purpose, expenseDate, remarks, items, version };
-    let persistedApplicationId = applicationId;
+    const saveTargetApplicationId = persistedApplicationId;
+    let applicationIdForResult = persistedApplicationId;
     try {
       const saveResponse = await fetchBackend(
-        applicationId
-          ? `/api/backend/expense-applications/${applicationId}`
+        saveTargetApplicationId
+          ? `/api/backend/expense-applications/${saveTargetApplicationId}`
           : "/api/backend/expense-applications",
         {
-          method: applicationId ? "PUT" : "POST",
+          method: saveTargetApplicationId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         },
@@ -120,7 +123,10 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       if (!saveResponse.ok) {
         throw new Error(expenseErrorMessage(saved.code, saved.message ?? "下書きを保存できませんでした。"));
       }
-      persistedApplicationId = saved.id;
+      applicationIdForResult = saved.id;
+      setPersistedApplicationId(saved.id);
+      setVersion(saved.version);
+      setOriginalStatus(saved.status);
       if (!submit) {
         router.push(`/expenses/${saved.id}`);
         return;
@@ -132,7 +138,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       if (!(cause instanceof AuthenticationRequiredError)) {
         if (cause instanceof ExpenseSubmitResultError && cause.resultUnknown) {
           setError(cause.message);
-          setSubmitResultUnknownApplicationId(persistedApplicationId ?? null);
+          setSubmitResultUnknownApplicationId(applicationIdForResult ?? null);
         } else {
           setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
         }

@@ -99,6 +99,9 @@ POSTを再送せず現在申請を1回だけGETする。`PENDING_APPROVAL`、`AP
 GETも失敗した場合も結果不明と明示し、自動再申請しない。結果不明では「申請できなかった」と断定せず、
 通常編集画面とAUTO_ENTRY確認画面の申請・再申請操作を無効化して「申請詳細を確認」を表示する。利用者が
 詳細の現在状態と承認Run履歴を確認するまで、同じ画面からmutationを再実行させない。
+通常経費の新規作成は、最初のDRAFT保存が成功した時点でそのApplication IDとversionを画面内に保持する。
+submitの照合結果が`DRAFT`で再試行可能な場合も、新しいDRAFTをPOSTせず、同じApplication IDへPUTしてから
+submitを再実行する。
 
 ## 入力と表示
 

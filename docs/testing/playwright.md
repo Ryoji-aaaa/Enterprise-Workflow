@@ -69,6 +69,8 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 32. AUTO_ENTRY下書きを申請し、現在Candidateが正式な原本証憑を閲覧できること、差戻し後の「編集」が
     保存済みAUTO_ENTRY確認画面へ遷移すること、AI原値・人の現在値・原本previewを復元して専用PUTで保存し、
     既存resubmit APIで新しい承認Runへ再申請できることを確認する
+33. 通常経費の新規申請でsubmitの503後にGETが`DRAFT`を返した場合、再試行時に新しいDRAFTをPOSTせず、
+    最初に保存したApplication IDへのPUTとsubmitを使用することを確認する
 
 雇用区分のBackend境界は正社員・準社員を許可し、パート・嘱託を権限保持時も拒否するAPI
 統合テストで確認する。Frontend単体テストは`PART_TIME`、`CONTRACT_EMPLOYEE`、`SYSTEM`を

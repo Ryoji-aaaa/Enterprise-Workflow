@@ -226,6 +226,78 @@ test("通常経費フォームも申請結果不明時は再実行を止めて�
   await expect(page.getByText("下書き", { exact: true }).first()).toBeVisible();
 });
 
+test("通常経費の申請再試行は最初に保存したDRAFTを再利用する", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await login(page, expenseUserEmail, expenseUserPassword);
+  await page.goto("/expenses/new");
+  await page.getByLabel("件名", { exact: true }).fill(`E2E通常申請再試行-${Date.now()}`);
+  await page.getByLabel("利用目的", { exact: true }).fill("保存済みDRAFTの再利用確認");
+  await page.getByLabel("内容（片道／往復を含む）", { exact: true }).fill("電車移動");
+  await page.getByLabel("金額（円）", { exact: true }).fill("1000");
+  await page.getByLabel("交通手段", { exact: true }).fill("電車");
+  await page.getByLabel("出発地", { exact: true }).fill("東京");
+  await page.getByLabel("到着地", { exact: true }).fill("品川");
+
+  let createAttempts = 0;
+  const submitApplicationIds: string[] = [];
+  const updateApplicationIds: string[] = [];
+  const expenseApiPath = "**/api/backend/expense-applications**";
+  await page.route(expenseApiPath, async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const applicationPathMatch = pathname.match(
+      /^\/api\/backend\/expense-applications\/([0-9a-f-]{36})$/,
+    );
+    const submitPathMatch = pathname.match(
+      /^\/api\/backend\/expense-applications\/([0-9a-f-]{36})\/submit$/,
+    );
+
+    if (request.method() === "POST" && pathname === "/api/backend/expense-applications") {
+      createAttempts += 1;
+    } else if (request.method() === "PUT" && applicationPathMatch) {
+      updateApplicationIds.push(applicationPathMatch[1]);
+    } else if (request.method() === "POST" && submitPathMatch) {
+      submitApplicationIds.push(submitPathMatch[1]);
+      if (submitApplicationIds.length === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "BACKEND_UNAVAILABLE" }),
+        });
+        return;
+      }
+    }
+    await route.continue();
+  });
+
+  const createResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/backend/expense-applications")
+      && response.request().method() === "POST",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "申請", exact: true }).click();
+  const created = await (await createResponse).json() as { id: string };
+
+  await expect(page.getByText("申請は完了していません。", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "申請", exact: true })).toBeEnabled();
+
+  const submitResponse = page.waitForResponse((response) =>
+    response.url().endsWith(`/api/backend/expense-applications/${created.id}/submit`)
+      && response.request().method() === "POST"
+      && response.status() !== 503,
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "申請", exact: true }).click();
+  expect((await submitResponse).ok()).toBe(true);
+
+  await expect(page).toHaveURL(new RegExp(`/expenses/${created.id}$`));
+  expect(createAttempts).toBe(1);
+  expect(updateApplicationIds).toEqual([created.id]);
+  expect(submitApplicationIds).toEqual([created.id, created.id]);
+  await page.unroute(expenseApiPath);
+});
+
 test("請求/注文書申請（自動入力）は保存・申請・差戻し・再編集・再申請できる", async ({ browser, page }) => {
   test.setTimeout(90_000);
 
