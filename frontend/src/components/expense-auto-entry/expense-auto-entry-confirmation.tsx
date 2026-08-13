@@ -31,7 +31,10 @@ import {
 } from "@/lib/expense-auto-entry";
 import { isExpenseInputValid } from "@/lib/expense-application";
 import type { ExpenseAttachment } from "@/lib/expense-attachment";
-import { submitExpenseApplicationWithReconciliation } from "@/lib/expense-submit";
+import {
+  ExpenseSubmitResultError,
+  submitExpenseApplicationWithReconciliation,
+} from "@/lib/expense-submit";
 import { createSynchronousMutationGuard } from "@/lib/synchronous-mutation-guard";
 
 type ErrorBody = { code?: string; message?: string };
@@ -52,6 +55,7 @@ export function ExpenseAutoEntryConfirmation({ draftId }: { draftId: string }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadNotice, setReloadNotice] = useState<string | null>(null);
+  const [submitResultUnknown, setSubmitResultUnknown] = useState(false);
   const mutationGuardRef = useRef(createSynchronousMutationGuard());
 
   const applyDraft = useCallback((nextDraft: ExpenseAutoEntryDraftResponse) => {
@@ -197,7 +201,7 @@ export function ExpenseAutoEntryConfirmation({ draftId }: { draftId: string }) {
   }
 
   async function submit() {
-    if (!draft || !form || !valid || processing || !editable) {
+    if (!draft || !form || !valid || processing || !editable || submitResultUnknown) {
       if (!valid) setError("共通項目、カテゴリ別項目、1円以上の明細金額を入力してください。");
       return;
     }
@@ -222,7 +226,14 @@ export function ExpenseAutoEntryConfirmation({ draftId }: { draftId: string }) {
       );
       router.push(`/expenses/${latestDraft.application.id}`);
     } catch (cause) {
-      if (!(cause instanceof AuthenticationRequiredError)) setError(`下書きは保存されていますが、申請できませんでした。${cause instanceof Error ? ` ${cause.message}` : ""}`);
+      if (!(cause instanceof AuthenticationRequiredError)) {
+        if (cause instanceof ExpenseSubmitResultError && cause.resultUnknown) {
+          setSubmitResultUnknown(true);
+          setError(cause.message);
+        } else {
+          setError(`下書きは保存されていますが、申請できませんでした。${cause instanceof Error ? ` ${cause.message}` : ""}`);
+        }
+      }
     } finally {
       setProcessing(false);
       mutationGuardRef.current.finish();
@@ -235,5 +246,5 @@ export function ExpenseAutoEntryConfirmation({ draftId }: { draftId: string }) {
   if (!editable) return <main className="p-4 md:p-8"><div className="mx-auto max-w-3xl space-y-4"><Card><CardContent>この経費申請は現在編集できません。</CardContent></Card><LinkButton href={`/expenses/${draft.application.id}`}>経費申請詳細へ</LinkButton></div></main>;
 
   const sourceUrl = sourceFile ? `/api/backend/expense-applications/${encodeURIComponent(draft.application.id)}/attachments/${encodeURIComponent(draft.autoEntry.sourceAttachmentId)}/content` : null;
-  return <main className="p-4 md:p-8"><div className="mx-auto max-w-[96rem] space-y-4"><div><h1 className="text-xl font-semibold">自動入力の確認</h1><p className="mt-1 text-sm text-muted-foreground">保存済みの下書きと証憑を確認して、最終編集・申請を行います。</p></div>{error ? <Alert variant="destructive"><AlertTitle>処理できませんでした</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}{reloadNotice ? <div className="flex items-center gap-3 rounded-md border border-destructive/40 p-3"><p className="text-sm">{reloadNotice}</p><Button onClick={() => void load()} size="sm" type="button" variant="outline">再読み込み</Button></div> : null}<div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,1fr)]"><div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><DocumentPreview file={sourceFile} objectUrl={null} serverUrl={sourceUrl} />{previewError ? <p className="border-t p-3 text-sm text-destructive">{previewError}</p> : null}</div><section className="min-w-0 rounded-md border bg-card p-4 text-card-foreground"><ExpenseAutoEntryEditor confirmedPaths={confirmedPaths} form={form} onAddItem={() => updateApplication({ items: [...form.application.items, createManualExpenseAutoEntryItem(form.application.expenseDate)] })} onApplicationChange={updateApplication} onConfirmationChange={setConfirmed} onDeleteItem={(index) => updateApplication({ items: form.application.items.filter((_, itemIndex) => itemIndex !== index) })} onDocumentChange={updateDocument} onExpenseDateChange={changeExpenseDate} onItemChange={updateItem} onShowAttentionOnlyChange={setShowAttentionOnly} resolvedFields={resolvedFields} showAttentionOnly={showAttentionOnly}><div className="flex flex-wrap items-center justify-end gap-3"><span className="text-sm text-emerald-700">{saved ? "保存しました" : ""}</span><Button disabled={processing || !dirty || !valid} onClick={() => void save()} type="button" variant="outline">{processing ? "保存中…" : "下書き保存"}</Button><Button disabled={processing || !valid} onClick={() => void submit()} type="button">{processing ? "処理中…" : draft.application.status === "RETURNED" ? "再申請" : "申請"}</Button></div></ExpenseAutoEntryEditor></section></div></div></main>;
+  return <main className="p-4 md:p-8"><div className="mx-auto max-w-[96rem] space-y-4"><div><h1 className="text-xl font-semibold">自動入力の確認</h1><p className="mt-1 text-sm text-muted-foreground">保存済みの下書きと証憑を確認して、最終編集・申請を行います。</p></div>{error ? <Alert variant="destructive"><AlertTitle>{submitResultUnknown ? "申請結果の確認が必要です" : "処理できませんでした"}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}{submitResultUnknown ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 p-3"><p className="text-sm">再申請を再実行せず、現在の状態と承認履歴を確認してください。</p><LinkButton href={`/expenses/${draft.application.id}`}>申請詳細を確認</LinkButton></div> : null}{reloadNotice ? <div className="flex items-center gap-3 rounded-md border border-destructive/40 p-3"><p className="text-sm">{reloadNotice}</p><Button onClick={() => void load()} size="sm" type="button" variant="outline">再読み込み</Button></div> : null}<div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,1fr)]"><div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><DocumentPreview file={sourceFile} objectUrl={null} serverUrl={sourceUrl} />{previewError ? <p className="border-t p-3 text-sm text-destructive">{previewError}</p> : null}</div><section className="min-w-0 rounded-md border bg-card p-4 text-card-foreground"><ExpenseAutoEntryEditor confirmedPaths={confirmedPaths} form={form} onAddItem={() => updateApplication({ items: [...form.application.items, createManualExpenseAutoEntryItem(form.application.expenseDate)] })} onApplicationChange={updateApplication} onConfirmationChange={setConfirmed} onDeleteItem={(index) => updateApplication({ items: form.application.items.filter((_, itemIndex) => itemIndex !== index) })} onDocumentChange={updateDocument} onExpenseDateChange={changeExpenseDate} onItemChange={updateItem} onShowAttentionOnlyChange={setShowAttentionOnly} resolvedFields={resolvedFields} showAttentionOnly={showAttentionOnly}><div className="flex flex-wrap items-center justify-end gap-3"><span className="text-sm text-emerald-700">{saved ? "保存しました" : ""}</span><Button disabled={processing || !dirty || !valid} onClick={() => void save()} type="button" variant="outline">{processing ? "保存中…" : "下書き保存"}</Button><Button disabled={processing || !valid || submitResultUnknown} onClick={() => void submit()} type="button">{processing ? "処理中…" : draft.application.status === "RETURNED" ? "再申請" : "申請"}</Button></div></ExpenseAutoEntryEditor></section></div></div></main>;
 }

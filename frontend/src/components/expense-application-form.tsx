@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
@@ -19,7 +19,10 @@ import {
   type ExpenseItem,
   yen,
 } from "@/lib/expense-application";
-import { submitExpenseApplicationWithReconciliation } from "@/lib/expense-submit";
+import {
+  ExpenseSubmitResultError,
+  submitExpenseApplicationWithReconciliation,
+} from "@/lib/expense-submit";
 import { createSynchronousMutationGuard } from "@/lib/synchronous-mutation-guard";
 
 const today = new Date().toISOString().slice(0, 10);
@@ -49,6 +52,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   const [loading, setLoading] = useState(Boolean(applicationId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitResultUnknownApplicationId, setSubmitResultUnknownApplicationId] = useState<string | null>(null);
   const mutationGuardRef = useRef(createSynchronousMutationGuard());
 
   useEffect(() => {
@@ -87,6 +91,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   }
 
   async function persist(submit: boolean) {
+    if (submitResultUnknownApplicationId) return;
     if (!valid) {
       setError("共通項目、カテゴリ別項目、1円以上の明細金額を入力してください。");
       return;
@@ -99,6 +104,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
     setSaving(true);
     setError(null);
     const payload = { category, title, purpose, expenseDate, remarks, items, version };
+    let persistedApplicationId = applicationId;
     try {
       const saveResponse = await fetchBackend(
         applicationId
@@ -114,6 +120,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       if (!saveResponse.ok) {
         throw new Error(expenseErrorMessage(saved.code, saved.message ?? "下書きを保存できませんでした。"));
       }
+      persistedApplicationId = saved.id;
       if (!submit) {
         router.push(`/expenses/${saved.id}`);
         return;
@@ -123,7 +130,12 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       router.push(`/expenses/${submitted.id}`);
     } catch (cause) {
       if (!(cause instanceof AuthenticationRequiredError)) {
-        setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
+        if (cause instanceof ExpenseSubmitResultError && cause.resultUnknown) {
+          setError(cause.message);
+          setSubmitResultUnknownApplicationId(persistedApplicationId ?? null);
+        } else {
+          setError(cause instanceof Error ? cause.message : "申請を保存できませんでした。");
+        }
       }
     } finally {
       setSaving(false);
@@ -147,6 +159,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   return (
     <form className="space-y-6" onSubmit={onSubmit}>
       {error && <Card><CardContent className="text-destructive">{error}</CardContent></Card>}
+      {submitResultUnknownApplicationId ? <Card><CardContent className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm">申請・再申請を再実行せず、現在の状態と承認履歴を確認してください。</p><LinkButton href={`/expenses/${submitResultUnknownApplicationId}`}>申請詳細を確認</LinkButton></CardContent></Card> : null}
       <Card>
         <CardHeader><CardTitle>申請内容</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -188,8 +201,8 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
         </CardContent>
       </Card>
       <div className="flex flex-wrap justify-end gap-3">
-        <Button disabled={saving || !valid} onClick={() => void persist(false)} type="button" variant="outline">下書き保存</Button>
-        <Button disabled={saving || !valid} type="submit">{originalStatus === "RETURNED" ? "再申請" : "申請"}</Button>
+        <Button disabled={saving || !valid || submitResultUnknownApplicationId !== null} onClick={() => void persist(false)} type="button" variant="outline">下書き保存</Button>
+        <Button disabled={saving || !valid || submitResultUnknownApplicationId !== null} type="submit">{originalStatus === "RETURNED" ? "再申請" : "申請"}</Button>
       </div>
     </form>
   );

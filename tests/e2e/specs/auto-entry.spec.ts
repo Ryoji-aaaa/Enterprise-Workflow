@@ -166,6 +166,66 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
   await expect(page.getByText("修正済み", { exact: true })).toHaveCount(2);
 });
 
+test("通常経費フォームも申請結果不明時は再実行を止めて詳細確認へ誘導する", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await login(page, expenseUserEmail, expenseUserPassword);
+  await page.goto("/expenses/new");
+  await page.getByLabel("件名", { exact: true }).fill(`E2E通常申請結果不明-${Date.now()}`);
+  await page.getByLabel("利用目的", { exact: true }).fill("結果不明時の再実行防止確認");
+  await page.getByLabel("内容（片道／往復を含む）", { exact: true }).fill("電車移動");
+  await page.getByLabel("金額（円）", { exact: true }).fill("1000");
+  await page.getByLabel("交通手段", { exact: true }).fill("電車");
+  await page.getByLabel("出発地", { exact: true }).fill("東京");
+  await page.getByLabel("到着地", { exact: true }).fill("品川");
+
+  let submitAttempts = 0;
+  const expenseApiPath = "**/api/backend/expense-applications**";
+  await page.route(expenseApiPath, async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "POST" && pathname.endsWith("/submit")) {
+      submitAttempts += 1;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "BACKEND_UNAVAILABLE" }),
+      });
+      return;
+    }
+    if (request.method() === "GET"
+        && /^\/api\/backend\/expense-applications\/[0-9a-f-]{36}$/.test(pathname)) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "BACKEND_UNAVAILABLE" }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  const createResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/backend/expense-applications")
+      && response.request().method() === "POST",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "申請", exact: true }).click();
+  const created = await (await createResponse).json() as { id: string };
+
+  await expect(page.getByText("申請結果を確認できませんでした。", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "申請", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "下書き保存", exact: true })).toBeDisabled();
+  const detailLink = page.getByRole("link", { name: "申請詳細を確認", exact: true });
+  await expect(detailLink).toHaveAttribute("href", `/expenses/${created.id}`);
+  expect(submitAttempts).toBe(1);
+
+  await page.unroute(expenseApiPath);
+  await detailLink.click();
+  await expect(page).toHaveURL(new RegExp(`/expenses/${created.id}$`));
+  await expect(page.getByText("下書き", { exact: true }).first()).toBeVisible();
+});
+
 test("請求/注文書申請（自動入力）は保存・申請・差戻し・再編集・再申請できる", async ({ browser, page }) => {
   test.setTimeout(90_000);
 
@@ -316,6 +376,36 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(page.getByLabel("請求社 / 発行元", { exact: true }))
     .toHaveValue("最終編集済み発行元");
   await page.getByLabel("請求社 / 発行元", { exact: true }).fill("差戻し後の発行元");
+
+  let ambiguousResubmitAttempts = 0;
+  const resubmitPath = `**/api/backend/expense-applications/${created.application.id}/resubmit`;
+  await page.route(resubmitPath, async (route) => {
+    ambiguousResubmitAttempts += 1;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "BACKEND_UNAVAILABLE" }),
+    });
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "再申請", exact: true }).click();
+  await expect(page.getByText("申請結果の確認が必要です", { exact: true })).toBeVisible();
+  await expect(page.getByText("再申請結果を確認できませんでした。", { exact: false })).toBeVisible();
+  await expect(page.getByText("下書きは保存されていますが、申請できませんでした。", { exact: false }))
+    .toHaveCount(0);
+  await expect(page.getByRole("button", { name: "再申請", exact: true })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "申請詳細を確認", exact: true })).toBeVisible();
+  expect(ambiguousResubmitAttempts).toBe(1);
+  await page.unroute(resubmitPath);
+
+  await page.getByRole("link", { name: "申請詳細を確認", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/expenses/${created.application.id}$`));
+  await page.getByRole("link", { name: "編集", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(
+    `/expenses/auto-entry/confirm/${created.application.id}$`,
+  ));
+  await expect(page.getByLabel("請求社 / 発行元", { exact: true })).toHaveValue("差戻し後の発行元");
+
   const resubmitResponse = page.waitForResponse((candidate) =>
     candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/resubmit`)
       && candidate.request().method() === "POST",
