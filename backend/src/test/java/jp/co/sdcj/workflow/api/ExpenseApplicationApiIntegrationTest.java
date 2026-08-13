@@ -601,6 +601,14 @@ class ExpenseApplicationApiIntegrationTest {
     @Test
     void 一般ユーザー申請を課長から経理へ順番に承認し監査を残す() throws Exception {
         String applicationId = createAndSubmit(member, "member");
+        String submitAudit = jdbcTemplate.queryForObject("""
+                select after_data from audit_logs
+                where action_type = 'EXPENSE_APPLICATION_SUBMITTED'
+                  and target_id = ?
+                """, String.class, applicationId);
+        assertThat(submitAudit)
+                .contains("\"status\":\"PENDING_APPROVAL\"")
+                .doesNotContain("autoEntry", "autoEntryUnresolvedCount");
 
         String managerDetail = mockMvc.perform(get("/api/expense-approvals/pending")
                         .with(validJwt(sectionHead, "section-head")))

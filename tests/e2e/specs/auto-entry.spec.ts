@@ -7,6 +7,7 @@ const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const userEmail = requiredEnvironment("DEV_USER_EMAIL");
 const userPassword = requiredEnvironment("DEV_USER_PASSWORD");
 const expenseUserEmail = requiredEnvironment("DEV_EXPENSE_USER_EMAIL");
+const expenseManagerEmail = requiredEnvironment("DEV_EXPENSE_MANAGER_EMAIL");
 const expenseUserPassword = requiredEnvironment("DEV_EXPENSE_PASSWORD");
 const receiptPdf = readFileSync(resolve("fixtures/receipt.pdf"));
 
@@ -165,7 +166,7 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
   await expect(page.getByText("修正済み", { exact: true })).toHaveCount(2);
 });
 
-test("請求/注文書申請（自動入力）は保存済み確認画面で最終編集・保存・申請できる", async ({ page }) => {
+test("請求/注文書申請（自動入力）は保存・申請・差戻し・再編集・再申請できる", async ({ browser, page }) => {
   test.setTimeout(90_000);
 
   await login(page, expenseUserEmail, expenseUserPassword);
@@ -269,6 +270,62 @@ test("請求/注文書申請（自動入力）は保存済み確認画面で最�
   expect((await submitResponse).ok()).toBeTruthy();
   await expect(page).toHaveURL(new RegExp(`/expenses/${created.application.id}$`));
   await expect(page.getByText("承認待ち", { exact: true }).first()).toBeVisible();
+
+  const managerContext = await browser.newContext();
+  const manager = await managerContext.newPage();
+  try {
+    await login(manager, expenseManagerEmail, expenseUserPassword);
+    await manager.goto(`/approvals/${created.application.id}`);
+    await expect(manager.getByText("receipt.pdf", { exact: true })).toBeVisible();
+    const attachmentsResponse = await manager.request.get(
+      `/api/backend/expense-applications/${created.application.id}/attachments`,
+    );
+    expect(attachmentsResponse.status()).toBe(200);
+    const attachments = await attachmentsResponse.json() as Array<{ id: string }>;
+    expect(attachments).toHaveLength(1);
+    const sourceResponse = await manager.request.get(
+      `/api/backend/expense-applications/${created.application.id}/attachments/${attachments[0]?.id}/content`,
+    );
+    expect(sourceResponse.status()).toBe(200);
+    expect(sourceResponse.headers()["content-type"]).toContain("application/pdf");
+
+    const detailResponse = await manager.request.get(
+      `/api/backend/expense-applications/${created.application.id}`,
+    );
+    expect(detailResponse.status()).toBe(200);
+    const detail = await detailResponse.json() as { pendingStepId: string | null };
+    expect(detail.pendingStepId).not.toBeNull();
+    const returnedResponse = await manager.request.post(
+      `/api/backend/expense-approvals/${detail.pendingStepId}/return`,
+      { data: { comment: "自動入力内容を再確認してください" } },
+    );
+    expect(returnedResponse.status()).toBe(200);
+  } finally {
+    await managerContext.close();
+  }
+
+  await page.goto(`/expenses/${created.application.id}`);
+  await expect(page.getByText("差戻し", { exact: true }).first()).toBeVisible();
+  await page.getByRole("link", { name: "編集", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(
+    `/expenses/auto-entry/confirm/${created.application.id}$`,
+  ));
+  await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe"))
+    .toBeVisible();
+  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await expect(page.getByLabel("請求社 / 発行元", { exact: true }))
+    .toHaveValue("最終編集済み発行元");
+  await page.getByLabel("請求社 / 発行元", { exact: true }).fill("差戻し後の発行元");
+  const resubmitResponse = page.waitForResponse((candidate) =>
+    candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/resubmit`)
+      && candidate.request().method() === "POST",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "再申請", exact: true }).click();
+  expect((await resubmitResponse).ok()).toBeTruthy();
+  await expect(page).toHaveURL(new RegExp(`/expenses/${created.application.id}$`));
+  await expect(page.getByText("承認待ち", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("実行 2", { exact: false })).toBeVisible();
 });
 
 test("AUTO_ENTRYはRecent analysesから同じJob、Review、source previewを復元する", async ({ page }) => {

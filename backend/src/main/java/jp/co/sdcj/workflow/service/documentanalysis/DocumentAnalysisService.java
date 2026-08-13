@@ -185,6 +185,20 @@ public class DocumentAnalysisService {
             UUID analysisId,
             DocumentAnalysisProfile profile,
             AppUser user) {
+        return openSource(analysisId, profile, user, true);
+    }
+
+    public OpenedDocumentAnalysisContent openSourceForAutoEntryHandoff(
+            UUID analysisId,
+            AppUser user) {
+        return openSource(analysisId, DocumentAnalysisProfile.AUTO_ENTRY, user, false);
+    }
+
+    private OpenedDocumentAnalysisContent openSource(
+            UUID analysisId,
+            DocumentAnalysisProfile profile,
+            AppUser user,
+            boolean recordAudit) {
         try {
             DocumentAnalysisReadMetadata metadata = sourceMetadata(analysisId, profile, user);
             StoredDocumentAnalysisContent content = storage.loadInput(metadata.objectName());
@@ -193,11 +207,13 @@ public class DocumentAnalysisService {
                 throw new DocumentAnalysisStorageException(
                         new IllegalStateException("Stored source length mismatch"));
             }
-            recordAccessAudit(
-                    user,
-                    "DOCUMENT_ANALYSIS_SOURCE_ACCESSED",
-                    analysisId,
-                    metadata.auditData());
+            if (recordAudit) {
+                recordAccessAudit(
+                        user,
+                        "DOCUMENT_ANALYSIS_SOURCE_ACCESSED",
+                        analysisId,
+                        metadata.auditData());
+            }
             return new OpenedDocumentAnalysisContent(
                     metadata.originalFileName(), metadata.sha256(), content);
         } catch (DocumentAnalysisStorageException exception) {

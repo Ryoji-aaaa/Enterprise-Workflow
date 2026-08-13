@@ -30,7 +30,10 @@ import {
   isDocumentAnalysisProcessing,
   validateSingleDocumentSelection,
 } from "@/lib/document-analysis";
-import { createExpenseAutoEntryDraft } from "@/lib/expense-auto-entry-api";
+import {
+  ExpenseAutoEntryApiError,
+  createExpenseAutoEntryDraft,
+} from "@/lib/expense-auto-entry-api";
 import {
   type ExpenseAutoEntryForm,
   type ExpenseAutoEntryItem,
@@ -43,6 +46,7 @@ import {
 import {
   isExpenseInputValid,
 } from "@/lib/expense-application";
+import { createSynchronousMutationGuard } from "@/lib/synchronous-mutation-guard";
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -70,6 +74,7 @@ export function ExpenseAutoEntryWorkbench() {
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const mutationGuardRef = useRef(createSynchronousMutationGuard());
 
   const replaceBrowserFile = useCallback((file: File | null) => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -242,9 +247,13 @@ export function ExpenseAutoEntryWorkbench() {
 
   async function decide() {
     if (!form || !review || !state.job || !valid || submitting) return;
+    if (!mutationGuardRef.current.tryStart()) return;
     if (attention.length > 0 && !window.confirm(
       `未確認の項目が${attention.length}件あります。確認画面でも引き続き修正できます。\nこのまま確認画面へ進みますか？`,
-    )) return;
+    )) {
+      mutationGuardRef.current.finish();
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -255,10 +264,14 @@ export function ExpenseAutoEntryWorkbench() {
       router.push(`/expenses/auto-entry/confirm/${encodeURIComponent(response.application.id)}`);
     } catch (cause) {
       if (!(cause instanceof AuthenticationRequiredError)) {
-        setSubmitError(cause instanceof Error ? cause.message : "自動入力の経費下書きを作成できませんでした。");
+        setSubmitError(cause instanceof ExpenseAutoEntryApiError
+          && (cause.status === 503 || cause.code === "BACKEND_UNAVAILABLE")
+          ? "作成結果を確認できませんでした。入力内容は保持されています。同じ分析の「決定」は安全に再実行できます。"
+          : cause instanceof Error ? cause.message : "自動入力の経費下書きを作成できませんでした。");
       }
     } finally {
       setSubmitting(false);
+      mutationGuardRef.current.finish();
     }
   }
 

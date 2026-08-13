@@ -12,6 +12,11 @@ type ErrorBody = {
   code?: string;
 };
 
+type BackendFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
 export type ExpenseAutoEntryDraftItem = {
   id: string;
   displayOrder: number;
@@ -141,8 +146,9 @@ async function readAutoEntryError(response: Response, fallback: string): Promise
 
 export async function createExpenseAutoEntryDraft(
   request: CreateExpenseAutoEntryDraftRequest,
+  fetchImplementation: BackendFetch = fetchBackend,
 ): Promise<ExpenseAutoEntryDraftResponse> {
-  const response = await fetchBackend("/api/backend/expense-applications/from-auto-entry", {
+  const response = await fetchImplementation("/api/backend/expense-applications/from-auto-entry", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -155,8 +161,9 @@ export async function createExpenseAutoEntryDraft(
 export async function getExpenseAutoEntryDraft(
   applicationId: string,
   signal?: AbortSignal,
+  fetchImplementation: BackendFetch = fetchBackend,
 ): Promise<ExpenseAutoEntryDraftResponse> {
-  const response = await fetchBackend(
+  const response = await fetchImplementation(
     `/api/backend/expense-applications/${encodeURIComponent(applicationId)}/auto-entry-draft`,
     { cache: "no-store", signal },
   );
@@ -167,8 +174,9 @@ export async function getExpenseAutoEntryDraft(
 export async function updateExpenseAutoEntryDraft(
   applicationId: string,
   request: UpdateExpenseAutoEntryDraftRequest,
+  fetchImplementation: BackendFetch = fetchBackend,
 ): Promise<ExpenseAutoEntryDraftResponse> {
-  const response = await fetchBackend(
+  const response = await fetchImplementation(
     `/api/backend/expense-applications/${encodeURIComponent(applicationId)}/auto-entry-draft`,
     {
       method: "PUT",

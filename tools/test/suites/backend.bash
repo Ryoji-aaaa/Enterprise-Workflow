@@ -57,6 +57,8 @@ run_backend_suite() {
       "V001 upgrade and expand-contract migration" \
       "Contract migration reconciliation safeguards" \
       "PostgreSQL database constraints" \
+      "V014 Document Analysis authorization upgrade" \
+      "V017 AUTO_ENTRY provenance constraint upgrade" \
       "Fresh migration and startup idempotency"; do
       record_skipped_check backend "${migration_check}" "Backend test image could not be built"
     done

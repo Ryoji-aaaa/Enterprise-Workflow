@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -19,6 +19,8 @@ import {
   type ExpenseItem,
   yen,
 } from "@/lib/expense-application";
+import { submitExpenseApplicationWithReconciliation } from "@/lib/expense-submit";
+import { createSynchronousMutationGuard } from "@/lib/synchronous-mutation-guard";
 
 const today = new Date().toISOString().slice(0, 10);
 const emptyItem = (): ExpenseItem => ({
@@ -47,6 +49,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   const [loading, setLoading] = useState(Boolean(applicationId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mutationGuardRef = useRef(createSynchronousMutationGuard());
 
   useEffect(() => {
     if (!applicationId) return;
@@ -88,7 +91,11 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       setError("共通項目、カテゴリ別項目、1円以上の明細金額を入力してください。");
       return;
     }
-    if (submit && !window.confirm("申請後は承認待ちになります。申請しますか？")) return;
+    if (!mutationGuardRef.current.tryStart()) return;
+    if (submit && !window.confirm("申請後は承認待ちになります。申請しますか？")) {
+      mutationGuardRef.current.finish();
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = { category, title, purpose, expenseDate, remarks, items, version };
@@ -112,16 +119,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
         return;
       }
       const action = originalStatus === "RETURNED" ? "resubmit" : "submit";
-      const submitResponse = await fetchBackend(
-        `/api/backend/expense-applications/${saved.id}/${action}`,
-        { method: "POST" },
-      );
-      const submitted = (await submitResponse.json()) as ExpenseApplication & ErrorBody;
-      if (!submitResponse.ok) {
-        throw new Error(expenseErrorMessage(
-          submitted.code, submitted.message ?? "申請できませんでした。下書きは保存されています。",
-        ));
-      }
+      const submitted = await submitExpenseApplicationWithReconciliation(saved.id, action);
       router.push(`/expenses/${submitted.id}`);
     } catch (cause) {
       if (!(cause instanceof AuthenticationRequiredError)) {
@@ -129,6 +127,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
       }
     } finally {
       setSaving(false);
+      mutationGuardRef.current.finish();
     }
   }
 
