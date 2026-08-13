@@ -23,7 +23,9 @@ import jp.co.sdcj.workflow.api.ExpenseAutoEntryDraftContentRequest;
 import jp.co.sdcj.workflow.domain.ExpenseCategory;
 import jp.co.sdcj.workflow.service.ExpenseAutoEntryDraftDetails.Warning;
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryDerivedField;
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryField;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryTaxMode;
 
 class ExpenseAutoEntryHumanReviewResolverTest {
 
@@ -116,18 +118,31 @@ class ExpenseAutoEntryHumanReviewResolverTest {
     }
 
     @Test
-    void invoiceAndDraftTotalMismatchIsNonblockingWarning() {
+    void invoiceReconciliationUsesCurrentHumanInvoiceAndLatestDraftLineTotal() {
         ExpenseAutoEntryHumanReviewState state = new ExpenseAutoEntryHumanReviewState(
                 1,
                 new ExpenseAutoEntryHumanReviewState.Document(
                         null, null, new BigDecimal("30800")),
                 List.of(),
                 java.util.Map.of());
+        AutoEntryReviewResponse review = review(List.of());
 
-        assertThat(ExpenseAutoEntryDraftService.warnings(state, new BigDecimal("28000")))
-                .containsExactly(Warning.INVOICE_TOTAL_DIFFERS_FROM_DRAFT_TOTAL);
-        assertThat(ExpenseAutoEntryDraftService.warnings(state, new BigDecimal("30800.0")))
+        assertThat(ExpenseAutoEntryDraftService.warnings(
+                state, new BigDecimal("28000"), review))
                 .isEmpty();
+        assertThat(ExpenseAutoEntryDraftService.warnings(
+                state, new BigDecimal("28002"), review))
+                .containsExactly(Warning.INVOICE_TOTAL_DIFFERS_FROM_DRAFT_TOTAL);
+
+        ExpenseAutoEntryHumanReviewState editedInvoice = new ExpenseAutoEntryHumanReviewState(
+                1,
+                new ExpenseAutoEntryHumanReviewState.Document(
+                        null, null, new BigDecimal("28002")),
+                List.of(),
+                java.util.Map.of());
+        assertThat(ExpenseAutoEntryDraftService.warnings(
+                editedInvoice, new BigDecimal("28000"), review))
+                .containsExactly(Warning.INVOICE_TOTAL_DIFFERS_FROM_DRAFT_TOTAL);
     }
 
     private void assertInvalidMapping(
@@ -164,8 +179,12 @@ class ExpenseAutoEntryHumanReviewResolverTest {
         when(document.issuerName()).thenReturn(field("株式会社ABC", REVIEW));
         when(document.issuerTaxRegistrationNumber()).thenReturn(field(null, MISSING));
         when(document.totalAmount()).thenReturn(field(new BigDecimal("100"), OK));
+        when(document.taxAmount()).thenReturn(field(new BigDecimal("2800"), OK));
+        when(document.adjustments()).thenReturn(field(List.of(), OK));
         when(document.currencyCode()).thenReturn(field("JPY", OK));
         when(document.lineItems()).thenReturn(field(lineItems, OK));
+        when(review.taxMode()).thenReturn(new AutoEntryDerivedField<>(
+                AutoEntryTaxMode.TAX_EXCLUDED, OK, List.of()));
         return review;
     }
 

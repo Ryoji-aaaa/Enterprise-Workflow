@@ -1,6 +1,10 @@
 import { fetchBackend } from "./backend-browser-client.ts";
 import { expenseErrorMessage } from "./expense-application.ts";
-import type { AutoEntryField } from "./auto-entry-review.ts";
+import type {
+  AutoEntryAdjustment,
+  AutoEntryDerivedField,
+  AutoEntryField,
+} from "./auto-entry-review.ts";
 import type {
   AutoEntryHumanResolution,
   CreateExpenseAutoEntryDraftRequest,
@@ -56,6 +60,9 @@ export type ExpenseAutoEntryOriginal = {
   issuerName: AutoEntryField<string>;
   issuerTaxRegistrationNumber: AutoEntryField<string>;
   invoiceTotalAmount: AutoEntryField<number>;
+  taxAmount?: AutoEntryField<number>;
+  taxMode?: AutoEntryDerivedField<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">;
+  adjustments?: AutoEntryField<AutoEntryAdjustment[]>;
   lineItems: ExpenseAutoEntryOriginalLineItem[];
 };
 

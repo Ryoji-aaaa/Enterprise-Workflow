@@ -10,7 +10,10 @@ import jp.co.sdcj.workflow.service.ExpenseAutoEntryDraftDetails;
 import jp.co.sdcj.workflow.service.ExpenseAutoEntryHumanReviewState;
 import jp.co.sdcj.workflow.service.ExpenseAutoEntryHumanReviewState.HumanResolution;
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryAdjustment;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryDerivedField;
 import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryField;
+import jp.co.sdcj.workflow.service.documentanalysis.autoentry.AutoEntryReviewResponse.AutoEntryTaxMode;
 
 public record ExpenseAutoEntryDraftResponse(
         Application application,
@@ -62,6 +65,9 @@ public record ExpenseAutoEntryDraftResponse(
             AutoEntryField<String> issuerName,
             AutoEntryField<String> issuerTaxRegistrationNumber,
             AutoEntryField<BigDecimal> invoiceTotalAmount,
+            AutoEntryField<BigDecimal> taxAmount,
+            AutoEntryDerivedField<AutoEntryTaxMode> taxMode,
+            AutoEntryField<List<AutoEntryAdjustment>> adjustments,
             List<OriginalLineItem> lineItems) {
     }
 
@@ -97,6 +103,9 @@ public record ExpenseAutoEntryDraftResponse(
                 reviewDocument.issuerName(),
                 reviewDocument.issuerTaxRegistrationNumber(),
                 reviewDocument.totalAmount(),
+                reviewDocument.taxAmount(),
+                details.review().taxMode(),
+                reviewDocument.adjustments(),
                 java.util.stream.IntStream.range(0, reviewLineItems.size())
                         .mapToObj(index -> new OriginalLineItem(
                                 index,

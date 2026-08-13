@@ -1,4 +1,6 @@
 import type {
+  AutoEntryAdjustment,
+  AutoEntryDerivedField,
   AutoEntryField,
   AutoEntryFieldStatus,
   AutoEntryReviewResponse,
@@ -7,6 +9,7 @@ import {
   totalExpenseAmount,
   type ExpenseCategory,
   type ExpenseItem,
+  yen,
 } from "./expense-application.ts";
 import type {
   ExpenseAutoEntryDraftResponse,
@@ -60,6 +63,9 @@ export type ExpenseAutoEntryReviewSource = {
   issuerName: AutoEntryField<string>;
   issuerTaxRegistrationNumber: AutoEntryField<string>;
   invoiceTotalAmount: AutoEntryField<number>;
+  taxAmount: AutoEntryField<number>;
+  taxMode: AutoEntryDerivedField<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">;
+  adjustments: AutoEntryField<AutoEntryAdjustment[]>;
   lineItems: Array<{
     sourceLineItemIndex: number;
     itemDescription: AutoEntryField<string>;
@@ -135,6 +141,9 @@ export function liveAutoEntryReviewToSource(
     issuerName: review.document.issuerName,
     issuerTaxRegistrationNumber: review.document.issuerTaxRegistrationNumber,
     invoiceTotalAmount: review.document.totalAmount,
+    taxAmount: review.document.taxAmount,
+    taxMode: review.taxMode,
+    adjustments: review.document.adjustments,
     lineItems: (review.document.lineItems.value ?? []).map((item, sourceLineItemIndex) => ({
       sourceLineItemIndex,
       itemDescription: item.itemDescription,
@@ -150,6 +159,25 @@ export function persistedAutoEntryOriginalToSource(
     issuerName: original.issuerName,
     issuerTaxRegistrationNumber: original.issuerTaxRegistrationNumber,
     invoiceTotalAmount: original.invoiceTotalAmount,
+    taxAmount: original.taxAmount ?? {
+      value: null,
+      confidence: null,
+      status: "MISSING",
+      sources: [],
+      findings: [],
+    },
+    taxMode: original.taxMode ?? {
+      value: "UNKNOWN",
+      status: "MISSING",
+      findings: [],
+    },
+    adjustments: original.adjustments ?? {
+      value: null,
+      confidence: null,
+      status: "MISSING",
+      sources: [],
+      findings: [],
+    },
     lineItems: original.lineItems.map((item) => ({ ...item })),
   };
 }
@@ -330,11 +358,59 @@ export function shouldShowAutoEntryField(
   return !showAttentionOnly || field.field.status !== "OK";
 }
 
-export function hasInvoiceTotalMismatch(
+export type ExpenseAutoEntryInvoiceTotalReconciliationStatus =
+  | "MATCHED"
+  | "MISMATCH"
+  | "UNAVAILABLE";
+
+export function isSafeExpenseAutoEntryAdjustment(
+  adjustment: AutoEntryAdjustment,
+): boolean {
+  return adjustment.normalizedSignedAmount.value !== null
+    && adjustment.normalizedSignedAmount.status === "OK";
+}
+
+export function reconcileExpenseAutoEntryInvoiceTotal(
   invoiceTotalAmount: number | null,
   items: readonly ExpenseItem[],
-): boolean {
-  return invoiceTotalAmount !== null && invoiceTotalAmount !== totalExpenseAmount([...items]);
+  taxAmount: AutoEntryField<number>,
+  adjustments: AutoEntryField<AutoEntryAdjustment[]>,
+  taxMode: AutoEntryDerivedField<"TAX_INCLUDED" | "TAX_EXCLUDED" | "UNKNOWN">,
+): ExpenseAutoEntryInvoiceTotalReconciliationStatus {
+  if (invoiceTotalAmount === null) return "UNAVAILABLE";
+
+  const draftLineTotal = totalExpenseAmount([...items]);
+  const adjustmentValues = adjustments.value?.map(
+    (adjustment) => isSafeExpenseAutoEntryAdjustment(adjustment)
+      ? adjustment.normalizedSignedAmount.value
+      : null,
+  );
+  const adjustmentAvailable = adjustmentValues !== undefined
+    && adjustmentValues.every((value): value is number => value !== null);
+  const adjustmentTotal = adjustmentAvailable
+    ? adjustmentValues.reduce((total, value) => total + value, 0)
+    : null;
+
+  const withoutTax = [draftLineTotal];
+  if (adjustmentTotal !== null) withoutTax.push(draftLineTotal + adjustmentTotal);
+  const withTax: number[] = [];
+  if (taxAmount.value !== null) {
+    withTax.push(draftLineTotal + taxAmount.value);
+    if (adjustmentTotal !== null) {
+      withTax.push(draftLineTotal + taxAmount.value + adjustmentTotal);
+    }
+  }
+  const candidates = taxMode.value === "TAX_EXCLUDED"
+    ? [...withTax, ...withoutTax]
+    : [...withoutTax, ...withTax];
+  if (candidates.some((candidate) => Math.abs(invoiceTotalAmount - candidate) <= 1)) {
+    return "MATCHED";
+  }
+  return taxAmount.value === null || adjustmentTotal === null ? "UNAVAILABLE" : "MISMATCH";
+}
+
+export function formatExpenseAutoEntryTaxAmount(taxAmount: number | null): string {
+  return taxAmount === null ? "未取得" : yen(taxAmount);
 }
 
 export function createExpenseAutoEntryDraftRequest(
