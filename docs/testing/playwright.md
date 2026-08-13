@@ -66,9 +66,11 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
     `SUCCEEDED`後のReview、`MISSING`表示、reload後の結果復元を確認する。さらにRecent analysesから
     同じJob、Review、BFF source previewを復元し、Browser `File` がない状態では再分析できないことと、
     mobile viewportでFile、Preview、Resultを切り替えてReviewを表示できることを確認する
-32. AUTO_ENTRY下書きを申請し、現在Candidateが正式な原本証憑を閲覧できること、差戻し後の「編集」が
-    保存済みAUTO_ENTRY確認画面へ遷移すること、AI原値・人の現在値・原本previewを復元して専用PUTで保存し、
-    既存resubmit APIで新しい承認Runへ再申請できることを確認する
+32. AUTO_ENTRYではSidebarから業務画面へ遷移し、Fake Providerの分析、Review（`OK` / `REVIEW` /
+    `MISSING`）、AI値を初期値とする編集、attention filter、請求額照合、正式handoff、Confirmationの
+    reload復元、専用PUT保存、申請、現在Candidateの正式な原本証憑閲覧、差戻し後の編集・再申請・新しい
+    Approval Runを確認する。`TaxRatePercent=null`は補完せず`MISSING`として扱い、照合はAI値や経費金額を
+    自動変更しないnon-blocking表示とする
 33. 通常経費の新規申請でsubmitの503後にGETが`DRAFT`を返した場合、再試行時に新しいDRAFTをPOSTせず、
     最初に保存したApplication IDへのPUTとsubmitを使用することを確認する
 
@@ -123,13 +125,13 @@ Playwrightが失敗した場合、実行ログにもこの2つの保存先を表
 
 ## staging Azure Document Analysis live smoke
 
-`specs/azure-document-analysis-smoke.spec.ts`は通常の`make test SUITES=e2e`では
+`specs/azure-document-analysis-smoke.spec.ts`と`specs/azure-auto-entry-smoke.spec.ts`は通常の`make test SUITES=e2e`では
 `AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE=true`がないためskipする。通常suiteは引き続きFake Providerを使い、
 Azure endpoint、Private Endpoint、課金、RBAC propagationへ依存しない。live specはstagingだけで、
 `BASE_URL`、`KEYCLOAK_URL`、`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`、process environment内だけの
 `DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`を要求する。不足した状態でlive flagをtrueにすると明示的に失敗する。
 
-live specは既存`fixtures/receipt.pdf`だけを使い、Document IntelligenceとContent Understandingを各1件直列実行する。
+GENERAL live specは既存`fixtures/receipt.pdf`だけを使い、Document IntelligenceとContent Understandingを各1件直列実行する。
 各Providerは最大10分の有限待機で`SUCCEEDED`を確認するため、test全体timeoutは22分、専用設定のtimeoutは23分である。
 `FAILED`または`FAILED_RECOVERY_REQUIRED`を取得した場合は再送や10分待機をせず固定メッセージでfail-fastする。pollingで得た
 実際のterminal Job responseを保持し、schema version 1、`prebuilt-layout`、GA API version、non-empty Markdown、
@@ -138,8 +140,14 @@ Raw JSONのfake marker不在を確認する。summaryの時刻には`new Date()`
 `*.cognitiveservices.azure.com`、`*.services.ai.azure.com`、`*.openai.azure.com`、`*.blob.core.windows.net`へ
 直接requestが0件であることをassertする。分析通信は同一originの`/api/backend/document-analyses...`だけを通す。
 
-live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`workers: 1`、
-`retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。
+AUTO_ENTRY live specはcanonicalな`backend/src/test/resources/document-analysis/auto-entry/v2.1/documents/invoice-02.jpg`を
+1回だけ選択し、Content Understandingの`AUTO_ENTRY`分析、normalized v2.1 Review、human入力、formal handoff、
+Formal Expense原本preview、reload、保存、`PENDING_APPROVAL`への申請を確認する。抽出値の完全一致は要求せず、
+`TaxRatePercent`がnullならReviewで`MISSING`のまま保持する。business mutationを含むため、このspecはtest-level retryを
+0にして新しいanalysisやExpenseApplicationを自動作成しない。
+
+live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`workers: 1`にする。
+GENERAL Azure smokeは`retries: 2`の有限retryを許可する一方、AUTO_ENTRY business smokeは前記のとおりretryしない。
 failure時にも`test-results`全体をartifactへuploadしない。Provider、stage、status、API version、実際のJob時刻だけの
 allow-list済み診断JSONを1日だけ非公開保持できる。passwordはKey Vaultからlive smokeを実行する同じshellで取得して
 maskし、Playwright processだけへ渡す。Cookie、Authorization header、入力fixture、Markdown本文、Raw JSON本文、

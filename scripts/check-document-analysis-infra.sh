@@ -234,6 +234,9 @@ if ! grep -Fq 'AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}' <<<"${p
   exit 1
 fi
 grep -Fq 'AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'DOCUMENT_ANALYSIS_AUTO_ENTRY_LIVE_SMOKE_SUMMARY_PATH' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'specs/azure-auto-entry-smoke.spec.ts' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'enterprise_workflow_auto_entry_v2.1.1' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'development-seed-password' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'retention-days: 1' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'playwright.live.config.ts' "${STAGING_SMOKE_WORKFLOW}"

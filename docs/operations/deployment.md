@@ -298,10 +298,16 @@ Phase Aでは3 runtime controlを`false`にした新しいstaging deployの後�
 gh workflow run document-analysis-staging-smoke.yml --ref main -f image_sha=<40-character-sha>
 ```
 
-このworkflowはseed Jobを開始しない。staging seed user、`development-seed-password`、Key Vault accessが
+このworkflowはGENERALのDocument Intelligence / Content Understanding smokeに加え、AUTO_ENTRY Content
+Understanding business smokeを実行する。AUTO_ENTRYは同じ`invoice-02.jpg`をfile selectionから送信し、Review、
+human入力、formal handoff、Confirmation reload、保存、`PENDING_APPROVAL`までを確認する。抽出値の完全一致は
+release gateにせず、`TaxRatePercent=null`は`MISSING`として保持し、10/8の推測や税額・経費金額の自動変更を行わない。
+業務mutationを含むAUTO_ENTRY specは自動retryしない。このworkflowはseed Jobを開始しない。staging seed user、
+`development-seed-password`、Key Vault accessが
 事前に揃っていなければ、安全にfailした後で
-[開発・staging用seedデータ](../backend/development-seed-data.md)の手順を使う。成功summaryから同一SHA、2 Provider、
-status、API version、Azure Job responseの実際のcreatedAt/completedAtをrelease recordへ転記するが、文書本文やRaw JSONは転記しない。
+[開発・staging用seedデータ](../backend/development-seed-data.md)の手順を使う。成功summaryから同一SHA、2 GENERAL Providerと
+AUTO_ENTRYのprovider/profile/analyzer/schema、handoff status、Expense final status、Azure Job responseの実際の
+createdAt/completedAtをrelease recordへ転記するが、文書本文、金額、Raw JSON、credentialは転記しない。
 
 rollbackは3 runtime controlを`false`へ戻して、同じ検証済みSHAで新しいdeploy runを開始する。Azure resource、
 Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Jobを自動再queueしない。
@@ -310,12 +316,13 @@ Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Job
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、
 3つの通常Container Apps、3つの手動seed JobがTerraform
-stateと一致することを確認する。現在の業務DBはFlyway V008まで適用済みであり、GitHub
+stateと一致することを確認する。Flywayの最新migrationが適用済みであること（AUTO_ENTRY原本添付
+provenance制約を含む現在はV018）を確認し、GitHub
 Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV017）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV018）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。

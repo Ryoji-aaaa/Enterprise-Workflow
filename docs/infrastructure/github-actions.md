@@ -144,10 +144,12 @@ Environment variableとして登録し、seed userが未投入の場合は[開�
 live smokeは`/api/backend/me`でsmoke userが`APPLICATION_USER`を持ち、廃止済み
 `DOCUMENT_ANALYSIS_USER`を持たず、Document Analysisの3 Permissionを持つことも検証する。
 
-live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`workers: 1`と
-`retries: 2`にする。Azure live smokeは課金対象だが、staging validationでは有限回のretryを許可する。
-成功summaryは
-同一image SHA、Provider、status、API version、Azure Job responseの実際の`createdAt`/`completedAt`だけに限定する。
+live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`workers: 1`にする。GENERALの
+Document Intelligence / Content Understanding smokeは`retries: 2`の有限retryを許可する。AUTO_ENTRY
+Content Understanding business smokeはanalysis、handoff、save、submitを含むためtest-level retryを0にし、
+失敗後に別の業務データを自動作成しない。成功summaryは同一image SHA、GENERAL Providerのstatus/API version/
+実際の`createdAt`/`completedAt`、AUTO_ENTRYのprovider/profile/analyzer/API version/schema version/handoff status/
+Expense final statusだけに限定する。
 失敗時にartifactへ残せるのはProvider、stage、status、API version、時刻だけのallow-list済み専用診断ファイルであり、
 `test-results`全体はuploadしない。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、
 operation token、Azure response bodyはsummary、log、report、artifactに記録しない。

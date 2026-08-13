@@ -150,7 +150,8 @@ jobs:
           AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"
           DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
           DOCUMENT_ANALYSIS_LIVE_SMOKE_IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
-          DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-live-smoke-summary.json
+          DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-general-live-smoke-summary.json
+          DOCUMENT_ANALYSIS_AUTO_ENTRY_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-auto-entry-live-smoke-summary.json
           DOCUMENT_ANALYSIS_LIVE_SMOKE_DIAGNOSTIC_PATH: test-results/document-analysis-live-smoke-diagnostics.json
         run: |
           password="$(az keyvault secret show --vault-name "$TF_VAR_key_vault_name" \
@@ -161,7 +162,9 @@ jobs:
           }
           echo "::add-mask::$password"
           DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD="$password" \
-            npx playwright test --config=playwright.live.config.ts specs/azure-document-analysis-smoke.spec.ts
+            npx playwright test --config=playwright.live.config.ts \
+              specs/azure-document-analysis-smoke.spec.ts \
+              specs/azure-auto-entry-smoke.spec.ts
       - name: Publish non-sensitive smoke evidence
         if: success()
         working-directory: tests/e2e
@@ -170,13 +173,26 @@ jobs:
         run: |
           echo "- Image SHA: ${IMAGE_SHA}" >> "$GITHUB_STEP_SUMMARY"
           jq -er --arg image_sha "$IMAGE_SHA" '
-            . as $summary
-            | ($summary.imageSha == $image_sha)
-              and (($summary.analyses | type) == "array")
-              and (($summary.analyses | length) == 2)
-            | if . then $summary.analyses[] else error("invalid safe smoke summary") end
-            | "- \(.provider): \(.status), API \(.apiVersion), \(.createdAt) to \(.completedAt)"
-          ' test-results/document-analysis-live-smoke-summary.json >> "$GITHUB_STEP_SUMMARY"
+            . as $general | input as $auto
+            | if ($general.imageSha == $image_sha)
+                and (($general.analyses | type) == "array")
+                and (($general.analyses | length) == 2)
+                and ($auto.imageSha == $image_sha)
+                and ($auto.autoEntry.provider == "CONTENT_UNDERSTANDING")
+                and ($auto.autoEntry.profile == "AUTO_ENTRY")
+                and ($auto.autoEntry.analyzerId == "enterprise_workflow_auto_entry_v2.1.1")
+                and ($auto.autoEntry.apiVersion == "2025-11-01")
+                and ($auto.autoEntry.status == "SUCCEEDED")
+                and ($auto.autoEntry.outerSchemaVersion == 1)
+                and ($auto.autoEntry.autoEntrySchemaVersion == "2.1")
+                and (($auto.autoEntry.handoffStatus == 200) or ($auto.autoEntry.handoffStatus == 201))
+                and ($auto.autoEntry.expenseStatus == "PENDING_APPROVAL")
+              then [
+                ($general.analyses[] | "- GENERAL \(.provider): \(.status), API \(.apiVersion), \(.createdAt) to \(.completedAt)"),
+                ("- AUTO_ENTRY CONTENT_UNDERSTANDING: \($auto.autoEntry.status), analyzer \($auto.autoEntry.analyzerId), API \($auto.autoEntry.apiVersion), schema \($auto.autoEntry.outerSchemaVersion)/\($auto.autoEntry.autoEntrySchemaVersion), handoff \($auto.autoEntry.handoffStatus), expense \($auto.autoEntry.expenseStatus), \($auto.autoEntry.createdAt) to \($auto.autoEntry.completedAt)")
+              ][] else error("invalid safe smoke summary") end
+          ' test-results/document-analysis-general-live-smoke-summary.json \
+            test-results/document-analysis-auto-entry-live-smoke-summary.json >> "$GITHUB_STEP_SUMMARY"
       - name: Upload allow-listed smoke diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4

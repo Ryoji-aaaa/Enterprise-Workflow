@@ -61,6 +61,10 @@ AI税額を加えた候補、税額と調整額の両方を加えた候補のい
 使用しない。ただし、そのAdjustmentを使用しない別の安全な候補が一致すれば一致とする。最終的な申請値は
 人が原本を確認して編集する。旧Backend responseに追加済みの税・調整fieldがない場合も未取得へ正規化し、
 画面をクラッシュさせず照合不能として表示する。
+
+PoCの既知制約として、元のDirectionまたはRawAmountがlow confidenceでも
+`normalizedSignedAmount.status=OK`になり、非常に限定的に本来`UNAVAILABLE`とすべき照合が`MATCHED`となる可能性がある。
+この場合も照合はnon-blockingで、AI値による経費金額の自動変更は行わず、調整額metadataを人に表示する。
 「決定」は未確認項目がある場合に最小の確認ダイアログを表示した後、
 `POST /api/backend/expense-applications/from-auto-entry`を呼ぶ。payloadは現在の経費入力、文書入力、
 有効な`confirmedFieldPaths`だけであり、AIのconfidence、status、findings、sources、polygon、original value、
