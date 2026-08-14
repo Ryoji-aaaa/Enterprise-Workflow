@@ -6,6 +6,11 @@ run_backend_suite() {
       <(tail -n +2 "${PROJECT_DIRECTORY}/keycloak/development-users.tsv") \
       <(tail -n +3 "${PROJECT_DIRECTORY}/backend/seed/development-users.tsv")
 
+  run_phase backend check staging-test-personas CHECK \
+    "Backend / staging test persona contract" failed \
+    "logs/backend/staging-test-personas.log" \
+    bash "${TEST_TOOL_DIRECTORY}/checks/staging-test-personas.sh"
+
   run_phase backend check image-build BUILD \
     "Backend / test image" failed \
     "logs/backend/image-build.log" \

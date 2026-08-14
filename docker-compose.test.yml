@@ -12,6 +12,7 @@ services:
     user: "${TEST_UID:-1000}:${TEST_GID:-1000}"
     volumes:
       - ${TEST_RUN_DIRECTORY:-./test-results/manual}:/test-results
+      - ./tests/fixtures/staging-test-personas.json:/workspace/tests/fixtures/staging-test-personas.json:ro
     network_mode: none
 
   frontend-test:

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "personas": {
+    "STANDARD_APPLICANT": {
+      "email": "first-si-sales-section.user@sdcj.co.jp",
+      "organizationUnitCode": "FIRST_SI_SALES_SECTION",
+      "divisionUnitCode": "FIRST_SI_DIVISION",
+      "positionCode": "MEMBER",
+      "requiredRoleCodes": [
+        "APPLICATION_USER"
+      ],
+      "requiredPermissionCodes": [
+        "EXPENSE_APPLICATION_CREATE",
+        "EXPENSE_APPLICATION_READ_OWN",
+        "DOCUMENT_ANALYSIS_READ_OWN",
+        "DOCUMENT_INTELLIGENCE_ANALYZE",
+        "CONTENT_UNDERSTANDING_ANALYZE"
+      ]
+    },
+    "DEPARTMENT_MANAGER": {
+      "email": "first-si-sales-section.head@sdcj.co.jp",
+      "organizationUnitCode": "FIRST_SI_SALES_SECTION",
+      "divisionUnitCode": "FIRST_SI_DIVISION",
+      "positionCode": "SECTION_HEAD",
+      "requiredRoleCodes": [
+        "APPLICATION_USER",
+        "WORKFLOW_APPROVER"
+      ],
+      "requiredPermissionCodes": [
+        "EXPENSE_APPLICATION_APPROVE"
+      ]
+    },
+    "DIVISION_HEAD": {
+      "email": "first-si-division.head@sdcj.co.jp",
+      "organizationUnitCode": "FIRST_SI_DIVISION",
+      "divisionUnitCode": "FIRST_SI_DIVISION",
+      "positionCode": "DIVISION_HEAD",
+      "requiredRoleCodes": [
+        "APPLICATION_USER",
+        "WORKFLOW_APPROVER"
+      ],
+      "requiredPermissionCodes": [
+        "EXPENSE_APPLICATION_APPROVE"
+      ]
+    },
+    "ACCOUNTING_APPROVER": {
+      "email": "accounting-section.user@sdcj.co.jp",
+      "organizationUnitCode": "ACCOUNTING_SECTION",
+      "divisionUnitCode": "MANAGEMENT_HEADQUARTERS",
+      "positionCode": "MEMBER",
+      "requiredRoleCodes": [
+        "APPLICATION_USER",
+        "WORKFLOW_APPROVER"
+      ],
+      "requiredPermissionCodes": [
+        "EXPENSE_APPLICATION_APPROVE"
+      ]
+    },
+    "PRESIDENT": {
+      "email": "president@sdcj.co.jp",
+      "organizationUnitCode": "SDCJ",
+      "positionCode": "PRESIDENT",
+      "requiredRoleCodes": [
+        "APPLICATION_USER",
+        "ORGANIZATION_CHART_VIEWER",
+        "WORKFLOW_APPROVER",
+        "USER_INFORMATION_MANAGER"
+      ]
+    }
+  }
+}

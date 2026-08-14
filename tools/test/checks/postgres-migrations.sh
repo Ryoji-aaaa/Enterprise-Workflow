@@ -10,6 +10,7 @@ source "${PROJECT_DIRECTORY}/scripts/lib/log.sh"
 [[ -z "${TEST_RUN_DIRECTORY:-}" ]] || source "${PROJECT_DIRECTORY}/tools/test/lib/case-results.sh"
 
 readonly MIGRATION_DIRECTORY="${PROJECT_DIRECTORY}/backend/src/main/resources/db/migration"
+readonly PERSONA_MANIFEST="${PROJECT_DIRECTORY}/tests/fixtures/staging-test-personas.json"
 readonly POSTGRES_IMAGE="${POSTGRES_VERSION:+postgres:${POSTGRES_VERSION}}"
 readonly EFFECTIVE_POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4}"
 readonly TEST_SUFFIX="$$"
@@ -80,6 +81,11 @@ fail() {
   exit 1
 }
 
+validate_natural_key() {
+  local key="$1"
+  [[ "${key}" =~ ^[A-Z0-9_]+$ ]] || fail "Invalid manifest natural key for SQL contract: ${key}"
+}
+
 admin_psql() {
   docker exec "${POSTGRES_CONTAINER}" \
     psql --username postgres --dbname "${1}" --set ON_ERROR_STOP=1 "${@:2}"
@@ -93,6 +99,52 @@ workflow_psql() {
     "${POSTGRES_CONTAINER}" \
     psql --host 127.0.0.1 --username workflow --dbname "${1}" \
     --set ON_ERROR_STOP=1 "${@:2}"
+}
+
+assert_persona_permission_contracts() {
+  [[ -r "${PERSONA_MANIFEST}" ]] || fail "Persona manifest is not readable: ${PERSONA_MANIFEST}"
+
+  local persona
+  local role_codes
+  local permission_code
+  local role_code
+  local mapping_count
+  local matched
+  while IFS=$'\t' read -r persona role_codes permission_code; do
+    validate_natural_key "${persona}"
+    validate_natural_key "${permission_code}"
+    matched=false
+    IFS=',' read -r -a roles <<<"${role_codes}"
+    for role_code in "${roles[@]}"; do
+      validate_natural_key "${role_code}"
+      mapping_count="$(
+        workflow_psql workflow_fresh --tuples-only --no-align --command "
+          SELECT count(*)
+          FROM role_permissions mapping
+          JOIN roles role ON role.id = mapping.role_id
+          JOIN permissions permission ON permission.id = mapping.permission_id
+          WHERE role.role_code = '${role_code}'
+            AND permission.permission_code = '${permission_code}';
+        "
+      )"
+      if [[ "${mapping_count}" != "0" ]]; then
+        matched=true
+        break
+      fi
+    done
+    [[ "${matched}" == "true" ]] || fail \
+      "Fresh Flyway baseline does not grant ${permission_code} to any required role for ${persona}"
+  done < <(
+    jq --raw-output '
+      .personas
+      | to_entries[]
+      | .key as $persona
+      | .value.requiredRoleCodes as $roles
+      | (.value.requiredPermissionCodes // [])[]
+      | [$persona, ($roles | join(",")), .]
+      | @tsv
+    ' "${PERSONA_MANIFEST}"
+  )
 }
 
 create_database() {
@@ -1470,6 +1522,9 @@ SELECT
     TRUE, CURRENT_DATE, workflow_system_user_id(), workflow_system_user_id()
 FROM organization_units WHERE unit_code = 'SDCJ';
 SQL
+
+assert_persona_permission_contracts
+
 docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
