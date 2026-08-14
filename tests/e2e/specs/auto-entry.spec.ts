@@ -3,12 +3,12 @@ import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { loadStagingPersona } from "../support/staging-persona";
+
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const userEmail = requiredEnvironment("DEV_USER_EMAIL");
 const userPassword = requiredEnvironment("DEV_USER_PASSWORD");
-const expenseUserEmail = requiredEnvironment("DEV_EXPENSE_USER_EMAIL");
-const expenseManagerEmail = requiredEnvironment("DEV_EXPENSE_MANAGER_EMAIL");
-const expenseUserPassword = requiredEnvironment("DEV_EXPENSE_PASSWORD");
+const seedUserPassword = requiredEnvironment("DEV_SEED_USER_PASSWORD");
 const receiptPdf = readFileSync(resolve("fixtures/receipt.pdf"));
 
 function requiredEnvironment(name: string): string {
@@ -147,7 +147,8 @@ test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元
 test("要確認のみではMISSINGの自動入力明細を最後まで修正できる", async ({ page }) => {
   test.setTimeout(90_000);
 
-  await login(page, expenseUserEmail, expenseUserPassword);
+  const applicant = await loadStagingPersona("STANDARD_APPLICANT");
+  await login(page, applicant.email, seedUserPassword);
   await makeAutoEntryLineItemMissing(page);
   await page.goto("/expenses/auto-entry");
   await page.locator("#expense-auto-entry-file").setInputFiles(resolve("fixtures/receipt.pdf"));
@@ -169,7 +170,8 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
 test("通常経費フォームも申請結果不明時は再実行を止めて詳細確認へ誘導する", async ({ page }) => {
   test.setTimeout(90_000);
 
-  await login(page, expenseUserEmail, expenseUserPassword);
+  const applicant = await loadStagingPersona("STANDARD_APPLICANT");
+  await login(page, applicant.email, seedUserPassword);
   await page.goto("/expenses/new");
   await page.getByLabel("件名", { exact: true }).fill(`E2E通常申請結果不明-${Date.now()}`);
   await page.getByLabel("利用目的", { exact: true }).fill("結果不明時の再実行防止確認");
@@ -229,7 +231,8 @@ test("通常経費フォームも申請結果不明時は再実行を止めて�
 test("通常経費の申請再試行は最初に保存したDRAFTを再利用する", async ({ page }) => {
   test.setTimeout(90_000);
 
-  await login(page, expenseUserEmail, expenseUserPassword);
+  const applicant = await loadStagingPersona("STANDARD_APPLICANT");
+  await login(page, applicant.email, seedUserPassword);
   await page.goto("/expenses/new");
   await page.getByLabel("件名", { exact: true }).fill(`E2E通常申請再試行-${Date.now()}`);
   await page.getByLabel("利用目的", { exact: true }).fill("保存済みDRAFTの再利用確認");
@@ -301,7 +304,11 @@ test("通常経費の申請再試行は最初に保存したDRAFTを再利用す
 test("請求/注文書申請（自動入力）は保存・申請・差戻し・再編集・再申請できる", async ({ browser, page }) => {
   test.setTimeout(90_000);
 
-  await login(page, expenseUserEmail, expenseUserPassword);
+  const [applicant, managerPersona] = await Promise.all([
+    loadStagingPersona("STANDARD_APPLICANT"),
+    loadStagingPersona("DEPARTMENT_MANAGER"),
+  ]);
+  await login(page, applicant.email, seedUserPassword);
   await page.getByRole("link", { name: "請求/注文書申請（自動入力）", exact: true }).click();
   await expect(page).toHaveURL(/\/expenses\/auto-entry$/);
   await expect(page.getByRole("heading", { name: "請求/注文書申請（自動入力）", exact: true })).toBeVisible();
@@ -435,7 +442,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   const managerContext = await browser.newContext();
   const manager = await managerContext.newPage();
   try {
-    await login(manager, expenseManagerEmail, expenseUserPassword);
+    await login(manager, managerPersona.email, seedUserPassword);
     await manager.goto(`/approvals/${created.application.id}`);
     await expect(manager.getByText("receipt.pdf", { exact: true })).toBeVisible();
     const attachmentsResponse = await manager.request.get(

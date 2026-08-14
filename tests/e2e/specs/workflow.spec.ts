@@ -2,6 +2,8 @@ import { resolve } from "node:path";
 
 import { expect, request as playwrightRequest, test, type Browser, type Page } from "@playwright/test";
 
+import { loadStagingPersona } from "../support/staging-persona";
+
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const mailpitUrl = process.env.MAILPIT_URL ?? "http://localhost:8025";
 const adminEmail = requiredEnvironment("DEV_ADMIN_EMAIL");
@@ -10,16 +12,8 @@ const userEmail = requiredEnvironment("DEV_USER_EMAIL");
 const userPassword = requiredEnvironment("DEV_USER_PASSWORD");
 const pendingEmail = requiredEnvironment("DEV_PENDING_EMAIL");
 const pendingPassword = requiredEnvironment("DEV_PENDING_PASSWORD");
-const presidentEmail = requiredEnvironment("DEV_PRESIDENT_EMAIL");
-const presidentPassword = requiredEnvironment("DEV_PRESIDENT_PASSWORD");
 const partTimeEmail = requiredEnvironment("DEV_PART_TIME_EMAIL");
-const partTimePassword = requiredEnvironment("DEV_PART_TIME_PASSWORD");
-const expenseUserEmail = requiredEnvironment("DEV_EXPENSE_USER_EMAIL");
-const expenseManagerEmail = requiredEnvironment("DEV_EXPENSE_MANAGER_EMAIL");
-const expenseDivisionHeadEmail = requiredEnvironment("DEV_EXPENSE_DIVISION_HEAD_EMAIL");
-const expenseAccountingEmail = requiredEnvironment("DEV_EXPENSE_ACCOUNTING_EMAIL");
-const expenseOutsiderEmail = requiredEnvironment("DEV_EXPENSE_OUTSIDER_EMAIL");
-const expensePassword = requiredEnvironment("DEV_EXPENSE_PASSWORD");
+const seedUserPassword = requiredEnvironment("DEV_SEED_USER_PASSWORD");
 const notificationSubject = "[Workflow] 未登録ユーザーからアクセスがありました";
 const expenseApprovalSubject = "[Workflow] 経費申請の承認依頼";
 const expenseUpdateSubject = "[Workflow] 経費申請の更新";
@@ -120,7 +114,7 @@ function expensePayload(title: string, version?: number) {
 async function expensePage(browser: Browser, email: string): Promise<Page> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await login(page, email, expensePassword);
+  await login(page, email, seedUserPassword);
   await expect(page).toHaveURL(/\/top$/);
   return page;
 }
@@ -533,12 +527,18 @@ test("無効なBetter Auth sessionへのBFF 401で認証Cookieを削除する", 
 });
 
 test("経費申請の一般・部門長・事業部長経路と差戻し再申請をBFF越しに処理する", async ({ browser }) => {
+  const [applicantPersona, managerPersona, divisionHeadPersona, accountingPersona] = await Promise.all([
+    loadStagingPersona("STANDARD_APPLICANT"),
+    loadStagingPersona("DEPARTMENT_MANAGER"),
+    loadStagingPersona("DIVISION_HEAD"),
+    loadStagingPersona("ACCOUNTING_APPROVER"),
+  ]);
   const suffix = Date.now();
-  const applicant = await expensePage(browser, expenseUserEmail);
-  const manager = await expensePage(browser, expenseManagerEmail);
-  const divisionHead = await expensePage(browser, expenseDivisionHeadEmail);
-  const accounting = await expensePage(browser, expenseAccountingEmail);
-  const outsider = await expensePage(browser, expenseOutsiderEmail);
+  const applicant = await expensePage(browser, applicantPersona.email);
+  const manager = await expensePage(browser, managerPersona.email);
+  const divisionHead = await expensePage(browser, divisionHeadPersona.email);
+  const accounting = await expensePage(browser, accountingPersona.email);
+  const outsider = await expensePage(browser, divisionHeadPersona.email);
   try {
     const general = await createAndSubmitExpense(applicant, `E2E一般申請-${suffix}`);
     expect(general.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
@@ -638,11 +638,11 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
     await expectActiveSidebarLink(applicant, "経費申請");
 
     await expect.poll(
-      () => searchNotificationCount(expenseApprovalSubject, expenseManagerEmail),
+      () => searchNotificationCount(expenseApprovalSubject, managerPersona.email),
       { message: "経費承認依頼メールを待機する", timeout: 10_000 },
     ).toBeGreaterThan(0);
     await expect.poll(
-      () => searchNotificationCount(expenseUpdateSubject, expenseUserEmail),
+      () => searchNotificationCount(expenseUpdateSubject, applicantPersona.email),
       { message: "経費申請者向け更新メールを待機する", timeout: 10_000 },
     ).toBeGreaterThan(0);
   } finally {
@@ -683,7 +683,8 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
 });
 
 test("社長が組織図とユーザー編集を利用しロール変更を監査できる", async ({ page }) => {
-  await login(page, presidentEmail, presidentPassword);
+  const president = await loadStagingPersona("PRESIDENT");
+  await login(page, president.email, seedUserPassword);
 
   await expect(page).toHaveURL(/\/top$/);
   await expectWorkspaceChrome(page);
@@ -804,7 +805,7 @@ test("一般正社員は組織図を閲覧できユーザー管理は表示さ�
 });
 
 test("パートもDocument Analysisを利用できるが組織図は雇用区分で拒否される", async ({ page }) => {
-  await login(page, partTimeEmail, partTimePassword);
+  await login(page, partTimeEmail, seedUserPassword);
 
   await expect(page).toHaveURL(/\/top$/);
   await expect(page.getByRole("link", { name: "組織図" })).toHaveCount(0);

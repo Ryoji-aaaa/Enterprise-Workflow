@@ -123,8 +123,11 @@ persona名は人名や組織名ではなく、業務上の意味を表す。通�
 部門承認は`DEPARTMENT_MANAGER`、事業部長承認は`DIVISION_HEAD`、経理承認は
 `ACCOUNTING_APPROVER`、全社・最上位権限の確認は`PRESIDENT`を基本にする。
 `STANDARD_APPLICANT`をすべてのテストで使うことを標準とはせず、必要な組織階層、役職、
-Permissionに合うpersonaを選択する。所属不備や雇用区分のnegative testでは、今後
-`NO_DIVISION_USER`、`PART_TIME_USER`、`CONTRACT_USER`などの境界personaを導入できる。
+Permissionに合うpersonaを選択する。local E2Eも同じcatalogをread-only mountし、
+`STAGING_TEST_PERSONAS_PATH`から実行時に解決する。これはlocal環境をstagingとして扱うものではなく、
+development seedが共有するcanonical mappingをselectorとして再利用するものである。passwordは
+catalogに入れず、local seed credentialを別途渡す。所属不備や雇用区分のnegative testは現在の
+`DEV_PART_TIME_EMAIL`などのlocal boundary fixtureを維持し、組織所属を前提とするcatalogへ追加しない。
 
 課金や外部Azure resourceを呼ぶstaging live smokeでは、分析要求を開始する前にpersonaが
 必要な前提条件を満たすことをpreflightする。GENERALとAUTO_ENTRYはテスト意図として
@@ -139,8 +142,11 @@ consumerの移行状態は次のとおりである。
 | `specs/azure-document-analysis-smoke.spec.ts` | canonical persona manifest | `STANDARD_APPLICANT` | T2完了 |
 | `specs/azure-auto-entry-smoke.spec.ts` | canonical persona manifest | `STANDARD_APPLICANT` | T2完了 |
 | `.github/workflows/document-analysis-staging-smoke.yml` | repository manifestとKey Vault password | `STANDARD_APPLICANT` | T2完了 |
-| local expense E2E specs | `DEV_EXPENSE_*` env vars | role-specific personas | T3 |
-| generic local login specs | `DEV_USER_EMAIL` / `DEV_ADMIN_EMAIL` | flow-specific personas where needed | T3 |
+| `specs/workflow.spec.ts` の経費・社長フロー | canonical persona manifest | `STANDARD_APPLICANT` / `DEPARTMENT_MANAGER` / `DIVISION_HEAD` / `ACCOUNTING_APPROVER` / `PRESIDENT` | T3完了 |
+| `specs/auto-entry.spec.ts` の正式経費フロー | canonical persona manifest | `STANDARD_APPLICANT` / `DEPARTMENT_MANAGER` | T3完了 |
+| `specs/expense-attachments.spec.ts` | canonical persona manifest | `STANDARD_APPLICANT` / `DEPARTMENT_MANAGER` / `DIVISION_HEAD` | T3完了 |
+| generic local login specs | `DEV_USER_EMAIL` / `DEV_ADMIN_EMAIL` | local bootstrap fixture | 維持 |
+| 未登録・雇用区分境界 | `DEV_PENDING_EMAIL` / `DEV_PART_TIME_EMAIL` | local negative fixture | 維持 |
 
 ## 成果物
 
