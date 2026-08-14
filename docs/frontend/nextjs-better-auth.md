@@ -77,6 +77,14 @@ sessionがない場合は`/login`へ戻す。Route Groupを使用するためURL
 `/top`は固有のモックダッシュボード本文だけを返し、認証確認、ヘッダー、サイドメニューは
 ワークスペース共通処理へ分離する。
 
+ワークスペース共通処理はpathnameの完全一致だけでlayout modeを決める。`/top`は
+Navigation-orientedとし、`md`以上では15remの常設サイドメニュー、`md`未満ではヘッダー左端の
+ハンバーガーから開くshadcn/ui Sheetを使用する。`/top`以外はすべてContent-orientedとし、viewport幅に
+かかわらず常設サイドメニューの列を予約せず、同じSheetを現在内容の上へ重ねる。Headerの旧横型
+モバイルナビゲーションは表示しない。常設サイドメニューとSheetは、権限・機能フラグ・雇用区分・
+active routeを判定する同じnavigation描画を共有する。Sheetはリンク選択とroute変更で閉じ、開閉状態を
+Cookie、Web Storage、URL、Backendへ保存しない。
+
 利用者情報はBetter Authのprofileを直接表示せず、`WorkspaceGate`がBFFの
 `/api/backend/me`からSpring Bootの`GET /api/me`結果を一度取得し、`CurrentUserContext`へ
 保持する。正常時は`CurrentUserProvider`、共通アプリケーションシェル、各ページ本文の順に表示する。
@@ -93,7 +101,7 @@ sessionがない場合は`/login`へ戻す。Route Groupを使用するためURL
 
 `WorkspaceGate`での未登録403では`/unregistered`、その他の利用不可403では`/unavailable`へ
 遷移する。`/login`、`/unregistered`、`/unavailable`、`/api/**`、`/`はワークスペース外であり、
-共通ヘッダー、モバイルナビゲーション、サイドメニューを表示しない。どちらの画面にもJWT、token、
+共通ヘッダー、Drawerナビゲーション、サイドメニューを表示しない。どちらの画面にもJWT、token、
 内部URL、例外、stack traceを表示しない。
 
 ## ログアウト

@@ -69,23 +69,75 @@ async function expectExpiredSessionLogin(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "ログイン", exact: true })).toBeVisible();
 }
 
-async function expectWorkspaceChrome(page: Page): Promise<void> {
+async function expectWorkspaceHeader(page: Page): Promise<void> {
   await expect(page.getByRole("banner")).toBeVisible();
   await expect(page.getByRole("button", { name: "ログアウト", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "モバイルナビゲーション" })).toHaveCount(0);
+}
+
+async function expectNavigationOrientedWorkspaceChrome(page: Page): Promise<void> {
+  await expectWorkspaceHeader(page);
+  await expect(page.locator('[data-workspace-layout="navigation-oriented"]')).toBeVisible();
   await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "メニューを開く", exact: true })).toBeHidden();
+}
+
+async function expectContentOrientedWorkspaceChrome(page: Page): Promise<void> {
+  await expectWorkspaceHeader(page);
+  const workspaceLayout = page.locator('[data-workspace-layout="content-oriented"]');
+  await expect(workspaceLayout).toBeVisible();
+  await expect(workspaceLayout).toHaveCSS("display", "block");
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "メニューを開く", exact: true })).toBeVisible();
 }
 
 async function expectNoWorkspaceChrome(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "モバイルナビゲーション" })).toHaveCount(0);
   await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "メニューを開く", exact: true })).toHaveCount(0);
 }
 
-async function expectActiveSidebarLink(page: Page, name: string): Promise<void> {
+async function expectActivePersistentNavigationLink(page: Page, name: string): Promise<void> {
   await expect(
     page
       .getByRole("complementary", { name: "サイドメニュー" })
       .getByRole("link", { name, exact: true }),
   ).toHaveAttribute("aria-current", "page");
+}
+
+async function openWorkspaceDrawer(page: Page) {
+  const trigger = page.getByRole("button", { name: "メニューを開く", exact: true });
+  await trigger.click();
+  const drawer = page.getByRole("dialog", { name: "ワークスペースメニュー" });
+  await expect(drawer).toBeVisible();
+  return { drawer, trigger };
+}
+
+async function expectActiveDrawerNavigationLink(page: Page, name: string): Promise<void> {
+  const { drawer, trigger } = await openWorkspaceDrawer(page);
+  await expect(drawer.getByRole("link", { name, exact: true }))
+    .toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(trigger).toBeFocused();
+}
+
+async function navigateFromWorkspaceNavigation(page: Page, name: string): Promise<void> {
+  const workspaceLayout = page.locator("[data-workspace-layout]");
+  await expect(workspaceLayout).toBeVisible();
+  const layoutMode = await workspaceLayout.getAttribute("data-workspace-layout");
+  const persistentNavigationVisible = layoutMode === "navigation-oriented"
+    && (page.viewportSize()?.width ?? 1280) >= 768;
+  const sidebar = page.getByRole("complementary", { name: "サイドメニュー" });
+  if (persistentNavigationVisible) {
+    await expect(sidebar).toBeVisible();
+    await sidebar.getByRole("link", { name, exact: true }).click();
+    return;
+  }
+
+  const { drawer } = await openWorkspaceDrawer(page);
+  await drawer.getByRole("link", { name, exact: true }).click();
+  await expect(drawer).toBeHidden();
 }
 
 type ExpenseDetail = {
@@ -183,8 +235,8 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await login(page, userEmail, userPassword);
 
   await expect(page).toHaveURL(/\/top$/);
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "トップ");
+  await expectNavigationOrientedWorkspaceChrome(page);
+  await expectActivePersistentNavigationLink(page, "トップ");
   await expect(page.getByText("開発一般ユーザー", { exact: true })).toBeVisible();
   const meResponse = await page.request.get("/api/backend/me");
   expect(meResponse.status()).toBe(200);
@@ -249,14 +301,14 @@ test("一般ユーザーがログインしてモックダッシュボードを�
     meRequestsAfterTop += 1;
     await route.continue();
   });
-  await page.getByRole("link", { name: "経費申請", exact: true }).click();
+  await navigateFromWorkspaceNavigation(page, "経費申請");
   await expect(page.getByRole("heading", { name: "経費申請", exact: true })).toBeVisible();
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "経費申請");
-  await page.getByRole("link", { name: "組織図", exact: true }).click();
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "経費申請");
+  await navigateFromWorkspaceNavigation(page, "組織図");
   await expect(page.getByRole("heading", { name: "組織図", exact: true })).toBeVisible();
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "組織図");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "組織図");
   expect(meRequestsAfterTop).toBe(0);
   await page.unroute("**/api/backend/me");
 });
@@ -287,10 +339,10 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
     await route.continue();
   });
 
-  await page.getByRole("link", { name: "Document Intelligence", exact: true }).click();
+  await navigateFromWorkspaceNavigation(page, "Document Intelligence");
   await expect(page).toHaveURL(/\/document-intelligence$/);
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "Document Intelligence");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "Document Intelligence");
   const runButton = page.getByRole("button", { name: "Run Analysis", exact: true });
   await expect(runButton).toBeDisabled();
 
@@ -356,9 +408,10 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
     timeout: 60_000,
   });
 
-  await page.getByRole("link", { name: "Content Understanding", exact: true }).click();
+  await navigateFromWorkspaceNavigation(page, "Content Understanding");
   await expect(page).toHaveURL(/\/content-understanding$/);
-  await expectActiveSidebarLink(page, "Content Understanding");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "Content Understanding");
   await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
   await expect(page.getByTestId("document-analysis-file-pane").first()).toHaveCSS("overflow-y", "auto");
   await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
@@ -377,8 +430,9 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
     timeout: 60_000,
   });
 
-  await page.getByRole("link", { name: "Document Intelligence", exact: true }).click();
+  await navigateFromWorkspaceNavigation(page, "Document Intelligence");
   await expect(page).toHaveURL(/\/document-intelligence$/);
+  await expectContentOrientedWorkspaceChrome(page);
   await expect(page.getByRole("heading", { name: "Document Intelligence", exact: true })).toBeVisible();
   await page.locator("#document-analysis-file-desktop").setInputFiles({
     name: "tiny.png",
@@ -420,7 +474,7 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await page.unroute("**/api/backend/document-analyses/*/raw-result");
 });
 
-test("Document Analysis UI Shellはモバイルナビゲーションから到達できる", async ({ page }) => {
+test("Document Analysis UI ShellはモバイルDrawerから到達できる", async ({ page }) => {
   await login(page, userEmail, userPassword);
   await expect(page).toHaveURL(/\/top$/);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -433,11 +487,18 @@ test("Document Analysis UI Shellはモバイルナビゲーションから到達
     }
   });
 
-  const mobileNavigation = page.getByRole("navigation", { name: "モバイルナビゲーション" });
-  await expect(mobileNavigation.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
-  await expect(mobileNavigation.getByRole("link", { name: "Content Understanding" })).toBeVisible();
-  await mobileNavigation.getByRole("link", { name: "Content Understanding" }).click();
+  await expectWorkspaceHeader(page);
+  await expect(page.locator('[data-workspace-layout="navigation-oriented"]')).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+  const { drawer } = await openWorkspaceDrawer(page);
+  await expect(drawer.getByRole("link", { name: "トップ" }))
+    .toHaveAttribute("aria-current", "page");
+  await expect(drawer.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "Content Understanding" })).toBeVisible();
+  await drawer.getByRole("link", { name: "Content Understanding" }).click();
+  await expect(drawer).toBeHidden();
   await expect(page).toHaveURL(/\/content-understanding$/);
+  await expectContentOrientedWorkspaceChrome(page);
   await expect(page.getByRole("heading", { name: "Content Understanding", exact: true })).toBeVisible();
   await expect(page.getByTestId("document-analysis-file-pane").last()).toHaveCSS("overflow-y", "auto");
   const workbenchTabs = page.getByRole("tablist", { name: "ワークベンチ表示切替" });
@@ -545,8 +606,8 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
       .toEqual(["第1SI営業課", "経理課"]);
     expect(general.pendingStepId).not.toBeNull();
     await manager.goto("/approvals");
-    await expectWorkspaceChrome(manager);
-    await expectActiveSidebarLink(manager, "承認待ち");
+    await expectContentOrientedWorkspaceChrome(manager);
+    await expectActiveDrawerNavigationLink(manager, "承認待ち");
     await expect(manager.getByText(`E2E一般申請-${suffix}`, { exact: true })).toBeVisible();
 
     const outsiderResponse = await outsider.request.post(
@@ -634,8 +695,8 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
     expect(applicantDetail.status).toBe("APPROVED");
     expect(applicantDetail.approvalRun.runNumber).toBe(2);
     await applicant.goto(`/expenses/${general.id}`);
-    await expectWorkspaceChrome(applicant);
-    await expectActiveSidebarLink(applicant, "経費申請");
+    await expectContentOrientedWorkspaceChrome(applicant);
+    await expectActiveDrawerNavigationLink(applicant, "経費申請");
 
     await expect.poll(
       () => searchNotificationCount(expenseApprovalSubject, managerPersona.email),
@@ -657,8 +718,8 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
   await login(page, adminEmail, adminPassword);
 
   await expect(page).toHaveURL(/\/top$/);
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "トップ");
+  await expectNavigationOrientedWorkspaceChrome(page);
+  await expectActivePersistentNavigationLink(page, "トップ");
   await expect(page.getByText("開発管理者", { exact: true })).toBeVisible();
 
   const meResponse = await page.request.get("/api/backend/me");
@@ -669,15 +730,18 @@ test("管理者ユーザーの名前を表示して業務ロールをBFFから�
     features: { mailNotificationHistory: true },
   });
 
-  await expect(page.getByRole("link", { name: "送付済メール一覧" })).toBeVisible();
-  await page.getByRole("link", { name: "送付済メール一覧" }).click();
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "送付済メール一覧");
+  await expect(
+    page.getByRole("complementary", { name: "サイドメニュー" })
+      .getByRole("link", { name: "送付済メール一覧" }),
+  ).toBeVisible();
+  await navigateFromWorkspaceNavigation(page, "送付済メール一覧");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "送付済メール一覧");
   await expect(page.getByRole("heading", { name: "送付済メール一覧" })).toBeVisible();
   await expect(page.getByText(/通知履歴（\d+件）/)).toBeVisible();
   await page.getByRole("link", { name: "詳細" }).first().click();
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "送付済メール一覧");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "送付済メール一覧");
   await expect(page.getByRole("heading", { name: "メール通知詳細" })).toBeVisible();
   await expect(page.getByText("本文", { exact: true })).toBeVisible();
 });
@@ -687,22 +751,26 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
   await login(page, president.email, seedUserPassword);
 
   await expect(page).toHaveURL(/\/top$/);
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "トップ");
+  await expectNavigationOrientedWorkspaceChrome(page);
+  await expectActivePersistentNavigationLink(page, "トップ");
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileNavigation = page.getByRole("navigation", { name: "モバイルナビゲーション" });
+  await expectWorkspaceHeader(page);
   await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
-  await expect(mobileNavigation.getByRole("link", { name: "トップ" })).toBeVisible();
-  await expect(mobileNavigation.getByRole("link", { name: "組織図" })).toBeVisible();
-  await expect(mobileNavigation.getByRole("link", { name: "ユーザー管理" })).toBeVisible();
+  const { drawer: mobileDrawer } = await openWorkspaceDrawer(page);
+  await expect(mobileDrawer.getByRole("link", { name: "トップ" }))
+    .toHaveAttribute("aria-current", "page");
+  await expect(mobileDrawer.getByRole("link", { name: "組織図" })).toBeVisible();
+  await expect(mobileDrawer.getByRole("link", { name: "ユーザー管理" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(mobileDrawer).toBeHidden();
   await page.setViewportSize({ width: 1280, height: 720 });
-  await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
+  await expectNavigationOrientedWorkspaceChrome(page);
   const meResponse = await page.request.get("/api/backend/me");
   expect(meResponse.status()).toBe(200);
   const me = (await meResponse.json()) as { id: string };
-  await page.getByRole("link", { name: "組織図" }).click();
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "組織図");
+  await navigateFromWorkspaceNavigation(page, "組織図");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "組織図");
   await expect(page.getByRole("heading", { name: "組織図" })).toBeVisible();
   const governance = page.getByRole("heading", { name: "統治機関・会議体" });
   await expect(governance).toBeVisible();
@@ -731,21 +799,21 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
 
   await presidentEdit.click();
   await expect(page).toHaveURL(new RegExp(`/admin/users/${me.id}/edit$`));
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "ユーザー管理");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "ユーザー管理");
   await expect(page.getByRole("heading", { name: "ユーザー情報編集" })).toBeVisible();
 
   await page.goto("/top");
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "トップ");
-  await page.getByRole("link", { name: "ユーザー管理" }).click();
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "ユーザー管理");
+  await expectNavigationOrientedWorkspaceChrome(page);
+  await expectActivePersistentNavigationLink(page, "トップ");
+  await navigateFromWorkspaceNavigation(page, "ユーザー管理");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "ユーザー管理");
   await expect(page.getByRole("heading", { name: "ユーザー管理" })).toBeVisible();
   await expect(page.getByText(/ユーザー一覧（\d+件）/)).toBeVisible();
   await page.goto(`/admin/users/${me.id}/edit`);
-  await expectWorkspaceChrome(page);
-  await expectActiveSidebarLink(page, "ユーザー管理");
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "ユーザー管理");
   await expect(page.getByRole("heading", { name: "ユーザー情報編集" })).toBeVisible();
   await expect(page.getByLabel("email（変更不可）")).toHaveAttribute("readonly", "");
 
@@ -781,15 +849,17 @@ test("社長が組織図とユーザー編集を利用しロール変更を監�
 test("一般正社員は組織図を閲覧できユーザー管理は表示されない", async ({ page }) => {
   await login(page, userEmail, userPassword);
   await expect(page).toHaveURL(/\/top$/);
-  await expectWorkspaceChrome(page);
+  await expectNavigationOrientedWorkspaceChrome(page);
 
   const meResponse = await page.request.get("/api/backend/me");
   expect(meResponse.status()).toBe(200);
   const me = (await meResponse.json()) as { id: string };
-  await expect(page.getByRole("link", { name: "組織図" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "ユーザー管理" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "送付済メール一覧" })).toHaveCount(0);
-  await page.getByRole("link", { name: "組織図" }).click();
+  const sidebarNavigation = page.getByRole("complementary", { name: "サイドメニュー" });
+  await expect(sidebarNavigation.getByRole("link", { name: "組織図" })).toBeVisible();
+  await expect(sidebarNavigation.getByRole("link", { name: "ユーザー管理" })).toHaveCount(0);
+  await expect(sidebarNavigation.getByRole("link", { name: "送付済メール一覧" })).toHaveCount(0);
+  await navigateFromWorkspaceNavigation(page, "組織図");
+  await expectContentOrientedWorkspaceChrome(page);
   await expect(page.getByText("仮 社長", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /ユーザー情報を編集/ })).toHaveCount(0);
 
@@ -808,10 +878,13 @@ test("パートもDocument Analysisを利用できるが組織図は雇用区分
   await login(page, partTimeEmail, seedUserPassword);
 
   await expect(page).toHaveURL(/\/top$/);
-  await expect(page.getByRole("link", { name: "組織図" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Content Understanding" })).toBeVisible();
+  await expectNavigationOrientedWorkspaceChrome(page);
+  const sidebarNavigation = page.getByRole("complementary", { name: "サイドメニュー" });
+  await expect(sidebarNavigation.getByRole("link", { name: "組織図" })).toHaveCount(0);
+  await expect(sidebarNavigation.getByRole("link", { name: "Document Intelligence" })).toBeVisible();
+  await expect(sidebarNavigation.getByRole("link", { name: "Content Understanding" })).toBeVisible();
   await page.goto("/document-intelligence");
+  await expectContentOrientedWorkspaceChrome(page);
   await expect(page.getByRole("heading", { name: "Document Intelligence", exact: true }))
     .toBeVisible();
   await page.goto("/organization-chart");

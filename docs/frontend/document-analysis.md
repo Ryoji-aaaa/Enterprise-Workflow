@@ -15,6 +15,10 @@ Next.js BFFの`/api/backend/document-analyses...`を経由し、BFFがSpring Boo
 Workbenchとして維持する。AUTO_ENTRY画面はUpload、Preview、Job状態表示を既存部品から再利用するが、
 結果表示はGENERALのMarkdown/Paragraphs/Tables/Raw Resultとは分離する。
 
+これらはContent-orientedワークスペースrouteであり、常設サイドメニューの15rem列を予約しない。
+ナビゲーションはヘッダーのハンバーガーから左Sheetを内容の上へ重ねて開くため、既存Workbenchの
+最大幅と内部ペイン幅を維持したまま利用可能な横幅を使用する。
+
 ## 正式機能と権限
 
 Document IntelligenceとContent Understandingは正式機能である。メニュー表示と直接URL表示は、

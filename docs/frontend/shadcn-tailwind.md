@@ -82,6 +82,9 @@ docker run --rm \
 - dark theme用変数は保持するが、theme切替UIを追加するまではlight themeを標準とする。
 - 既存の共通CSS classは、画面をshadcn/uiへ移行するまで互換性のため保持する。
 
+ワークスペースの左Drawerは`frontend/src/components/ui/sheet.tsx`のSheetを`side="left"`で使用する。
+overlay、Escape、outside interaction、focus管理を業務コンポーネントで再実装しない。
+
 ## 検証
 
 変更後は次を実行する。

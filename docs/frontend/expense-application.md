@@ -25,7 +25,9 @@ Backendも各APIでDB PermissionとCandidateを検証する。
 ## 請求/注文書申請（自動入力）
 
 `/expenses/auto-entry`は、請求書または注文書の値を確認しながら経費下書きを作成する業務画面である。
-サイドメニューの表示と直接URLの操作可否は、`EXPENSE_APPLICATION_CREATE`、
+この画面はContent-orientedワークスペースrouteとして常設サイドメニュー列を予約せず、ヘッダーの
+左Drawerから共通ナビゲーションを開く。ナビゲーション項目の表示と直接URLの操作可否は、
+`EXPENSE_APPLICATION_CREATE`、
 `DOCUMENT_ANALYSIS_READ_OWN`、`CONTENT_UNDERSTANDING_ANALYZE`の3 Permissionすべてでfail closedにする。
 これはUIの可用性制御であり、最終認可はBackendが行う。
 

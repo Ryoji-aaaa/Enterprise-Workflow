@@ -312,6 +312,19 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await page.getByRole("link", { name: "請求/注文書申請（自動入力）", exact: true }).click();
   await expect(page).toHaveURL(/\/expenses\/auto-entry$/);
   await expect(page.getByRole("heading", { name: "請求/注文書申請（自動入力）", exact: true })).toBeVisible();
+  await expect(page.locator('[data-workspace-layout="content-oriented"]')).toHaveCSS("display", "block");
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "モバイルナビゲーション" })).toHaveCount(0);
+  const menuTrigger = page.getByRole("button", { name: "メニューを開く", exact: true });
+  await expect(menuTrigger).toBeVisible();
+  await menuTrigger.click();
+  const drawer = page.getByRole("dialog", { name: "ワークスペースメニュー" });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "請求/注文書申請（自動入力）", exact: true }))
+    .toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(menuTrigger).toBeFocused();
 
   const createAnalysisResponse = page.waitForResponse((response) =>
     response.url().includes("/api/backend/document-analyses")
