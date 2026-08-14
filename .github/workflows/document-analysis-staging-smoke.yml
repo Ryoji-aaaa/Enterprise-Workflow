@@ -87,13 +87,11 @@ jobs:
           TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
           TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
           TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
-          DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
         run: |
           [[ "$AZURE_OIDC_CONFIGURED" == "true" ]] || { echo "Azure OIDC is not configured." >&2; exit 1; }
           for name in \
             AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
             TF_STATE_RESOURCE_GROUP TF_STATE_STORAGE_ACCOUNT TF_STATE_CONTAINER TF_STATE_KEY \
-            DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL \
             TF_VAR_resource_group_name TF_VAR_frontend_container_app_name \
             TF_VAR_backend_container_app_name TF_VAR_key_vault_name; do
             [[ -n "${!name}" ]] || { echo "Missing staging Environment variable: ${name}" >&2; exit 1; }
@@ -148,7 +146,7 @@ jobs:
         working-directory: tests/e2e
         env:
           AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE: "true"
-          DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL: ${{ vars.DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL }}
+          STAGING_TEST_PERSONAS_PATH: ${{ github.workspace }}/tests/fixtures/staging-test-personas.json
           DOCUMENT_ANALYSIS_LIVE_SMOKE_IMAGE_SHA: ${{ steps.target.outputs.image_sha }}
           DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-general-live-smoke-summary.json
           DOCUMENT_ANALYSIS_AUTO_ENTRY_LIVE_SMOKE_SUMMARY_PATH: test-results/document-analysis-auto-entry-live-smoke-summary.json
@@ -161,7 +159,7 @@ jobs:
             exit 1
           }
           echo "::add-mask::$password"
-          DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD="$password" \
+          STAGING_SEED_USER_PASSWORD="$password" \
             npx playwright test --config=playwright.live.config.ts \
               specs/azure-document-analysis-smoke.spec.ts \
               specs/azure-auto-entry-smoke.spec.ts
@@ -175,9 +173,11 @@ jobs:
           jq -er --arg image_sha "$IMAGE_SHA" '
             . as $general | input as $auto
             | if ($general.imageSha == $image_sha)
+                and ($general.personaCode == "STANDARD_APPLICANT")
                 and (($general.analyses | type) == "array")
                 and (($general.analyses | length) == 2)
                 and ($auto.imageSha == $image_sha)
+                and ($auto.personaCode == "STANDARD_APPLICANT")
                 and ($auto.autoEntry.provider == "CONTENT_UNDERSTANDING")
                 and ($auto.autoEntry.profile == "AUTO_ENTRY")
                 and ($auto.autoEntry.analyzerId == "enterprise_workflow_auto_entry_v2.1.1")
@@ -188,6 +188,7 @@ jobs:
                 and (($auto.autoEntry.handoffStatus == 200) or ($auto.autoEntry.handoffStatus == 201))
                 and ($auto.autoEntry.expenseStatus == "PENDING_APPROVAL")
               then [
+                "- Persona: STANDARD_APPLICANT",
                 ($general.analyses[] | "- GENERAL \(.provider): \(.status), API \(.apiVersion), \(.createdAt) to \(.completedAt)"),
                 ("- AUTO_ENTRY CONTENT_UNDERSTANDING: \($auto.autoEntry.status), analyzer \($auto.autoEntry.analyzerId), API \($auto.autoEntry.apiVersion), schema \($auto.autoEntry.outerSchemaVersion)/\($auto.autoEntry.autoEntrySchemaVersion), handoff \($auto.autoEntry.handoffStatus), expense \($auto.autoEntry.expenseStatus), \($auto.autoEntry.createdAt) to \($auto.autoEntry.completedAt)")
               ][] else error("invalid safe smoke summary") end

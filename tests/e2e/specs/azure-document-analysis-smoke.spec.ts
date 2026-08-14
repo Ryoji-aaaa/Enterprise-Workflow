@@ -3,6 +3,14 @@ import { dirname, resolve } from "node:path";
 
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 
+import {
+  loadStagingPersona,
+  loginAsStagingPersona,
+  preflightStagingPersona,
+  STANDARD_APPLICANT,
+  type PersonaPreflightCheck,
+} from "../support/staging-persona";
+
 const liveSmokeEnabled = process.env.AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE === "true";
 const summaryPath = process.env.DOCUMENT_ANALYSIS_LIVE_SMOKE_SUMMARY_PATH;
 const diagnosticPath = process.env.DOCUMENT_ANALYSIS_LIVE_SMOKE_DIAGNOSTIC_PATH;
@@ -32,14 +40,16 @@ type View = {
 
 type SafeDiagnostic = {
   provider?: Provider;
-  stage: "login" | "capabilities" | "submit" | "poll" | "result" | "ui";
+  stage: "login" | "persona-preflight" | "submit" | "poll" | "result" | "ui";
+  personaCode: typeof STANDARD_APPLICANT;
+  preflightCheck?: PersonaPreflightCheck | "DOCUMENT_ANALYSIS_CONTRACT";
   status?: string;
   apiVersion?: string;
   createdAt?: string;
   completedAt?: string;
 };
 
-let diagnostic: SafeDiagnostic = { stage: "login" };
+let diagnostic: SafeDiagnostic = { stage: "login", personaCode: STANDARD_APPLICANT };
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -57,6 +67,7 @@ function updateDiagnostic(
 ): void {
   diagnostic = {
     stage,
+    personaCode: STANDARD_APPLICANT,
     ...(job ? {
       provider: job.provider,
       status: job.status,
@@ -67,49 +78,34 @@ function updateDiagnostic(
   };
 }
 
+function updatePreflightDiagnostic(
+  preflightCheck: SafeDiagnostic["preflightCheck"],
+): void {
+  diagnostic = {
+    stage: "persona-preflight",
+    personaCode: STANDARD_APPLICANT,
+    preflightCheck,
+  };
+}
+
 async function writeSafeDiagnostic(): Promise<void> {
   if (!diagnosticPath) return;
   await mkdir(dirname(diagnosticPath), { recursive: true });
   await writeFile(diagnosticPath, `${JSON.stringify(diagnostic)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
-async function login(page: Page, email: string, password: string): Promise<void> {
-  const issuer = requiredEnvironment("KEYCLOAK_URL");
-  updateDiagnostic("login");
-  await page.goto("/login");
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(
-    `^${issuer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/realms/workflow/protocol/openid-connect/auth`,
-  ));
-  await page.locator("#username").fill(email);
-  await page.locator("#password").fill(password);
-  await page.locator("#kc-login").click();
-  await expect(page).toHaveURL(/\/top$/);
-}
-
-async function requireDocumentAnalysisCapabilities(page: Page): Promise<void> {
-  updateDiagnostic("capabilities");
-  const response = await page.request.get("/api/backend/me");
-  requireCondition(response.status() === 200, "Document Analysis capabilities request failed.");
-  const user = (await response.json()) as {
-    permissions?: string[];
-    roles?: string[];
-    features?: Record<string, unknown>;
-  };
+function requireDocumentAnalysisContract(user: {
+  roles: string[];
+  features: Record<string, unknown>;
+}): void {
+  updatePreflightDiagnostic("DOCUMENT_ANALYSIS_CONTRACT");
   requireCondition(
-    user.roles?.includes("APPLICATION_USER")
+    user.roles.includes("APPLICATION_USER")
       && !user.roles.includes("DOCUMENT_ANALYSIS_USER"),
     "The smoke user must use APPLICATION_USER without the retired Document Analysis role.",
   );
   requireCondition(
-    user.permissions?.includes("DOCUMENT_ANALYSIS_READ_OWN")
-      && user.permissions.includes("DOCUMENT_INTELLIGENCE_ANALYZE")
-      && user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE"),
-    "Document Analysis permissions are unavailable.",
-  );
-  requireCondition(
-    user.features !== undefined
-      && !("documentIntelligence" in user.features)
+    !("documentIntelligence" in user.features)
       && !("contentUnderstanding" in user.features),
     "Document Analysis must not be exposed as a feature flag.",
   );
@@ -234,12 +230,18 @@ test.describe("Azure Document Analysis staging smoke", () => {
       if (forbiddenAzureHosts.test(url.hostname)) directAzureRequests.push(url.href);
     });
 
-    await login(
+    updatePreflightDiagnostic("MANIFEST");
+    const persona = await loadStagingPersona(STANDARD_APPLICANT);
+    updatePreflightDiagnostic("AUTHENTICATION");
+    await loginAsStagingPersona(
       page,
-      requiredEnvironment("DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL"),
-      requiredEnvironment("DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD"),
+      persona,
+      requiredEnvironment("STAGING_SEED_USER_PASSWORD"),
     );
-    await requireDocumentAnalysisCapabilities(page);
+    const preflight = await preflightStagingPersona(page, persona, {
+      onCheck: updatePreflightDiagnostic,
+    });
+    requireDocumentAnalysisContract(preflight.currentUser);
     const documentIntelligence = await analyze(
       page, "/document-intelligence", "DOCUMENT_INTELLIGENCE", "2024-11-30",
     );
@@ -252,6 +254,7 @@ test.describe("Azure Document Analysis staging smoke", () => {
       await mkdir(dirname(summaryPath), { recursive: true });
       await writeFile(summaryPath, `${JSON.stringify({
         imageSha,
+        personaCode: STANDARD_APPLICANT,
         analyses: [documentIntelligence, contentUnderstanding].map((job) => ({
           provider: job.provider,
           status: job.status,

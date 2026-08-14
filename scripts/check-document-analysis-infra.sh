@@ -240,9 +240,20 @@ grep -Fq 'enterprise_workflow_auto_entry_v2.1.1' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'development-seed-password' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'retention-days: 1' "${STAGING_SMOKE_WORKFLOW}"
 grep -Fq 'playwright.live.config.ts' "${STAGING_SMOKE_WORKFLOW}"
-grep -Fq 'DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD="$password"' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'STAGING_TEST_PERSONAS_PATH: ${{ github.workspace }}/tests/fixtures/staging-test-personas.json' \
+  "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'STAGING_SEED_USER_PASSWORD="$password"' "${STAGING_SMOKE_WORKFLOW}"
+grep -Fq 'personaCode == "STANDARD_APPLICANT"' "${STAGING_SMOKE_WORKFLOW}"
+if grep -Fq 'DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL' "${STAGING_SMOKE_WORKFLOW}"; then
+  echo "Staging smoke must resolve the applicant email from the canonical persona manifest." >&2
+  exit 1
+fi
+if grep -Fq 'DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD' "${STAGING_SMOKE_WORKFLOW}"; then
+  echo "Staging smoke must pass the Key Vault value through the generic seed password environment." >&2
+  exit 1
+fi
 grep -Fq 'document-analysis-live-smoke-diagnostics.json' "${STAGING_SMOKE_WORKFLOW}"
-if grep -Eq 'DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD=.*GITHUB_ENV' "${STAGING_SMOKE_WORKFLOW}"; then
+if grep -Eq 'STAGING_SEED_USER_PASSWORD=.*GITHUB_ENV' "${STAGING_SMOKE_WORKFLOW}"; then
   echo "Staging smoke password must not be written to GITHUB_ENV." >&2
   exit 1
 fi
