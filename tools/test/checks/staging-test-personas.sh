@@ -16,6 +16,29 @@ done
 
 jq --exit-status '.schemaVersion == 1' "${manifest}" >/dev/null
 
+jq --exit-status '
+    .personas | type == "object" and length > 0
+    and all(to_entries[]; (
+      (.key | test("^[A-Z0-9_]+$"))
+      and (.value.email | type == "string" and length > 0)
+      and (.value.organizationUnitCode | type == "string" and length > 0)
+      and (.value.positionCode | type == "string" and length > 0)
+      and (.value.requiredRoleCodes | type == "array" and length > 0)
+      and all(.value.requiredRoleCodes[]; type == "string" and test("^[A-Z0-9_]+$"))
+      and (
+        (.value | has("requiredPermissionCodes") | not)
+        or (
+          (.value.requiredPermissionCodes | type == "array")
+          and all(.value.requiredPermissionCodes[]; type == "string" and test("^[A-Z0-9_]+$"))
+        )
+      )
+      and (
+        (.value | has("divisionUnitCode") | not)
+        or (.value.divisionUnitCode | type == "string" and length > 0)
+      )
+    ))
+  ' "${manifest}" >/dev/null
+
 for persona in \
   STANDARD_APPLICANT \
   DEPARTMENT_MANAGER \
