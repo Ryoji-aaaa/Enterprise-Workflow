@@ -24,6 +24,44 @@ Keycloak側は最初に`DEV_ADMIN_EMAIL`と`DEV_USER_EMAIL`を作成または同
 これにより、DB seedの一般ユーザー（既定`example.user1@sdcj.co.jp`）とKeycloak seedのログイン
 ユーザーが一致する。Keycloak Roleは業務認可に使わない。
 
+## Canonical staging test fixture
+
+stagingは完全なテスト専用環境として扱い、productionの実ユーザーや実業務データを投入しない。
+staging manual seedで作成される組織、ユーザー、所属、役職、ロール割当は、E2E・smoke testで
+利用できるcanonical staging test fixtureである。stagingが再構築可能な環境であることは、
+master fixtureを通常テスト中に自由に書き換えてよいことを意味しない。再現性を保つため、
+master fixtureはcontrolled dataとして扱う。
+
+seedされた全ユーザーはテストに利用できるが、繰り返し使う代表的な役割は
+[`tests/fixtures/staging-test-personas.json`](../../tests/fixtures/staging-test-personas.json)の
+Test Persona catalogで意味論として宣言する。Personaはemail aliasではなく、対象ユーザーが
+満たすべき業務契約を表す。たとえば`STANDARD_APPLICANT`は、現在のfixture mappingとして
+`first-si-sales-section.user@sdcj.co.jp`を指すが、本質的な契約は有効な主所属、申請作成・本人参照、
+Document Analysis権限、事業部ancestor、部門承認者と経理承認者までの承認経路を持つことである。
+
+初期catalogは次の代表personaだけを名前付きで固定する。これはseed user全件の一覧ではない。
+
+| Persona | email | 主所属unit | 役職 | 主な用途 |
+| --- | --- | --- | --- | --- |
+| `STANDARD_APPLICANT` | `first-si-sales-section.user@sdcj.co.jp` | `FIRST_SI_SALES_SECTION` | `MEMBER` | 通常申請、Document Analysis、AUTO_ENTRY |
+| `DEPARTMENT_MANAGER` | `first-si-sales-section.head@sdcj.co.jp` | `FIRST_SI_SALES_SECTION` | `SECTION_HEAD` | 部門承認 |
+| `DIVISION_HEAD` | `first-si-division.head@sdcj.co.jp` | `FIRST_SI_DIVISION` | `DIVISION_HEAD` | 事業部長承認、上位承認 |
+| `ACCOUNTING_APPROVER` | `accounting-section.user@sdcj.co.jp` | `ACCOUNTING_SECTION` | `MEMBER` | 経理承認候補 |
+| `PRESIDENT` | `president@sdcj.co.jp` | `SDCJ` | `PRESIDENT` | 全社・最上位権限の確認 |
+
+`ACCOUNTING_APPROVER`は唯一の経理承認者であることを契約にしない。経理課の有効な所属ユーザーが
+増えても、承認経路candidateに含まれることを保証する。
+
+通常テストが作成・更新してよいデータは、経費申請、申請明細、承認Run/Step/Candidate、
+Document Analysis、AUTO_ENTRY context、添付、通知などのtransaction dataを基本とする。
+組織、組織単位、役職、canonical user profile、所属、ロール、Permission対応、Role割当、
+canonical Keycloak user stateは通常テストで変更しない。master fixtureそのものの変更を検証する場合は、
+共有stagingではなく隔離されたlocal integration testで行う。
+
+manual seedは冪等であり、存在しない行の追加と既存ユーザーの必要な同期を行う。一方で、
+人為的に変更されたmaster fixtureを破壊的に初期状態へ戻すreset操作とは定義しない。fixture driftを
+解消する必要がある場合は、対象環境の再構築または専用の復旧手順として扱う。
+
 ## stagingへの一時投入
 
 stagingには通常Backendとは別のseed専用imageを使い、手動トリガーだけを持つAzure
