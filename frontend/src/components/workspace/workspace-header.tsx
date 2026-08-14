@@ -1,11 +1,10 @@
 "use client";
 
-import { Bell, ChevronDown, CircleHelp, Search } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { Bell, ChevronDown, CircleHelp, Menu, Search } from "lucide-react";
 
 import { LogoutForm } from "@/components/logout-form";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button, LinkButton } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,60 +12,49 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { SheetTrigger } from "@/components/ui/sheet";
 import { WorkflowLogo } from "@/components/workflow-logo";
 import { cn } from "@/lib/utils";
 
 import { useCurrentUser } from "./current-user-context";
-import {
-  getActiveWorkspaceNavigationItem,
-  getVisibleWorkspaceNavigationItems,
-} from "./workspace-navigation";
+import type { WorkspaceLayoutMode } from "./workspace-layout";
 
-export function WorkspaceHeader() {
+export function WorkspaceHeader({ layoutMode }: { layoutMode: WorkspaceLayoutMode }) {
   const user = useCurrentUser();
-  const pathname = usePathname();
   const initials = user.displayName.trim().slice(0, 2) || "仮";
-  const navigationItems = getVisibleWorkspaceNavigationItems(user);
-  const activeItem = getActiveWorkspaceNavigationItem(pathname, user);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-background/95 px-4 backdrop-blur md:px-6">
-      <div className="flex min-w-0 items-center gap-3 md:w-60">
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-3",
+          layoutMode === "navigation-oriented" && "md:w-60",
+        )}
+      >
+        <SheetTrigger
+          render={(
+            <Button
+              aria-label="メニューを開く"
+              className={cn(layoutMode === "navigation-oriented" && "md:hidden")}
+              size="icon-lg"
+              type="button"
+              variant="ghost"
+            />
+          )}
+        >
+          <Menu />
+        </SheetTrigger>
         <WorkflowLogo className="size-9 shrink-0" />
         <span className="hidden truncate font-heading text-base font-semibold sm:block">
-          モック文字１
+          ワークフローApp
         </span>
       </div>
-
-      <nav
-        aria-label="モバイルナビゲーション"
-        className="ml-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain md:hidden"
-      >
-        {navigationItems.map((item) => {
-          const Icon = item.icon;
-          const active = activeItem?.href === item.href;
-          return (
-            <LinkButton
-              aria-label={item.label}
-              className={cn(active && "bg-muted text-foreground")}
-              aria-current={active ? "page" : undefined}
-              href={item.href}
-              key={item.href}
-              size="icon-lg"
-              title={item.label}
-              variant="ghost"
-            >
-              <Icon />
-            </LinkButton>
-          );
-        })}
-      </nav>
 
       <label className="relative mx-4 hidden max-w-xl flex-1 items-center lg:flex">
         <Search className="pointer-events-none absolute left-3 z-10 size-4 text-muted-foreground" />
         <Input
           className="h-9 bg-muted/30 pl-9"
-          placeholder="サンプル文字列１"
+          placeholder="検索（モック）"
           type="search"
         />
       </label>

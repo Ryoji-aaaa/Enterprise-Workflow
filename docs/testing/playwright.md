@@ -47,7 +47,9 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 16. BFF allowlist外のBackend APIが404で拒否されることを確認する
 17. 社長の組織図で社長・責任者・一般ユーザーに編集操作が表示され、対象編集画面へ遷移する
 18. 一般ユーザーには編集操作を表示せず、編集URLへの直接アクセスもBackendが403で拒否する
-19. `md`未満で権限に応じた組織図・ユーザー管理のモバイルナビゲーションを表示する
+19. `/top`のdesktopでは常設サイドメニューを表示してハンバーガーを非表示にし、`/top`のmobileと
+    `/top`以外では権限に応じた左Drawerナビゲーションを表示する。旧横型モバイルナビゲーションは
+    表示せず、Escapeとリンク選択でDrawerが閉じ、active linkの`aria-current="page"`を維持する
 20. 一般ユーザー、課長、事業部長の経費申請経路をBFF経由で完了する
 21. 経費申請を理由付きで差し戻し、新しいRunで再申請・承認する
 22. 候補者外ユーザーの経費承認を403で拒否し、Mailpit通知を確認する
@@ -66,8 +68,9 @@ Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
     `SUCCEEDED`後のReview、`MISSING`表示、reload後の結果復元を確認する。さらにRecent analysesから
     同じJob、Review、BFF source previewを復元し、Browser `File` がない状態では再分析できないことと、
     mobile viewportでFile、Preview、Resultを切り替えてReviewを表示できることを確認する
-32. AUTO_ENTRYではSidebarから業務画面へ遷移し、Fake Providerの分析、Review（`OK` / `REVIEW` /
-    `MISSING`）、AI値を初期値とする編集、attention filter、請求額照合、正式handoff、Confirmationの
+32. AUTO_ENTRYではワークスペースナビゲーションからContent-oriented業務画面へ遷移し、左Drawerの
+    active状態を確認したうえで、Fake Providerの分析、Review（`OK` / `REVIEW` / `MISSING`）、AI値を
+    初期値とする編集、attention filter、請求額照合、正式handoff、Confirmationの
     reload復元、専用PUT保存、申請、現在Candidateの正式な原本証憑閲覧、差戻し後の編集・再申請・新しい
     Approval Runを確認する。`TaxRatePercent=null`は補完せず`MISSING`として扱い、照合はAI値や経費金額を
     自動変更しないnon-blocking表示とする
