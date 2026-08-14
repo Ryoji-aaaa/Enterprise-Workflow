@@ -1,7 +1,16 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIResponse, type Page } from "@playwright/test";
+
+import { extractSafeTopLevelErrorCode } from "../support/safe-diagnostic";
+import {
+  loadStagingPersona,
+  loginAsStagingPersona,
+  preflightStagingPersona,
+  STANDARD_APPLICANT,
+  type PersonaPreflightCheck,
+} from "../support/staging-persona";
 
 const liveSmokeEnabled =
   process.env.AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE === "true";
@@ -45,7 +54,7 @@ type AutoEntryView = {
 type SafeDiagnostic = {
   stage:
     | "login"
-    | "capabilities"
+    | "persona-preflight"
     | "submit"
     | "poll"
     | "review"
@@ -53,15 +62,22 @@ type SafeDiagnostic = {
     | "confirmation"
     | "save"
     | "submit-expense";
+  personaCode: typeof STANDARD_APPLICANT;
+  preflightCheck?: PersonaPreflightCheck;
   provider?: "CONTENT_UNDERSTANDING";
   profile?: "AUTO_ENTRY";
   status?: string;
   apiVersion?: string;
   createdAt?: string;
   completedAt?: string;
+  handoffHttpStatus?: number;
+  handoffErrorCode?: string;
 };
 
-let diagnostic: SafeDiagnostic = { stage: "login" };
+let diagnostic: SafeDiagnostic = {
+  stage: "login",
+  personaCode: STANDARD_APPLICANT,
+};
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -83,6 +99,7 @@ function updateDiagnostic(
 ): void {
   diagnostic = {
     stage,
+    personaCode: STANDARD_APPLICANT,
     ...(job
       ? {
           provider: job.provider,
@@ -96,6 +113,27 @@ function updateDiagnostic(
   };
 }
 
+function updatePreflightDiagnostic(preflightCheck: PersonaPreflightCheck): void {
+  diagnostic = {
+    stage: "persona-preflight",
+    personaCode: STANDARD_APPLICANT,
+    preflightCheck,
+  };
+}
+
+function updateHandoffDiagnostic(
+  job: AutoEntryJob,
+  handoffHttpStatus: number,
+  handoffErrorCode?: string,
+): void {
+  updateDiagnostic("handoff", job);
+  diagnostic = {
+    ...diagnostic,
+    handoffHttpStatus,
+    ...(handoffErrorCode ? { handoffErrorCode } : {}),
+  };
+}
+
 async function writeSafeDiagnostic(): Promise<void> {
   if (!diagnosticPath) return;
   await mkdir(dirname(diagnosticPath), { recursive: true });
@@ -105,48 +143,13 @@ async function writeSafeDiagnostic(): Promise<void> {
   });
 }
 
-async function login(
-  page: Page,
-  email: string,
-  password: string,
-): Promise<void> {
-  const issuer = requiredEnvironment("KEYCLOAK_URL");
-  updateDiagnostic("login");
-  await page.goto("/login");
-  await page.getByRole("button", { name: "ログイン", exact: true }).click();
-  await expect(page).toHaveURL(
-    new RegExp(
-      `^${issuer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/realms/workflow/protocol/openid-connect/auth`,
-    ),
-  );
-  await page.locator("#username").fill(email);
-  await page.locator("#password").fill(password);
-  await page.locator("#kc-login").click();
-  await expect(page).toHaveURL(/\/top$/);
-}
-
-async function requireCapabilities(page: Page): Promise<void> {
-  updateDiagnostic("capabilities");
-  const response = await page.request.get("/api/backend/me");
-  requireCondition(
-    response.status() === 200,
-    "AUTO_ENTRY capability request failed.",
-  );
-  const user = (await response.json()) as {
-    roles?: string[];
-    permissions?: string[];
-  };
-  requireCondition(
-    user.roles?.includes("APPLICATION_USER"),
-    "The smoke user lacks APPLICATION_USER.",
-  );
-  requireCondition(
-    user.permissions?.includes("EXPENSE_APPLICATION_CREATE") &&
-      user.permissions.includes("EXPENSE_APPLICATION_READ_OWN") &&
-      user.permissions.includes("DOCUMENT_ANALYSIS_READ_OWN") &&
-      user.permissions.includes("CONTENT_UNDERSTANDING_ANALYZE"),
-    "AUTO_ENTRY smoke permissions are unavailable.",
-  );
+async function safeTopLevelErrorCode(response: APIResponse): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as unknown;
+    return extractSafeTopLevelErrorCode(body);
+  } catch {
+    return undefined;
+  }
 }
 
 async function waitForSucceededJob(
@@ -207,17 +210,25 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
     let directAzureRequestCount = 0;
     let directNonBffRequestCount = 0;
 
-    await login(
+    updatePreflightDiagnostic("MANIFEST");
+    const persona = await loadStagingPersona(STANDARD_APPLICANT);
+    const departmentManager = await loadStagingPersona("DEPARTMENT_MANAGER");
+    const accountingApprover = await loadStagingPersona("ACCOUNTING_APPROVER");
+    updatePreflightDiagnostic("AUTHENTICATION");
+    await loginAsStagingPersona(
       page,
-      requiredEnvironment("DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL"),
-      requiredEnvironment("DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD"),
+      persona,
+      requiredEnvironment("STAGING_SEED_USER_PASSWORD"),
     );
     page.on("request", (request) => {
       const url = new URL(request.url());
       if (forbiddenAzureHosts.test(url.hostname)) directAzureRequestCount += 1;
       if (url.origin !== bffOrigin) directNonBffRequestCount += 1;
     });
-    await requireCapabilities(page);
+    await preflightStagingPersona(page, persona, {
+      onCheck: updatePreflightDiagnostic,
+      approvalFixtures: { departmentManager, accountingApprover },
+    });
 
     await page.goto("/expenses/auto-entry");
     await expect(page).toHaveURL(/\/expenses\/auto-entry$/);
@@ -333,8 +344,13 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "決定", exact: true }).click();
     const handoff = await handoffResponse;
+    const handoffHttpStatus = handoff.status();
+    const handoffErrorCode = [200, 201].includes(handoffHttpStatus)
+      ? undefined
+      : await safeTopLevelErrorCode(handoff);
+    updateHandoffDiagnostic(terminal, handoffHttpStatus, handoffErrorCode);
     requireCondition(
-      [200, 201].includes(handoff.status()),
+      [200, 201].includes(handoffHttpStatus),
       "AUTO_ENTRY formal handoff failed.",
     );
     const handoffPayload = handoff.request().postDataJSON() as Record<
@@ -442,6 +458,7 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
         summaryPath,
         `${JSON.stringify({
           imageSha,
+          personaCode: STANDARD_APPLICANT,
           autoEntry: {
             provider: terminal.provider,
             profile: terminal.profile,

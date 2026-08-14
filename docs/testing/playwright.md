@@ -127,17 +127,18 @@ Permissionに合うpersonaを選択する。所属不備や雇用区分のnegati
 `NO_DIVISION_USER`、`PART_TIME_USER`、`CONTRACT_USER`などの境界personaを導入できる。
 
 課金や外部Azure resourceを呼ぶstaging live smokeでは、分析要求を開始する前にpersonaが
-必要な前提条件を満たすことをpreflightする方針である。preflight実装と既存env varから
-persona catalogへの移行はT2で行うため、現時点では`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`を
-改名しない。
+必要な前提条件を満たすことをpreflightする。GENERALとAUTO_ENTRYはテスト意図として
+`STANDARD_APPLICANT`を選択し、emailを
+[`tests/fixtures/staging-test-personas.json`](../../tests/fixtures/staging-test-personas.json)から
+実行時に解決する。specやGitHub Environmentへpersona emailを複製しない。
 
-現行consumerの移行inventoryは次のとおりである。
+consumerの移行状態は次のとおりである。
 
-| Consumer | Current identity source | Recommended persona | Migration phase |
+| Consumer | Identity source | Persona | Migration status |
 | --- | --- | --- | --- |
-| `specs/azure-document-analysis-smoke.spec.ts` | `DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL` | `STANDARD_APPLICANT` | T2 |
-| `specs/azure-auto-entry-smoke.spec.ts` | `DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL` | `STANDARD_APPLICANT` | T2 |
-| `.github/workflows/document-analysis-staging-smoke.yml` | `DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`とKey Vault password | `STANDARD_APPLICANT` | T2 |
+| `specs/azure-document-analysis-smoke.spec.ts` | canonical persona manifest | `STANDARD_APPLICANT` | T2完了 |
+| `specs/azure-auto-entry-smoke.spec.ts` | canonical persona manifest | `STANDARD_APPLICANT` | T2完了 |
+| `.github/workflows/document-analysis-staging-smoke.yml` | repository manifestとKey Vault password | `STANDARD_APPLICANT` | T2完了 |
 | local expense E2E specs | `DEV_EXPENSE_*` env vars | role-specific personas | T3 |
 | generic local login specs | `DEV_USER_EMAIL` / `DEV_ADMIN_EMAIL` | flow-specific personas where needed | T3 |
 
@@ -158,8 +159,17 @@ Playwrightが失敗した場合、実行ログにもこの2つの保存先を表
 `specs/azure-document-analysis-smoke.spec.ts`と`specs/azure-auto-entry-smoke.spec.ts`は通常の`make test SUITES=e2e`では
 `AZURE_DOCUMENT_ANALYSIS_LIVE_SMOKE=true`がないためskipする。通常suiteは引き続きFake Providerを使い、
 Azure endpoint、Private Endpoint、課金、RBAC propagationへ依存しない。live specはstagingだけで、
-`BASE_URL`、`KEYCLOAK_URL`、`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`、process environment内だけの
-`DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`を要求する。不足した状態でlive flagをtrueにすると明示的に失敗する。
+`BASE_URL`、`KEYCLOAK_URL`、repository内manifestを指す`STAGING_TEST_PERSONAS_PATH`、process
+environment内だけの`STAGING_SEED_USER_PASSWORD`を要求する。不足した状態でlive flagをtrueにすると
+明示的に失敗する。manifestとpasswordはlive test bodyで遅延取得するため、通常E2Eのspec collectionと
+skipはrepository rootのmanifestやstaging credentialを要求しない。
+
+両live specはログイン後、最初の課金対象`POST /api/backend/document-analyses`より前に、Frontend BFF経由の
+`GET /api/backend/me`でpersona emailの完全一致、manifest所定のRole・Permissionを確認し、
+`GET /api/backend/organization-chart`で主所属、役職、事業部ancestorを確認する。AUTO_ENTRYはさらに
+`DEPARTMENT_MANAGER`が申請者と同じunitの主所属であること、および`ACCOUNTING_APPROVER`の主所属と役職を
+確認する。組織図の403、missing parent、循環、fixture不一致はAzure分析前にpreflight failureとして停止する。
+AUTO_ENTRYでは自動分析を始めるfile選択より前にこのpreflightを完了する。
 
 GENERAL live specは既存`fixtures/receipt.pdf`だけを使い、Document IntelligenceとContent Understandingを各1件直列実行する。
 各Providerは最大10分の有限待機で`SUCCEEDED`を確認するため、test全体timeoutは22分、専用設定のtimeoutは23分である。
@@ -178,8 +188,11 @@ Formal Expense原本preview、reload、保存、`PENDING_APPROVAL`への申請�
 
 live smokeは通常E2E設定と別のPlaywright設定を使い、trace、screenshot、videoをすべてoff、`workers: 1`にする。
 GENERAL Azure smokeは`retries: 2`の有限retryを許可する一方、AUTO_ENTRY business smokeは前記のとおりretryしない。
-failure時にも`test-results`全体をartifactへuploadしない。Provider、stage、status、API version、実際のJob時刻だけの
-allow-list済み診断JSONを1日だけ非公開保持できる。passwordはKey Vaultからlive smokeを実行する同じshellで取得して
+failure時にも`test-results`全体をartifactへuploadしない。Provider、stage、persona code、preflight check、status、
+API version、実際のJob時刻、Formal HandoffのHTTP statusとtop-level error codeだけのallow-list済み診断JSONを
+1日だけ非公開保持できる。Handoff diagnosticは成功statusのassertionより前に更新し、JSON objectの128文字以下の
+安全なerror code以外のresponse body、message、detailsは保存しない。成功summaryもemailではなく
+`personaCode=STANDARD_APPLICANT`を記録する。passwordはKey Vaultからlive smokeを実行する同じshellで取得して
 maskし、Playwright processだけへ渡す。Cookie、Authorization header、入力fixture、Markdown本文、Raw JSON本文、
 Azure response bodyはsummary、log、report、artifactへ書き出さない。Raw JSONの検査も本文をmatcher errorへ含めず、
 固定エラー文で失敗する。

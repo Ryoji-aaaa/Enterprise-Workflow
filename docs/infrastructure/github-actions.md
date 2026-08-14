@@ -136,23 +136,27 @@ readだけを使い、Private Endpoint限定でpublic networkを無効にしたS
 SAS、connection stringへfallbackしない。Azure CLI readの失敗は検査成功として扱わない。
 
 staging Key Vaultの`development-seed-password`は、setup-node、`npm ci`、Chromium導入後、live smokeを起動する
-同じshell stepで取得する。`add-mask`後に`DOCUMENT_ANALYSIS_SMOKE_USER_PASSWORD`としてPlaywright processだけへ
-渡し、`GITHUB_ENV`、step output、summary、artifactへ保存しない。`DOCUMENT_ANALYSIS_SMOKE_USER_EMAIL`はstaging
-Environment variableとして登録し、seed userが未投入の場合は[開発・staging用seedデータ](../backend/development-seed-data.md)
-の手順を実施してから再実行する。workflow自体はseed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、
+同じshell stepで取得する。`add-mask`後に`STAGING_SEED_USER_PASSWORD`としてPlaywright processだけへ
+渡し、`GITHUB_ENV`、step output、summary、artifactへ保存しない。personaはspecが
+`STANDARD_APPLICANT`を選択し、email mappingをcheckout済みrepositoryの
+`tests/fixtures/staging-test-personas.json`から解決する。workflowは`STAGING_TEST_PERSONAS_PATH`へ
+その絶対pathを渡すため、staging Environmentにpersona名やemailのvariableは不要である。seed userが未投入の場合は
+[開発・staging用seedデータ](../backend/development-seed-data.md)の手順を実施してから再実行する。workflow自体はseed Jobを起動しない。通常Fake CI、deploy後の匿名public smoke、
 課金対象のstaging live smokeはそれぞれ別の責務であり、live smokeを`deploy-staging.yml`の自動stepへ追加しない。
-live smokeは`/api/backend/me`でsmoke userが`APPLICATION_USER`を持ち、廃止済み
-`DOCUMENT_ANALYSIS_USER`を持たず、Document Analysisの3 Permissionを持つことも検証する。
+live smokeは最初の課金requestより前に、`/api/backend/me`でmanifest所定のidentity、Role、Permissionと、
+廃止済み`DOCUMENT_ANALYSIS_USER`を持たないことを確認する。`/api/backend/organization-chart`では主所属、
+役職、事業部ancestorを確認し、AUTO_ENTRYでは部門承認者と経理承認者の構造fixtureも確認する。
 
 live smokeは専用Playwright設定でtrace、screenshot、videoをすべて無効化し、`workers: 1`にする。GENERALの
 Document Intelligence / Content Understanding smokeは`retries: 2`の有限retryを許可する。AUTO_ENTRY
 Content Understanding business smokeはanalysis、handoff、save、submitを含むためtest-level retryを0にし、
-失敗後に別の業務データを自動作成しない。成功summaryは同一image SHA、GENERAL Providerのstatus/API version/
+失敗後に別の業務データを自動作成しない。成功summaryは同一image SHA、`STANDARD_APPLICANT`のpersona code、GENERAL Providerのstatus/API version/
 実際の`createdAt`/`completedAt`、AUTO_ENTRYのprovider/profile/analyzer/API version/schema version/handoff status/
 Expense final statusだけに限定する。
-失敗時にartifactへ残せるのはProvider、stage、status、API version、時刻だけのallow-list済み専用診断ファイルであり、
+失敗時にartifactへ残せるのはProvider、stage、persona code、preflight check、status、API version、時刻、
+Formal HandoffのHTTP statusとtop-level error codeだけのallow-list済み専用診断ファイルであり、
 `test-results`全体はuploadしない。入力文書、Markdown、Raw JSON、Cookie、Authorization header、password、
-operation token、Azure response bodyはsummary、log、report、artifactに記録しない。
+operation token、Azure response body、Backend error messageはsummary、log、report、artifactに記録しない。
 
 初回は`PROVISION_WORKLOADS=false`でfoundationだけをapplyする。Key Vaultへのsecret登録後、
 stagingではこれを`true`へ変更する。production workflowは`foundation`と`workloads`の
