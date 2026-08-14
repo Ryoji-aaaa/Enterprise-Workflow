@@ -76,22 +76,16 @@ services:
       PLAYWRIGHT_JSON_OUTPUT: /test-results/raw/e2e/report.json
       PLAYWRIGHT_OUTPUT_DIR: /test-results/diagnostics/e2e/results
       PLAYWRIGHT_HTML_OUTPUT: /test-results/diagnostics/e2e/html
+      STAGING_TEST_PERSONAS_PATH: /workspace/fixtures/staging-test-personas.json
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-example.admin1@sdcj.co.jp}
       DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-password}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
       DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:-password}
       DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
       DEV_PENDING_PASSWORD: ${DEV_PENDING_PASSWORD:-password}
-      DEV_PRESIDENT_EMAIL: president@sdcj.co.jp
-      DEV_PRESIDENT_PASSWORD: ${DEV_SEED_PASSWORD:-password}
       DEV_PART_TIME_EMAIL: example.parttime1@sdcj.co.jp
-      DEV_PART_TIME_PASSWORD: ${DEV_SEED_PASSWORD:-password}
-      DEV_EXPENSE_USER_EMAIL: first-si-sales-section.user@sdcj.co.jp
-      DEV_EXPENSE_MANAGER_EMAIL: first-si-sales-section.head@sdcj.co.jp
-      DEV_EXPENSE_DIVISION_HEAD_EMAIL: first-si-division.head@sdcj.co.jp
-      DEV_EXPENSE_ACCOUNTING_EMAIL: accounting-section.user@sdcj.co.jp
-      DEV_EXPENSE_OUTSIDER_EMAIL: second-si-sales-section.head@sdcj.co.jp
-      DEV_EXPENSE_PASSWORD: ${DEV_SEED_PASSWORD:-password}
+      DEV_SEED_USER_PASSWORD: ${DEV_SEED_PASSWORD:-password}
     volumes:
       - ${TEST_RUN_DIRECTORY:-./test-results/manual}:/test-results
+      - ./tests/fixtures/staging-test-personas.json:/workspace/fixtures/staging-test-personas.json:ro
     network_mode: host

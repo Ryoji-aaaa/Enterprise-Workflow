@@ -3,11 +3,10 @@ import { resolve } from "node:path";
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
+import { loadStagingPersona } from "../support/staging-persona";
+
 const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
-const applicantEmail = requiredEnvironment("DEV_EXPENSE_USER_EMAIL");
-const managerEmail = requiredEnvironment("DEV_EXPENSE_MANAGER_EMAIL");
-const outsiderEmail = requiredEnvironment("DEV_EXPENSE_OUTSIDER_EMAIL");
-const expensePassword = requiredEnvironment("DEV_EXPENSE_PASSWORD");
+const seedUserPassword = requiredEnvironment("DEV_SEED_USER_PASSWORD");
 const receiptPdf = readFileSync(resolve("fixtures/receipt.pdf"));
 const receiptPng = Buffer.from(
   readFileSync(resolve("fixtures/receipt.png"), "utf8").trim(),
@@ -53,7 +52,7 @@ async function login(page: Page, email: string): Promise<void> {
     `^${keycloakUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/realms/workflow/`,
   ));
   await page.locator("#username").fill(email);
-  await page.locator("#password").fill(expensePassword);
+  await page.locator("#password").fill(seedUserPassword);
   await page.locator("#kc-login").click();
   await expect(page).toHaveURL(/\/top$/);
 }
@@ -93,9 +92,14 @@ async function listAttachments(page: Page, applicationId: string) {
 
 test("Azurite経由で経費証憑を登録・閲覧・差戻し後に差し替えられる", async ({ browser }) => {
   test.setTimeout(90_000);
-  const applicant = await expensePage(browser, applicantEmail);
-  const manager = await expensePage(browser, managerEmail);
-  const outsider = await expensePage(browser, outsiderEmail);
+  const [applicantPersona, managerPersona, divisionHeadPersona] = await Promise.all([
+    loadStagingPersona("STANDARD_APPLICANT"),
+    loadStagingPersona("DEPARTMENT_MANAGER"),
+    loadStagingPersona("DIVISION_HEAD"),
+  ]);
+  const applicant = await expensePage(browser, applicantPersona.email);
+  const manager = await expensePage(browser, managerPersona.email);
+  const outsider = await expensePage(browser, divisionHeadPersona.email);
   try {
     const createdResponse = await applicant.request.post(
       "/api/backend/expense-applications",
