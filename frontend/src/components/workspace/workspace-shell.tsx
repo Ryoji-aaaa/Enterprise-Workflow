@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { Sheet } from "@/components/ui/sheet";
@@ -15,14 +15,33 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const layoutMode = getWorkspaceLayoutMode(pathname);
   const [drawerState, setDrawerState] = useState({ pathname, open: false });
-  const drawerOpen = drawerState.pathname === pathname && drawerState.open;
+
+  if (drawerState.pathname !== pathname) {
+    setDrawerState({ pathname, open: false });
+  }
+
+  useEffect(() => {
+    if (layoutMode !== "navigation-oriented") {
+      return;
+    }
+
+    const desktopMediaQuery = window.matchMedia("(min-width: 48rem)");
+    const closeDrawerOnDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setDrawerState({ pathname, open: false });
+      }
+    };
+
+    desktopMediaQuery.addEventListener("change", closeDrawerOnDesktop);
+    return () => desktopMediaQuery.removeEventListener("change", closeDrawerOnDesktop);
+  }, [layoutMode, pathname]);
 
   function setDrawerOpen(open: boolean) {
     setDrawerState({ pathname, open });
   }
 
   return (
-    <Sheet onOpenChange={setDrawerOpen} open={drawerOpen}>
+    <Sheet onOpenChange={setDrawerOpen} open={drawerState.open}>
       <div className="min-h-svh bg-muted/30 text-foreground">
         <WorkspaceHeader layoutMode={layoutMode} />
         <div

@@ -313,6 +313,52 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await page.unroute("**/api/backend/me");
 });
 
+test("Drawerは履歴移動で以前のrouteに戻っても再表示されない", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+
+  await navigateFromWorkspaceNavigation(page, "経費申請");
+  await expect(page).toHaveURL(/\/expenses$/);
+  const { drawer } = await openWorkspaceDrawer(page);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/top$/);
+  await expect(drawer).toBeHidden();
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/expenses$/);
+  await expect(drawer).toBeHidden();
+
+  const { drawer: reopenedDrawer } = await openWorkspaceDrawer(page);
+  await expect(reopenedDrawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(reopenedDrawer).toBeHidden();
+});
+
+test("/topのDrawerはmobileからdesktopへ切り替えると閉じたままになる", async ({ page }) => {
+  await login(page, userEmail, userPassword);
+  await expect(page).toHaveURL(/\/top$/);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
+  const { drawer } = await openWorkspaceDrawer(page);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "メニューを開く", exact: true })).toBeHidden();
+  await expect(drawer).toBeHidden();
+  await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "メニューを開く", exact: true })).toBeVisible();
+  await expect(drawer).toBeHidden();
+
+  const { drawer: reopenedDrawer } = await openWorkspaceDrawer(page);
+  await expect(reopenedDrawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(reopenedDrawer).toBeHidden();
+});
+
 test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実行できる", async ({ page }) => {
   test.setTimeout(180_000);
 
