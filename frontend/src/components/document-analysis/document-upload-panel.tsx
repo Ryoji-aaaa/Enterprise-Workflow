@@ -4,6 +4,7 @@ import { ChangeEvent, DragEvent, KeyboardEvent, RefObject } from "react";
 import { FileUp, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DOCUMENT_ANALYSIS_ACCEPT,
   type AnalyzableFile,
@@ -62,7 +63,7 @@ export function DocumentUploadPanel({
           <h2 className="text-sm font-medium">File</h2>
           <p className="mt-1 text-xs text-muted-foreground">PDF、JPEG、PNGを1件選択できます。</p>
         </div>
-        <input
+        <Input
           accept={DOCUMENT_ANALYSIS_ACCEPT}
           aria-describedby={`${inputId}-help`}
           className="sr-only"

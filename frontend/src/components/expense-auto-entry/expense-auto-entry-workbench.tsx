@@ -9,6 +9,7 @@ import { AnalysisStatus } from "@/components/document-analysis/analysis-status";
 import { ExpenseAutoEntryEditor } from "@/components/expense-auto-entry/expense-auto-entry-editor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/components/workspace/current-user-context";
 import {
   type AutoEntryReviewResponse,
@@ -325,7 +326,7 @@ export function ExpenseAutoEntryWorkbench() {
         <div className="rounded-md border bg-card p-4 text-card-foreground">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h1 className="text-xl font-semibold">請求/注文書申請（自動入力）</h1><p className="mt-1 text-sm text-muted-foreground">文書を読み込むと分析を開始し、確認が必要な値を中心に入力できます。</p></div>
-            <input accept={DOCUMENT_ANALYSIS_ACCEPT} className="sr-only" disabled={analysisProcessing} id="expense-auto-entry-file" onChange={(event) => { if (event.target.files) selectFiles(event.target.files); event.target.value = ""; }} ref={inputRef} type="file" />
+            <Input accept={DOCUMENT_ANALYSIS_ACCEPT} className="sr-only" disabled={analysisProcessing} id="expense-auto-entry-file" onChange={(event) => { if (event.target.files) selectFiles(event.target.files); event.target.value = ""; }} ref={inputRef} type="file" />
             <Button disabled={analysisProcessing} onClick={() => inputRef.current?.click()} type="button"><FileUp data-icon="inline-start" />文書を読み込む</Button>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">{previewFile?.name ?? "PDF、JPEG、PNGを1件選択できます。"}</p>

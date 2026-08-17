@@ -161,6 +161,7 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
   const itemDescriptionLabel = category === "TRAINING" ? "研修名"
     : category === "CERTIFICATION" ? "資格名"
       : category === "TRANSPORTATION" ? "内容（片道／往復を含む）" : "内容";
+  const merchantNameRequired = category === "MEAL" || category === "TRAINING" || category === "CERTIFICATION";
 
   return (
     <form className="space-y-6" onSubmit={onSubmit}>
@@ -174,9 +175,9 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
               {expenseCategories.map((value) => <option key={value} value={value}>{categoryLabels[value]}</option>)}
             </select>
           </label>
-          <label className="grid gap-1 text-sm">利用日<Input onChange={(e) => setExpenseDate(e.target.value)} required type="date" value={expenseDate} /></label>
-          <label className="grid gap-1 text-sm md:col-span-2">件名<Input maxLength={200} onChange={(e) => setTitle(e.target.value)} required value={title} /></label>
-          <label className="grid gap-1 text-sm md:col-span-2">利用目的<textarea className="min-h-24 rounded-md border bg-background p-3" onChange={(e) => setPurpose(e.target.value)} required value={purpose} /></label>
+          <label className="grid gap-1 text-sm"><span>利用日 <span className="text-destructive">*</span></span><Input onChange={(e) => setExpenseDate(e.target.value)} required type="date" value={expenseDate} /></label>
+          <label className="grid gap-1 text-sm md:col-span-2"><span>件名 <span className="text-destructive">*</span></span><Input maxLength={200} onChange={(e) => setTitle(e.target.value)} required value={title} /></label>
+          <label className="grid gap-1 text-sm md:col-span-2"><span>利用目的 <span className="text-destructive">*</span></span><textarea className="min-h-24 rounded-md border bg-background p-3" onChange={(e) => setPurpose(e.target.value)} required value={purpose} /></label>
           <label className="grid gap-1 text-sm md:col-span-2">備考<textarea className="min-h-20 rounded-md border bg-background p-3" onChange={(e) => setRemarks(e.target.value)} value={remarks} /></label>
           <p className="text-sm text-muted-foreground md:col-span-2">
             領収書・証憑を添付する場合は、先に下書きを保存してください。
@@ -190,15 +191,15 @@ export function ExpenseApplicationForm({ applicationId }: { applicationId?: stri
         <CardContent className="space-y-4">
           {items.map((item, index) => (
             <div className="grid gap-3 rounded-lg border p-4 md:grid-cols-3" key={item.id ?? index}>
-              <label className="grid gap-1 text-sm">{itemDateLabel}<Input onChange={(e) => updateItem(index, { expenseDate: e.target.value })} required type="date" value={item.expenseDate} /></label>
-              <label className="grid gap-1 text-sm md:col-span-2">{itemDescriptionLabel}<Input maxLength={500} onChange={(e) => updateItem(index, { description: e.target.value })} required value={item.description} /></label>
-              <label className="grid gap-1 text-sm">金額（円）<Input min={1} onChange={(e) => updateItem(index, { amount: Number(e.target.value) })} required step={1} type="number" value={item.amount || ""} /></label>
-              <label className="grid gap-1 text-sm md:col-span-2">{category === "MEAL" ? "店舗名" : category === "TRAINING" ? "主催者" : category === "CERTIFICATION" ? "試験実施団体" : "支払先"}<Input onChange={(e) => updateItem(index, { merchantName: e.target.value })} required={category === "MEAL" || category === "TRAINING" || category === "CERTIFICATION"} value={item.merchantName ?? ""} /></label>
-              {category === "MEAL" && <label className="grid gap-1 text-sm md:col-span-3">参加者（社内／社外区分・人数を含む）<Input onChange={(e) => updateItem(index, { participants: e.target.value })} required value={item.participants ?? ""} /></label>}
+              <label className="grid gap-1 text-sm"><span>{itemDateLabel} <span className="text-destructive">*</span></span><Input onChange={(e) => updateItem(index, { expenseDate: e.target.value })} required type="date" value={item.expenseDate} /></label>
+              <label className="grid gap-1 text-sm md:col-span-2"><span>{itemDescriptionLabel} <span className="text-destructive">*</span></span><Input maxLength={500} onChange={(e) => updateItem(index, { description: e.target.value })} required value={item.description} /></label>
+              <label className="grid gap-1 text-sm"><span>金額（円） <span className="text-destructive">*</span></span><Input min={1} onChange={(e) => updateItem(index, { amount: Number(e.target.value) })} required step={1} type="number" value={item.amount || ""} /></label>
+              <label className="grid gap-1 text-sm md:col-span-2"><span>{category === "MEAL" ? "店舗名" : category === "TRAINING" ? "主催者" : category === "CERTIFICATION" ? "試験実施団体" : "支払先"}{merchantNameRequired ? <> <span className="text-destructive">*</span></> : null}</span><Input onChange={(e) => updateItem(index, { merchantName: e.target.value })} required={merchantNameRequired} value={item.merchantName ?? ""} /></label>
+              {category === "MEAL" && <label className="grid gap-1 text-sm md:col-span-3"><span>参加者（社内／社外区分・人数を含む） <span className="text-destructive">*</span></span><Input onChange={(e) => updateItem(index, { participants: e.target.value })} required value={item.participants ?? ""} /></label>}
               {category === "TRANSPORTATION" && <>
-                <label className="grid gap-1 text-sm">交通手段<Input onChange={(e) => updateItem(index, { transportationType: e.target.value })} required value={item.transportationType ?? ""} /></label>
-                <label className="grid gap-1 text-sm">出発地<Input onChange={(e) => updateItem(index, { origin: e.target.value })} required value={item.origin ?? ""} /></label>
-                <label className="grid gap-1 text-sm">到着地<Input onChange={(e) => updateItem(index, { destination: e.target.value })} required value={item.destination ?? ""} /></label>
+                <label className="grid gap-1 text-sm"><span>交通手段 <span className="text-destructive">*</span></span><Input onChange={(e) => updateItem(index, { transportationType: e.target.value })} required value={item.transportationType ?? ""} /></label>
+                <label className="grid gap-1 text-sm"><span>出発地 <span className="text-destructive">*</span></span><Input onChange={(e) => updateItem(index, { origin: e.target.value })} required value={item.origin ?? ""} /></label>
+                <label className="grid gap-1 text-sm"><span>到着地 <span className="text-destructive">*</span></span><Input onChange={(e) => updateItem(index, { destination: e.target.value })} required value={item.destination ?? ""} /></label>
               </>}
               <div className="flex justify-end md:col-span-3"><Button aria-label={`明細${index + 1}を削除`} disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button" variant="ghost"><Trash2 />削除</Button></div>
             </div>
