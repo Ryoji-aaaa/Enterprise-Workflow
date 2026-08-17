@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type {
   AutoEntryAdjustment,
   AutoEntryField,
@@ -171,7 +172,7 @@ export function ExpenseAutoEntryEditor({
   ];
 
   return <div className="space-y-6">
-    <section className="rounded-md border bg-amber-50/50 p-4 dark:bg-amber-950/10"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">⚠ 確認が必要な項目 {attention.length}件</h2><p className="mt-1 text-xs text-muted-foreground">AIの確認状況は申請の必須入力とは別です。</p></div><div className="flex gap-1"><Button aria-pressed={showAttentionOnly} onClick={() => onShowAttentionOnlyChange(true)} size="sm" type="button" variant={showAttentionOnly ? "secondary" : "ghost"}>要確認のみ</Button><Button aria-pressed={!showAttentionOnly} onClick={() => onShowAttentionOnlyChange(false)} size="sm" type="button" variant={!showAttentionOnly ? "secondary" : "ghost"}>すべて</Button></div></div>{attention.length > 0 ? <ul className="mt-3 space-y-2 text-xs">{attention.map((field) => <AttentionReason field={field} key={field.path} />)}</ul> : <p className="mt-3 text-sm text-muted-foreground">現在、確認が必要なAI入力値はありません。</p>}</section>
+    <section className="rounded-md border bg-amber-50/50 p-4 dark:bg-amber-950/10"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">⚠ 確認が必要な項目 {attention.length}件</h2><p className="mt-1 text-xs text-muted-foreground">AIの確認状況は申請の必須入力とは別です。</p></div><div className="flex items-center gap-2 text-sm"><span>すべて</span><Switch aria-label="表示フィルター" checked={showAttentionOnly} onCheckedChange={onShowAttentionOnlyChange} /><span>要確認のみ</span></div></div>{attention.length > 0 ? <ul className="mt-3 space-y-2 text-xs">{attention.map((field) => <AttentionReason field={field} key={field.path} />)}</ul> : <p className="mt-3 text-sm text-muted-foreground">現在、確認が必要なAI入力値はありません。</p>}</section>
     <section className="space-y-3"><h2 className="font-semibold">請求書・注文書の読み取り値</h2>{documentFields.map((documentField) => {
       const resolved = resolvedByPath.get(documentField.path);
       if (!resolved || !shouldShowAutoEntryField(resolved, showAttentionOnly)) return null;

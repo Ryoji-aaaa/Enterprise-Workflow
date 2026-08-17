@@ -50,6 +50,10 @@ async function login(
   await expect(page).toHaveURL(/\/top$/);
 }
 
+function attentionFilterSwitch(page: Page) {
+  return page.getByRole("switch", { name: "表示フィルター" });
+}
+
 async function makeAutoEntryLineItemMissing(page: Page): Promise<void> {
   await page.route("**/api/backend/document-analyses/*/auto-entry-review", async (route) => {
     const response = await route.fetch();
@@ -173,6 +177,11 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
     timeout: 60_000,
   });
 
+  const filterSwitch = attentionFilterSwitch(page);
+  await expect(filterSwitch).not.toBeChecked();
+  await expect(page.getByLabel("総請求額（円）", { exact: true })).toBeVisible();
+  await filterSwitch.click();
+  await expect(filterSwitch).toBeChecked();
   const description = page.getByLabel("内容", { exact: true });
   const amount = page.getByLabel("金額（円）", { exact: true });
   await expect(description).toBeVisible();
@@ -243,7 +252,8 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
     'polygon[data-field-path="document.issuerTaxRegistrationNumber"]',
   )).toHaveCount(0);
 
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  const filterSwitch = attentionFilterSwitch(page);
+  await expect(filterSwitch).not.toBeChecked();
   const totalEvidence = preview.locator(
     'polygon[data-field-path="document.totalAmount"]',
   );
@@ -272,7 +282,8 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
 
   await invoiceTotal.focus();
   await expect(totalEvidence).toHaveAttribute("data-active", "true");
-  await page.getByRole("button", { name: "要確認のみ", exact: true }).click();
+  await filterSwitch.click();
+  await expect(filterSwitch).toBeChecked();
   await expect(invoiceTotal).toBeHidden();
   await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
   await expect(issuerEvidence).toHaveAttribute("data-active", "false");
@@ -281,7 +292,9 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await page.getByLabel("内容", { exact: true }).last().focus();
   await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
 
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await filterSwitch.click();
+  await expect(filterSwitch).not.toBeChecked();
+  await expect(invoiceTotal).toBeVisible();
   await issuerName.fill("編集後の発行元");
   await expect(issuerEvidence).toHaveAttribute("data-active", "true");
   await issuerName.blur();
@@ -470,6 +483,9 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     timeout: 60_000,
   });
 
+  const filterSwitch = attentionFilterSwitch(page);
+  await expect(filterSwitch).not.toBeChecked();
+
   const evidenceOverlay = page.getByTestId("expense-auto-entry-source-overlay").first();
   const issuerEvidence = page.locator('polygon[data-field-path="document.issuerName"]');
   await expect(evidenceOverlay).toBeVisible();
@@ -489,10 +505,10 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   const workbenchTax = page.getByTestId("expense-auto-entry-tax-amount");
   await expect(workbenchTax.getByText("消費税（読取値）", { exact: false })).toContainText("1,000");
   await expect(workbenchTax.getByText("OK", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
   await expect(issuerEvidence).toHaveCount(1);
   await expect(page.getByLabel("総請求額（円）", { exact: true })).toHaveValue("10500");
-  await page.getByRole("button", { name: "要確認のみ", exact: true }).click();
+  await filterSwitch.click();
+  await expect(filterSwitch).toBeChecked();
   await expect(issuerEvidence).toHaveCount(1);
   const workbenchAdjustments = page.getByTestId("expense-auto-entry-adjustments");
   await expect(workbenchAdjustments).toContainText("調整額（読取値）");
@@ -501,6 +517,8 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(workbenchAdjustments.getByText("OK", { exact: true })).toBeVisible();
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toHaveCount(0);
+  await filterSwitch.click();
+  await expect(filterSwitch).not.toBeChecked();
   await page.locator("select").first().selectOption("MEAL");
   await expect(page.getByLabel("店舗名", { exact: true })).toBeVisible();
   await expect(page.getByLabel("参加者", { exact: true })).toBeVisible();
@@ -540,6 +558,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     `/expenses/auto-entry/confirm/${created.application.id}$`,
   ));
   await expect(page.getByRole("heading", { name: "自動入力の確認", exact: true })).toBeVisible();
+  await expect(attentionFilterSwitch(page)).not.toBeChecked();
   await expect(page.getByText("文書を読み込む", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("現在の分析状態")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe")).toBeVisible();
@@ -550,6 +569,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "自動入力の確認", exact: true })).toBeVisible();
+  await expect(attentionFilterSwitch(page)).not.toBeChecked();
   await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe")).toHaveAttribute(
     "src",
     new RegExp(`/api/backend/expense-applications/${created.application.id}/attachments/[0-9a-f-]{36}/content$`),
@@ -567,7 +587,6 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toHaveCount(0);
 
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
   const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
   await issuerName.fill("最終編集済み発行元");
   await expect(page.getByText("修正済み", { exact: true }).first()).toBeVisible();
@@ -578,9 +597,11 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await page.getByRole("button", { name: "下書き保存", exact: true }).click();
   expect((await saveResponse).ok()).toBeTruthy();
   await expect(page.getByText("保存しました", { exact: true })).toBeVisible();
+  await expect(attentionFilterSwitch(page)).not.toBeChecked();
 
   await page.reload();
   await expect(page.getByLabel("請求社 / 発行元", { exact: true })).toHaveValue("最終編集済み発行元");
+  await expect(attentionFilterSwitch(page)).not.toBeChecked();
   const submit = page.getByRole("button", { name: "申請", exact: true });
   await expect(submit).toBeEnabled();
   await page.getByLabel("件名", { exact: true }).fill("");
@@ -638,7 +659,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   ));
   await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe"))
     .toBeVisible();
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await expect(attentionFilterSwitch(page)).not.toBeChecked();
   await expect(page.getByLabel("請求社 / 発行元", { exact: true }))
     .toHaveValue("最終編集済み発行元");
   await page.getByLabel("請求社 / 発行元", { exact: true }).fill("差戻し後の発行元");
@@ -671,6 +692,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     `/expenses/auto-entry/confirm/${created.application.id}$`,
   ));
   await expect(page.getByLabel("請求社 / 発行元", { exact: true })).toHaveValue("差戻し後の発行元");
+  await expect(attentionFilterSwitch(page)).not.toBeChecked();
 
   const resubmitResponse = page.waitForResponse((candidate) =>
     candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/resubmit`)
