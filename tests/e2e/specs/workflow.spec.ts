@@ -327,6 +327,13 @@ test("一般ユーザーがログインしてPoC案内とUIサンプルを表示
   await expect(page).toHaveURL(/\/ui-samples$/);
   await expect(page.getByRole("heading", { name: "モック文字８", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "モック文字９", exact: true })).toBeVisible();
+  const uiSamplesResponse = await page.request.get("/ui-samples");
+  expect(uiSamplesResponse.status()).toBe(200);
+  const uiSamplesCacheControl = uiSamplesResponse.headers()["cache-control"] ?? "";
+  expect(
+    uiSamplesCacheControl.includes("no-store")
+      || (uiSamplesCacheControl.includes("no-cache") && uiSamplesCacheControl.includes("must-revalidate")),
+  ).toBeTruthy();
   await expectContentOrientedWorkspaceChrome(page);
   await expectActiveDrawerNavigationLink(page, "UIサンプル");
   await navigateFromWorkspaceNavigation(page, "経費申請");
