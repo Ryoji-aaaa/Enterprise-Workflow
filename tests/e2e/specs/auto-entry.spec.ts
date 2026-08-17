@@ -231,6 +231,7 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect(issuerEvidence).toHaveCount(1);
   await expect(issuerEvidence).toHaveAttribute("data-page-number", "1");
   await expect(issuerEvidence).toHaveAttribute("data-source-index", "0");
+  await expect(issuerEvidence).toHaveAttribute("data-active", "false");
   await expect(issuerEvidence).toHaveAttribute("points", /.+/);
   const points = await issuerEvidence.getAttribute("points");
   expect(points).not.toBeNull();
@@ -241,6 +242,56 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect(preview.locator(
     'polygon[data-field-path="document.issuerTaxRegistrationNumber"]',
   )).toHaveCount(0);
+
+  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  const totalEvidence = preview.locator(
+    'polygon[data-field-path="document.totalAmount"]',
+  );
+  const lineDescriptionEvidence = preview.locator(
+    'polygon[data-field-path="document.lineItems[0].itemDescription"]',
+  );
+  const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
+  const invoiceTotal = page.getByLabel("総請求額（円）", { exact: true });
+
+  await issuerName.focus();
+  await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  await expect(totalEvidence).toHaveAttribute("data-active", "false");
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "false");
+
+  await invoiceTotal.focus();
+  await expect(issuerEvidence).toHaveAttribute("data-active", "false");
+  await expect(totalEvidence).toHaveAttribute("data-active", "true");
+
+  await page.getByLabel("内容", { exact: true }).focus();
+  await expect(totalEvidence).toHaveAttribute("data-active", "false");
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+
+  await page.getByLabel("インボイス登録番号", { exact: true }).focus();
+  await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
+  await expect(preview.locator("polygon")).not.toHaveCount(0);
+
+  await invoiceTotal.focus();
+  await expect(totalEvidence).toHaveAttribute("data-active", "true");
+  await page.getByRole("button", { name: "要確認のみ", exact: true }).click();
+  await expect(invoiceTotal).toBeHidden();
+  await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
+  await expect(issuerEvidence).toHaveAttribute("data-active", "false");
+
+  await page.getByRole("button", { name: "明細追加", exact: true }).click();
+  await page.getByLabel("内容", { exact: true }).last().focus();
+  await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
+
+  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await issuerName.fill("編集後の発行元");
+  await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  await issuerName.blur();
+  await expect(issuerEvidence).toHaveAttribute("data-active", "false");
+
+  await page.getByLabel("内容", { exact: true }).first().focus();
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+  await page.getByRole("button", { name: "明細1を削除", exact: true }).click();
+  await expect(lineDescriptionEvidence).toHaveCount(0);
+  await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
 });
 
 test("通常経費フォームも申請結果不明時は再実行を止めて詳細確認へ誘導する", async ({ page }) => {

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
 import type { AutoEntryPageRef } from "@/lib/auto-entry-review";
 import {
   autoEntryPageForNumber,
+  getAutoEntryActiveEvidencePageNumber,
   type AutoEntryEvidenceSource,
 } from "@/lib/expense-auto-entry-evidence";
 
@@ -22,12 +23,14 @@ function AutoEntryPdfPage({
   pageNumber,
   page,
   evidence,
+  activeFieldPath,
   onRenderError,
 }: {
   document: PDFDocumentProxy;
   pageNumber: number;
   page: AutoEntryPageRef | undefined;
   evidence: readonly AutoEntryEvidenceSource[];
+  activeFieldPath: string | null;
   onRenderError: () => void;
 }) {
   const { ref: containerRef, size: containerSize } = useRenderedElementSize<HTMLDivElement>();
@@ -77,6 +80,7 @@ function AutoEntryPdfPage({
       >
         <canvas className="block" ref={setCanvas} />
         <AutoEntrySourceOverlay
+          activeFieldPath={activeFieldPath}
           evidence={evidence}
           page={page}
           renderedHeight={renderedSize.height}
@@ -91,11 +95,14 @@ export function AutoEntryPdfPreview({
   previewUrl,
   pages,
   evidence,
+  activeFieldPath,
 }: {
   previewUrl: string;
   pages: readonly AutoEntryPageRef[];
   evidence: readonly AutoEntryEvidenceSource[];
+  activeFieldPath: string | null;
 }) {
+  const pagesRef = useRef<HTMLDivElement>(null);
   const [loadState, setLoadState] = useState<{
     previewUrl: string;
     document: PDFDocumentProxy | null;
@@ -103,6 +110,7 @@ export function AutoEntryPdfPreview({
   }>({ previewUrl, document: null, error: false });
   const document = loadState.previewUrl === previewUrl ? loadState.document : null;
   const error = loadState.previewUrl === previewUrl && loadState.error;
+  const activePageNumber = getAutoEntryActiveEvidencePageNumber(evidence, activeFieldPath);
   const handleRenderError = useCallback(() => {
     setLoadState({ previewUrl, document: null, error: true });
   }, [previewUrl]);
@@ -132,6 +140,13 @@ export function AutoEntryPdfPreview({
     };
   }, [previewUrl]);
 
+  useEffect(() => {
+    if (activePageNumber === null) return;
+    pagesRef.current
+      ?.querySelector<HTMLElement>(`[data-testid="expense-auto-entry-pdf-page"][data-page-number="${activePageNumber}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activePageNumber, document]);
+
   if (error) {
     return <p className="rounded-md border border-destructive/40 bg-background p-4 text-sm text-destructive">PDFを表示できませんでした。ファイルが破損していないか確認してください。</p>;
   }
@@ -140,11 +155,12 @@ export function AutoEntryPdfPreview({
   }
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-4" ref={pagesRef}>
       {Array.from({ length: document.numPages }, (_, index) => {
         const pageNumber = index + 1;
         return (
           <AutoEntryPdfPage
+            activeFieldPath={activeFieldPath}
             document={document}
             evidence={evidence}
             key={pageNumber}

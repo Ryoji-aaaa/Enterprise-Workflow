@@ -254,12 +254,15 @@ export function resolveAutoEntryField(
   return confirmed ? "CONFIRMED" : "UNRESOLVED";
 }
 
-function lineItemDescriptionPath(index: number): string {
-  return `document.lineItems[${index}].itemDescription`;
-}
-
-function lineItemAmountPath(index: number): string {
-  return `document.lineItems[${index}].lineAmount`;
+export function getAutoEntryLineItemFieldPaths(sourceLineItemIndex: number | null): {
+  descriptionPath: string;
+  amountPath: string;
+} | null {
+  if (sourceLineItemIndex === null) return null;
+  return {
+    descriptionPath: `document.lineItems[${sourceLineItemIndex}].itemDescription`,
+    amountPath: `document.lineItems[${sourceLineItemIndex}].lineAmount`,
+  };
 }
 
 function sourceItem(
@@ -299,17 +302,19 @@ export function getTrackedAutoEntryFields(
 
   for (const lineItem of source.lineItems) {
     const sourceLineItemIndex = lineItem.sourceLineItemIndex;
+    const paths = getAutoEntryLineItemFieldPaths(sourceLineItemIndex);
+    if (!paths) continue;
     const currentItem = sourceItem(form.application.items, sourceLineItemIndex);
     tracked.push(
       {
-        path: lineItemDescriptionPath(sourceLineItemIndex),
+        path: paths.descriptionPath,
         label: `明細 ${sourceLineItemIndex + 1}・品名`,
         field: lineItem.itemDescription,
         currentValue: currentItem?.description ?? null,
         deleted: currentItem === undefined,
       },
       {
-        path: lineItemAmountPath(sourceLineItemIndex),
+        path: paths.amountPath,
         label: `明細 ${sourceLineItemIndex + 1}・金額`,
         field: lineItem.lineAmount,
         currentValue: currentItem?.amount ?? null,

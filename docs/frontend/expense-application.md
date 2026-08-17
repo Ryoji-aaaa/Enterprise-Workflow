@@ -38,16 +38,22 @@ BrowserはSpring Boot、Blob Storage、Azure AIへ直接接続しない。
 
 AUTO_ENTRY専用Previewは、PDFを同梱したPDF.js workerでpageごとのcanvasへ描画し、JPEG / PNGは画像として
 描画する。Review取得後は、現在の経費自動入力で追跡するfieldの`source` polygonだけを原本上の青枠として
-表示する。OCR全文、word、paragraph、table cellのoverlayではない。表示対象は請求社 / 発行元、
+表示し、AI由来の入力欄へmouse、keyboard、programmatic focusのいずれかでfocusすると、そのfield pathに
+一致するpolygonを赤枠へ切り替える。他fieldのEvidenceは青枠のまま表示する。OCR全文、word、paragraph、
+table cellのoverlayではない。表示対象は請求社 / 発行元、
 インボイス登録番号、総請求額、現在残っているAI由来明細の品名・金額であり、1 fieldに複数sourceがあれば
 すべてを各pageへ表示する。AI値を人が編集しても元のsourceは維持し、sourceなしfield、人間追加明細、
-削除済みAI明細には表示しない。「要確認のみ / すべて」は入力フォームだけのfilterで、青枠を変更しない。
-青枠は原本文字を妨げない非操作の装飾であり、click、hover、tooltip、入力focus連携を提供しない。
+削除済みAI明細には表示しない。sourceなしfieldと人間追加明細へfocusしても赤Evidenceは表示せず、AI値を
+人が修正した後も元sourceとの対応を維持する。「要確認のみ / すべて」は入力フォームだけのfilterで、
+Evidence一覧を変更しない。filterでfocus中の入力欄が消えた場合は赤枠を解除する。Evidence枠は原本文字を
+妨げない非操作の装飾であり、click、hover、tooltipを提供せず、Tab orderにも追加しない。
 
 polygonはReviewのpage幅・高さから実際のcanvas / 画像の表示幅・高さへX/Yを個別にscaleし、3点以上の形状を
 SVG polygonとして保持する。`angleDegrees`はprovider page上のcontent angleとして保持される情報であり、
 Previewでは原本を追加回転しない。PDF固有rotationはPDF.js viewportへ任せ、その最終表示領域へReview座標を
-対応付ける。Preview領域のresize時は表示寸法を再取得してcanvasとoverlayを同じ領域へ追従させる。
+対応付ける。Preview領域のresize時は表示寸法を再取得してcanvasとoverlayを同じ領域へ追従させる。複数pageの
+PDFでAI fieldへfocusした場合は、最初のsource pageが見える位置までPreviewをscrollする。polygonへのzoom、
+viewport scale変更、fit-to-selectionは行わない。
 
 Reviewから入力・編集する対象は、請求社 / 発行元、インボイス登録番号、総請求額、各明細の品名と金額だけに
 限定する。`null`のAI値は空値のままにし、税率、用途、支払先その他の値を推測補完しない。AI明細は

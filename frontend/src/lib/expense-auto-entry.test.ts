@@ -14,6 +14,7 @@ import {
   createExpenseAutoEntryDraftRequest,
   formatExpenseAutoEntryTaxAmount,
   getAutoEntryAttention,
+  getAutoEntryLineItemFieldPaths,
   getConfirmedAutoEntryFieldPaths,
   getResolvedAutoEntryFields,
   initializeExpenseAutoEntryForm,
@@ -152,6 +153,19 @@ test("AI明細がなければ推測せず手入力用の空明細だけを用意
     description: item.description,
     amount: item.amount,
   })), [{ sourceLineItemIndex: null, description: "", amount: 0 }]);
+});
+
+test("AI明細field pathは現在の配列位置でなくsourceLineItemIndexを使う", () => {
+  const itemsAfterFirstDeletion = [
+    { sourceLineItemIndex: 4 },
+    { sourceLineItemIndex: null },
+  ];
+
+  assert.deepEqual(getAutoEntryLineItemFieldPaths(itemsAfterFirstDeletion[0]!.sourceLineItemIndex), {
+    descriptionPath: "document.lineItems[4].itemDescription",
+    amountPath: "document.lineItems[4].lineAmount",
+  });
+  assert.equal(getAutoEntryLineItemFieldPaths(itemsAfterFirstDeletion[1]!.sourceLineItemIndex), null);
 });
 
 test("人間の確認状態はBackendと同じ意味で解決する", () => {

@@ -1,6 +1,7 @@
 import type { AutoEntryPageRef } from "@/lib/auto-entry-review";
 import {
   autoEntryEvidencePointsAttribute,
+  isAutoEntryEvidenceSourceActive,
   renderAutoEntryPageEvidence,
   type AutoEntryEvidenceSource,
 } from "@/lib/expense-auto-entry-evidence";
@@ -8,11 +9,13 @@ import {
 export function AutoEntrySourceOverlay({
   page,
   evidence,
+  activeFieldPath,
   renderedWidth,
   renderedHeight,
 }: {
   page: AutoEntryPageRef | undefined;
   evidence: readonly AutoEntryEvidenceSource[];
+  activeFieldPath: string | null;
   renderedWidth: number;
   renderedHeight: number;
 }) {
@@ -35,20 +38,24 @@ export function AutoEntrySourceOverlay({
       viewBox={`0 0 ${renderedWidth} ${renderedHeight}`}
       width={renderedWidth}
     >
-      {renderedEvidence.map((source) => (
-        <polygon
-          data-field-path={source.fieldPath}
-          data-page-number={source.pageNumber}
-          data-source-index={source.sourceIndex}
-          fill="rgba(37, 99, 235, 0.04)"
-          key={`${source.fieldPath}-${source.pageNumber}-${source.sourceIndex}`}
-          points={autoEntryEvidencePointsAttribute(source.points)}
-          stroke="#2563eb"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
+      {renderedEvidence.map((source) => {
+        const active = isAutoEntryEvidenceSourceActive(source, activeFieldPath);
+        return (
+          <polygon
+            data-active={active}
+            data-field-path={source.fieldPath}
+            data-page-number={source.pageNumber}
+            data-source-index={source.sourceIndex}
+            fill={active ? "rgba(220, 38, 38, 0.06)" : "rgba(37, 99, 235, 0.04)"}
+            key={`${source.fieldPath}-${source.pageNumber}-${source.sourceIndex}`}
+            points={autoEntryEvidencePointsAttribute(source.points)}
+            stroke={active ? "#dc2626" : "#2563eb"}
+            strokeLinejoin="round"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
     </svg>
   );
 }

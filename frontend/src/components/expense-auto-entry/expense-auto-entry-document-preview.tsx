@@ -20,12 +20,14 @@ export function ExpenseAutoEntryDocumentPreview({
   serverUrl,
   pages,
   resolvedFields,
+  activeFieldPath,
 }: {
   file: AnalyzableFile | null;
   objectUrl: string | null;
   serverUrl: string | null;
   pages: readonly AutoEntryPageRef[];
   resolvedFields: readonly ResolvedAutoEntryField[];
+  activeFieldPath: string | null;
 }) {
   const previewUrl = objectUrl ?? serverUrl;
   const evidence = useMemo(
@@ -53,9 +55,10 @@ export function ExpenseAutoEntryDocumentPreview({
             <p className="text-sm">ファイルを選択するとプレビューを表示します。</p>
           </div>
         ) : file.type === "application/pdf" ? (
-          <AutoEntryPdfPreview evidence={evidence} pages={pages} previewUrl={previewUrl} />
+          <AutoEntryPdfPreview activeFieldPath={activeFieldPath} evidence={evidence} pages={pages} previewUrl={previewUrl} />
         ) : (
           <AutoEntryImagePreview
+            activeFieldPath={activeFieldPath}
             evidence={evidence}
             name={file.name}
             page={autoEntryPageForNumber(pages, 1)}
