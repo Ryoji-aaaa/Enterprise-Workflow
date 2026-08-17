@@ -85,6 +85,9 @@ Markdownを再parseしてtableを作成しない。
 
 DesktopではFile、Preview、Resultの各ペイン、mobileでは選択中ペインがWorkbenchの固定高さ内で
 個別にスクロールする。ペイン見出しとResultのタブ・Copy操作は固定し、内容だけをスクロールする。
+分析状態は従来のテキストと5ステップのフローを維持し、`uploading`、`queued`、`running`中は
+Status見出し横に回転するprocessing indicator、`succeeded`ではsuccess indicator、`failed`では
+failure indicatorを表示する。`idle`と`selected`ではindicatorを表示しない。
 すべての結果タブにCopyを表示する。Markdownは表示中のMarkdown、Paragraphsは
 `id,role,pageNumber,confidence,content`、Tablesは全表を`tableId,column1...columnN`へ統合した
 RFC 4180形式CSV、Resultは取得済みRaw Result本文をコピーする。Tablesの結合セルに覆われた箇所と
