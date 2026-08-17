@@ -80,7 +80,7 @@ export function ExpenseAutoEntryWorkbench() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [form, setForm] = useState<ExpenseAutoEntryForm | null>(null);
   const [confirmedPaths, setConfirmedPaths] = useState<Set<string>>(new Set());
-  const [showAttentionOnly, setShowAttentionOnly] = useState(true);
+  const [showAttentionOnly, setShowAttentionOnly] = useState(false);
   const [activeEvidencePath, setActiveEvidencePath] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -106,7 +106,7 @@ export function ExpenseAutoEntryWorkbench() {
       setReview(nextReview);
       setForm(initializeExpenseAutoEntryForm(nextReview, today));
       setConfirmedPaths(new Set());
-      setShowAttentionOnly(true);
+      setShowAttentionOnly(false);
       setActiveEvidencePath(null);
       setSubmitError(null);
       dispatch({

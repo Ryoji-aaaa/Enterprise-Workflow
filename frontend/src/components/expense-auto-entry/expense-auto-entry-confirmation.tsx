@@ -46,7 +46,7 @@ export function ExpenseAutoEntryConfirmation({ draftId }: { draftId: string }) {
   const [draft, setDraft] = useState<ExpenseAutoEntryDraftResponse | null>(null);
   const [form, setForm] = useState<ExpenseAutoEntryForm | null>(null);
   const [confirmedPaths, setConfirmedPaths] = useState<Set<string>>(new Set());
-  const [showAttentionOnly, setShowAttentionOnly] = useState(true);
+  const [showAttentionOnly, setShowAttentionOnly] = useState(false);
   const [sourceFile, setSourceFile] = useState<AnalyzableFile | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,7 +62,7 @@ export function ExpenseAutoEntryConfirmation({ draftId }: { draftId: string }) {
     setDraft(nextDraft);
     setForm(persistedExpenseAutoEntryDraftToForm(nextDraft));
     setConfirmedPaths(confirmedAutoEntryFieldPaths(nextDraft.autoEntry.fields));
-    setShowAttentionOnly(true);
+    setShowAttentionOnly(false);
     setDirty(false);
     setSaved(false);
     setReloadNotice(null);

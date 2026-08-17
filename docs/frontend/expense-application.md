@@ -44,8 +44,9 @@ table cellのoverlayではない。表示対象は請求社 / 発行元、
 インボイス登録番号、総請求額、現在残っているAI由来明細の品名・金額であり、1 fieldに複数sourceがあれば
 すべてを各pageへ表示する。AI値を人が編集しても元のsourceは維持し、sourceなしfield、人間追加明細、
 削除済みAI明細には表示しない。sourceなしfieldと人間追加明細へfocusしても赤Evidenceは表示せず、AI値を
-人が修正した後も元sourceとの対応を維持する。「要確認のみ / すべて」は入力フォームだけのfilterで、
-Evidence一覧を変更しない。filterでfocus中の入力欄が消えた場合は赤枠を解除する。Evidence枠は原本文字を
+人が修正した後も元sourceとの対応を維持する。「すべて | Switch | 要確認のみ」は入力フォームだけのfilterで、
+Switch OFFは「すべて」、ONは「要確認のみ」とし、Frontendの初期状態は常にOFFである。filter状態はBackendへ
+永続化せず、Evidence一覧そのものを変更しない。filterでfocus中の入力欄が消えた場合は赤枠を解除する。Evidence枠は原本文字を
 妨げない非操作の装飾であり、click、hover、tooltipを提供せず、Tab orderにも追加しない。
 
 polygonはReviewのpage幅・高さから実際のcanvas / 画像の表示幅・高さへX/Yを個別にscaleし、3点以上の形状を
@@ -62,7 +63,7 @@ Reviewから入力・編集する対象は、請求社 / 発行元、インボ�
 
 経費区分、件名、利用目的、利用日、備考、およびカテゴリ別必須項目は常に人が入力できる。
 `REVIEW`のAI値が未変更なら「原本を確認しました」で確認でき、変更した値や人が入力した`MISSING`値は
-「修正済み」と表示する。右上の「要確認のみ / すべて」はAI補助項目だけを切り替え、未解決の重要項目だけを
+「修正済み」と表示する。右上の「すべて | Switch | 要確認のみ」はAI補助項目だけを切り替え、未解決の重要項目だけを
 Attentionとして数える。AIの未確認はnon-blockingだが、件名・利用目的・明細・カテゴリ別必須項目などの
 経費業務validationは「決定」をblockする。
 
@@ -110,8 +111,8 @@ source URL、BrowserのBlob URL、再アップロードは使わない。原本�
 エラーを表示し、保存済みフォームは安全に表示を継続する。
 
 AIの原値と`currentDocument`は別に保持する。初期の確認済みpathはBackend field stateが`CONFIRMED`のもの
-だけを復元し、`EDITED`、`NOT_REQUIRED`、`UNRESOLVED`は確認済みにしない。編集時の表示規則、要確認のみの
-filter、削除済みAI明細、`sourceLineItemIndex`、利用日変更時の明細利用日更新は補助入力画面と共通である。
+だけを復元し、`EDITED`、`NOT_REQUIRED`、`UNRESOLVED`は確認済みにしない。編集時の表示規則、OFFで開始する
+「すべて | Switch | 要確認のみ」filter、削除済みAI明細、`sourceLineItemIndex`、利用日変更時の明細利用日更新は補助入力画面と共通である。
 AI未確認と請求書総額の不一致・照合不能はnon-blockingであり、経費の必須入力・カテゴリ別必須項目・明細金額のvalidationは
 保存と申請をblockする。
 
