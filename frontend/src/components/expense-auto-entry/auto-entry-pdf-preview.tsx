@@ -26,6 +26,8 @@ function AutoEntryPdfPage({
   evidence,
   activeFieldPath,
   onRenderError,
+  onPageLayoutChange,
+  zoom,
 }: {
   document: PDFDocumentProxy;
   pageNumber: number;
@@ -33,6 +35,8 @@ function AutoEntryPdfPage({
   evidence: readonly AutoEntryEvidenceSource[];
   activeFieldPath: string | null;
   onRenderError: () => void;
+  onPageLayoutChange: () => void;
+  zoom: number;
 }) {
   const { ref: containerRef, size: containerSize } = useRenderedElementSize<HTMLDivElement>();
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -46,13 +50,15 @@ function AutoEntryPdfPage({
     void document.getPage(pageNumber).then((pdfPage) => {
       if (disposed) return;
       const baseViewport = pdfPage.getViewport({ scale: 1 });
-      const viewport = pdfPage.getViewport({ scale: containerSize.width / baseViewport.width });
+      const fitScale = containerSize.width / baseViewport.width;
+      const viewport = pdfPage.getViewport({ scale: fitScale * zoom });
       const outputScale = window.devicePixelRatio || 1;
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
       setRenderedSize({ width: viewport.width, height: viewport.height });
+      onPageLayoutChange();
       renderTask = pdfPage.render({
         canvas,
         viewport,
@@ -69,12 +75,12 @@ function AutoEntryPdfPage({
       disposed = true;
       renderTask?.cancel();
     };
-  }, [canvas, containerSize.width, document, onRenderError, pageNumber]);
+  }, [canvas, containerSize.width, document, onPageLayoutChange, onRenderError, pageNumber, zoom]);
 
   return (
     <div className="w-full" ref={containerRef}>
       <div
-        className="relative overflow-hidden rounded-md border bg-background shadow-sm"
+        className="relative mx-auto overflow-hidden rounded-md bg-background shadow-sm ring-1 ring-foreground/10"
         data-page-number={pageNumber}
         data-testid="expense-auto-entry-pdf-page"
         style={renderedSize.width > 0 ? { height: renderedSize.height, width: renderedSize.width } : undefined}
@@ -98,12 +104,14 @@ export function AutoEntryPdfPreview({
   evidence,
   activeFieldPath,
   scrollContainerRef,
+  zoom,
 }: {
   previewUrl: string;
   pages: readonly AutoEntryPageRef[];
   evidence: readonly AutoEntryEvidenceSource[];
   activeFieldPath: string | null;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
+  zoom: number;
 }) {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [loadState, setLoadState] = useState<{
@@ -111,12 +119,16 @@ export function AutoEntryPdfPreview({
     document: PDFDocumentProxy | null;
     error: boolean;
   }>({ previewUrl, document: null, error: false });
+  const [pageLayoutVersion, setPageLayoutVersion] = useState(0);
   const document = loadState.previewUrl === previewUrl ? loadState.document : null;
   const error = loadState.previewUrl === previewUrl && loadState.error;
   const activePageNumber = getAutoEntryActiveEvidencePageNumber(evidence, activeFieldPath);
   const handleRenderError = useCallback(() => {
     setLoadState({ previewUrl, document: null, error: true });
   }, [previewUrl]);
+  const handlePageLayoutChange = useCallback(() => {
+    setPageLayoutVersion((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -162,7 +174,7 @@ export function AutoEntryPdfPreview({
     });
     if (nextScrollTop === null) return;
     scrollContainer.scrollTo({ top: nextScrollTop, behavior: "smooth" });
-  }, [activeFieldPath, activePageNumber, document, scrollContainerRef]);
+  }, [activeFieldPath, activePageNumber, document, pageLayoutVersion, scrollContainerRef, zoom]);
 
   if (error) {
     return <p className="rounded-md border border-destructive/40 bg-background p-4 text-sm text-destructive">PDFを表示できませんでした。ファイルが破損していないか確認してください。</p>;
@@ -172,21 +184,25 @@ export function AutoEntryPdfPreview({
   }
 
   return (
-    <div className="w-full space-y-4" ref={pagesRef}>
-      {Array.from({ length: document.numPages }, (_, index) => {
-        const pageNumber = index + 1;
-        return (
-          <AutoEntryPdfPage
-            activeFieldPath={activeFieldPath}
-            document={document}
-            evidence={evidence}
-            key={pageNumber}
-            onRenderError={handleRenderError}
-            page={autoEntryPageForNumber(pages, pageNumber)}
-            pageNumber={pageNumber}
-          />
-        );
-      })}
+    <div className="flex min-h-full w-full min-w-0">
+      <div className="my-auto min-w-0 w-full space-y-4" ref={pagesRef}>
+        {Array.from({ length: document.numPages }, (_, index) => {
+          const pageNumber = index + 1;
+          return (
+            <AutoEntryPdfPage
+              activeFieldPath={activeFieldPath}
+              document={document}
+              evidence={evidence}
+              key={pageNumber}
+              onPageLayoutChange={handlePageLayoutChange}
+              onRenderError={handleRenderError}
+              page={autoEntryPageForNumber(pages, pageNumber)}
+              pageNumber={pageNumber}
+              zoom={zoom}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

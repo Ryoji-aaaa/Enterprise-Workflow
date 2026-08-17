@@ -333,7 +333,7 @@ export function ExpenseAutoEntryWorkbench() {
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,1fr)]">
-          <div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><ExpenseAutoEntryDocumentPreview activeFieldPath={activeEvidencePath} file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
+          <div className="h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><ExpenseAutoEntryDocumentPreview activeFieldPath={activeEvidencePath} file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
           <section className="min-w-0 rounded-md border bg-card text-card-foreground">
             <div className="border-b p-4"><AnalysisStatus state={state} viewLoading={reviewLoading} /></div>
             <div className="space-y-6 p-4">
