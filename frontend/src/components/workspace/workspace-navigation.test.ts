@@ -7,7 +7,6 @@ import {
   getActiveWorkspaceNavigationItem,
   getVisibleWorkspaceNavigationItems,
   isWorkspaceNavigationItemActive,
-  workspaceMockNavigationItems,
   workspaceNavigationItems,
 } from "./workspace-navigation.ts";
 
@@ -48,6 +47,7 @@ test("権限に応じたワークスペースメニューだけを表示する",
     "組織図",
     "Document Intelligence",
     "Content Understanding",
+    "UIサンプル",
   ]);
 });
 
@@ -70,6 +70,7 @@ test("承認待ちとユーザー管理は対応権限がある場合だけ表�
     "ユーザー管理",
     "Document Intelligence",
     "Content Understanding",
+    "UIサンプル",
   ]);
 });
 
@@ -80,6 +81,25 @@ test("Document Analysisの2ルートを実メニューとして表示する", ()
   assert.equal(labels.includes("Content Understanding"), true);
   assert.equal(item("/document-intelligence").label, "Document Intelligence");
   assert.equal(item("/content-understanding").label, "Content Understanding");
+});
+
+test("UIサンプルは業務権限にかかわらず表示して現在パスでアクティブにする", () => {
+  const userWithoutBusinessPermissions = {
+    ...currentUser,
+    permissions: [],
+  };
+
+  assert.equal(item("/ui-samples").label, "UIサンプル");
+  assert.equal(
+    getVisibleWorkspaceNavigationItems(userWithoutBusinessPermissions)
+      .some((value) => value.href === "/ui-samples"),
+    true,
+  );
+  assert.equal(isWorkspaceNavigationItemActive("/ui-samples", item("/ui-samples")), true);
+  assert.equal(
+    getActiveWorkspaceNavigationItem("/ui-samples", userWithoutBusinessPermissions)?.href,
+    "/ui-samples",
+  );
 });
 
 test("組織図はDB権限と許可された雇用区分の両方を満たす場合だけ表示する", () => {
@@ -178,13 +198,4 @@ test("より具体的な経費自動入力のmenuだけをactiveにする", () =
   assert.equal(getActiveWorkspaceNavigationItem(
     "/expenses/auto-entry/confirm/123e4567-e89b-42d3-a456-426614174000", currentUser,
   )?.href, "/expenses/auto-entry");
-});
-
-test("置換対象の先頭モック2件は残さず、残り4件を維持する", () => {
-  assert.deepEqual(workspaceMockNavigationItems.map((value) => value.label), [
-    "モック文字３",
-    "モック文字４",
-    "モック文字５",
-    "モック文字６",
-  ]);
 });

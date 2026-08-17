@@ -15,6 +15,7 @@ test("/top以外のワークスペースrouteをcontent-orientedとして扱う"
     "/document-intelligence",
     "/content-understanding",
     "/expenses/auto-entry",
+    "/ui-samples",
   ]) {
     assert.equal(getWorkspaceLayoutMode(pathname), "content-oriented");
   }

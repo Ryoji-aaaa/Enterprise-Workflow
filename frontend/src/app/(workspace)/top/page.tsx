@@ -1,5 +1,5 @@
-import { MockDashboardContent } from "./mock-dashboard-content";
+import { ExpenseAutoEntryPocContent } from "./expense-auto-entry-poc-content";
 
 export default function TopPage() {
-  return <MockDashboardContent />;
+  return <ExpenseAutoEntryPocContent />;
 }
