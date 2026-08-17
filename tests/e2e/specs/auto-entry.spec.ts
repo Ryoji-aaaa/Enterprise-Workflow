@@ -182,8 +182,8 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
   await expect(page.getByLabel("総請求額（円）", { exact: true })).toBeVisible();
   await filterSwitch.click();
   await expect(filterSwitch).toBeChecked();
-  const description = page.getByLabel("内容", { exact: true });
-  const amount = page.getByLabel("金額（円）", { exact: true });
+  const description = page.getByRole("textbox", { name: "内容", exact: true });
+  const amount = page.getByRole("spinbutton", { name: "金額（円）", exact: true });
   await expect(description).toBeVisible();
   await expect(amount).toBeVisible();
   await description.pressSequentially("業務用備品");
@@ -272,7 +272,7 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect(issuerEvidence).toHaveAttribute("data-active", "false");
   await expect(totalEvidence).toHaveAttribute("data-active", "true");
 
-  await page.getByLabel("内容", { exact: true }).focus();
+  await page.getByRole("textbox", { name: "内容", exact: true }).focus();
   await expect(totalEvidence).toHaveAttribute("data-active", "false");
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
 
@@ -289,7 +289,7 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect(issuerEvidence).toHaveAttribute("data-active", "false");
 
   await page.getByRole("button", { name: "明細追加", exact: true }).click();
-  await page.getByLabel("内容", { exact: true }).last().focus();
+  await page.getByRole("textbox", { name: "内容", exact: true }).last().focus();
   await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
 
   await filterSwitch.click();
@@ -300,7 +300,7 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await issuerName.blur();
   await expect(issuerEvidence).toHaveAttribute("data-active", "false");
 
-  await page.getByLabel("内容", { exact: true }).first().focus();
+  await page.getByRole("textbox", { name: "内容", exact: true }).first().focus();
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
   await page.getByRole("button", { name: "明細1を削除", exact: true }).click();
   await expect(lineDescriptionEvidence).toHaveCount(0);
@@ -313,13 +313,13 @@ test("通常経費フォームも申請結果不明時は再実行を止めて�
   const applicant = await loadStagingPersona("STANDARD_APPLICANT");
   await login(page, applicant.email, seedUserPassword);
   await page.goto("/expenses/new");
-  await page.getByLabel("件名", { exact: true }).fill(`E2E通常申請結果不明-${Date.now()}`);
-  await page.getByLabel("利用目的", { exact: true }).fill("結果不明時の再実行防止確認");
-  await page.getByLabel("内容（片道／往復を含む）", { exact: true }).fill("電車移動");
-  await page.getByLabel("金額（円）", { exact: true }).fill("1000");
-  await page.getByLabel("交通手段", { exact: true }).fill("電車");
-  await page.getByLabel("出発地", { exact: true }).fill("東京");
-  await page.getByLabel("到着地", { exact: true }).fill("品川");
+  await page.getByRole("textbox", { name: "件名", exact: true }).fill(`E2E通常申請結果不明-${Date.now()}`);
+  await page.getByRole("textbox", { name: "利用目的", exact: true }).fill("結果不明時の再実行防止確認");
+  await page.getByRole("textbox", { name: "内容（片道／往復を含む）", exact: true }).fill("電車移動");
+  await page.getByRole("spinbutton", { name: "金額（円）", exact: true }).fill("1000");
+  await page.getByRole("textbox", { name: "交通手段", exact: true }).fill("電車");
+  await page.getByRole("textbox", { name: "出発地", exact: true }).fill("東京");
+  await page.getByRole("textbox", { name: "到着地", exact: true }).fill("品川");
 
   let submitAttempts = 0;
   const expenseApiPath = "**/api/backend/expense-applications**";
@@ -374,13 +374,13 @@ test("通常経費の申請再試行は最初に保存したDRAFTを再利用す
   const applicant = await loadStagingPersona("STANDARD_APPLICANT");
   await login(page, applicant.email, seedUserPassword);
   await page.goto("/expenses/new");
-  await page.getByLabel("件名", { exact: true }).fill(`E2E通常申請再試行-${Date.now()}`);
-  await page.getByLabel("利用目的", { exact: true }).fill("保存済みDRAFTの再利用確認");
-  await page.getByLabel("内容（片道／往復を含む）", { exact: true }).fill("電車移動");
-  await page.getByLabel("金額（円）", { exact: true }).fill("1000");
-  await page.getByLabel("交通手段", { exact: true }).fill("電車");
-  await page.getByLabel("出発地", { exact: true }).fill("東京");
-  await page.getByLabel("到着地", { exact: true }).fill("品川");
+  await page.getByRole("textbox", { name: "件名", exact: true }).fill(`E2E通常申請再試行-${Date.now()}`);
+  await page.getByRole("textbox", { name: "利用目的", exact: true }).fill("保存済みDRAFTの再利用確認");
+  await page.getByRole("textbox", { name: "内容（片道／往復を含む）", exact: true }).fill("電車移動");
+  await page.getByRole("spinbutton", { name: "金額（円）", exact: true }).fill("1000");
+  await page.getByRole("textbox", { name: "交通手段", exact: true }).fill("電車");
+  await page.getByRole("textbox", { name: "出発地", exact: true }).fill("東京");
+  await page.getByRole("textbox", { name: "到着地", exact: true }).fill("品川");
 
   let createAttempts = 0;
   const submitApplicationIds: string[] = [];
@@ -500,8 +500,8 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     'polygon[data-field-path="document.issuerTaxRegistrationNumber"]',
   )).toHaveCount(0);
 
-  await expect(page.getByLabel("内容", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("金額（円）", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "内容", exact: true })).toBeVisible();
+  await expect(page.getByRole("spinbutton", { name: "金額（円）", exact: true })).toBeVisible();
   const workbenchTax = page.getByTestId("expense-auto-entry-tax-amount");
   await expect(workbenchTax.getByText("消費税（読取値）", { exact: false })).toContainText("1,000");
   await expect(workbenchTax.getByText("OK", { exact: true })).toBeVisible();
@@ -520,11 +520,14 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await filterSwitch.click();
   await expect(filterSwitch).not.toBeChecked();
   await page.locator("select").first().selectOption("MEAL");
-  await expect(page.getByLabel("店舗名", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("参加者", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "店舗名", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "参加者", exact: true })).toBeVisible();
   await page.locator("select").first().selectOption("OTHER");
 
-  const originalConfirmation = page.getByLabel("原本を確認しました", { exact: true });
+  const originalConfirmation = page.getByRole("checkbox", {
+    name: "原本を確認しました",
+    exact: true,
+  });
   await originalConfirmation.check();
   await expect(originalConfirmation).toBeVisible();
   await expect(originalConfirmation).toBeChecked();
@@ -532,8 +535,8 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(originalConfirmation).toBeVisible();
   await expect(originalConfirmation).not.toBeChecked();
 
-  await page.getByLabel("件名", { exact: true }).fill(`自動入力E2E-${Date.now()}`);
-  await page.getByLabel("利用目的", { exact: true }).fill("請求書に基づく業務用備品の精算");
+  await page.getByRole("textbox", { name: "件名", exact: true }).fill(`自動入力E2E-${Date.now()}`);
+  await page.getByRole("textbox", { name: "利用目的", exact: true }).fill("請求書に基づく業務用備品の精算");
   const handoffResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/backend/expense-applications/from-auto-entry")
       && response.request().method() === "POST",
@@ -579,7 +582,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toHaveCount(0);
 
-  const lineAmount = page.getByLabel("金額（円）", { exact: true });
+  const lineAmount = page.getByRole("spinbutton", { name: "金額（円）", exact: true });
   await lineAmount.fill("9998");
   await expect(page.getByText("請求書総額と申請金額の照合結果が一致しません", { exact: true }))
     .toBeVisible();
@@ -604,9 +607,9 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(attentionFilterSwitch(page)).not.toBeChecked();
   const submit = page.getByRole("button", { name: "申請", exact: true });
   await expect(submit).toBeEnabled();
-  await page.getByLabel("件名", { exact: true }).fill("");
+  await page.getByRole("textbox", { name: "件名", exact: true }).fill("");
   await expect(submit).toBeDisabled();
-  await page.getByLabel("件名", { exact: true }).fill(`自動入力E2E-${Date.now()}（最終確認）`);
+  await page.getByRole("textbox", { name: "件名", exact: true }).fill(`自動入力E2E-${Date.now()}（最終確認）`);
   await expect(submit).toBeEnabled();
   const submitResponse = page.waitForResponse((candidate) =>
     candidate.url().endsWith(`/api/backend/expense-applications/${created.application.id}/submit`)
