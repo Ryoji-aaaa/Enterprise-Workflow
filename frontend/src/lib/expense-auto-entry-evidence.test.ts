@@ -5,6 +5,7 @@ import type { AutoEntryField } from "./auto-entry-review.ts";
 import {
   getAutoEntryActiveEvidencePageNumber,
   getAutoEntryEvidenceSources,
+  getAutoEntryPreviewScrollTop,
   isAutoEntryEvidenceSourceActive,
   renderAutoEntryPageEvidence,
   scaleAutoEntryPolygon,
@@ -160,6 +161,46 @@ test("active fieldの最初のrenderable source pageをscroll targetとして返
     "document.lineItems[0].itemDescription",
   ), null);
   assert.equal(getAutoEntryActiveEvidencePageNumber(evidence, null), null);
+});
+
+test("Previewより上のtarget pageへPreview内部のscroll位置を返す", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: -200,
+    targetBottom: 80,
+    currentScrollTop: 500,
+  }), 200);
+});
+
+test("Previewより下のtarget pageへPreview内部のscroll位置を返す", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: 540,
+    targetBottom: 900,
+    currentScrollTop: 100,
+  }), 540);
+});
+
+test("target pageがPreviewと交差していればscrollしない", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: 450,
+    targetBottom: 700,
+    currentScrollTop: 100,
+  }), null);
+});
+
+test("Preview内部のscroll位置を0未満にしない", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: -200,
+    targetBottom: 80,
+    currentScrollTop: 50,
+  }), 0);
 });
 
 test("3点未満の不正polygonと無効なpage寸法は安全に描画しない", () => {

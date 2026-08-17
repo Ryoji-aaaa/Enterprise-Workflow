@@ -52,8 +52,8 @@ polygonはReviewのpage幅・高さから実際のcanvas / 画像の表示幅・
 SVG polygonとして保持する。`angleDegrees`はprovider page上のcontent angleとして保持される情報であり、
 Previewでは原本を追加回転しない。PDF固有rotationはPDF.js viewportへ任せ、その最終表示領域へReview座標を
 対応付ける。Preview領域のresize時は表示寸法を再取得してcanvasとoverlayを同じ領域へ追従させる。複数pageの
-PDFでAI fieldへfocusした場合は、最初のsource pageが見える位置までPreviewをscrollする。polygonへのzoom、
-viewport scale変更、fit-to-selectionは行わない。
+PDFでAI fieldへfocusした場合は、最初のsource pageが見える位置までPreview内部だけをscrollし、Browser
+viewportと右側Editorの位置は移動しない。polygonへのzoom、viewport scale変更、fit-to-selectionは行わない。
 
 Reviewから入力・編集する対象は、請求社 / 発行元、インボイス登録番号、総請求額、各明細の品名と金額だけに
 限定する。`null`のAI値は空値のままにし、税率、用途、支払先その他の値を推測補完しない。AI明細は

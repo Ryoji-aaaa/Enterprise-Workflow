@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
 import type { AutoEntryPageRef } from "@/lib/auto-entry-review";
 import {
   autoEntryPageForNumber,
   getAutoEntryActiveEvidencePageNumber,
+  getAutoEntryPreviewScrollTop,
   type AutoEntryEvidenceSource,
 } from "@/lib/expense-auto-entry-evidence";
 
@@ -96,11 +97,13 @@ export function AutoEntryPdfPreview({
   pages,
   evidence,
   activeFieldPath,
+  scrollContainerRef,
 }: {
   previewUrl: string;
   pages: readonly AutoEntryPageRef[];
   evidence: readonly AutoEntryEvidenceSource[];
   activeFieldPath: string | null;
+  scrollContainerRef: RefObject<HTMLDivElement | null>;
 }) {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [loadState, setLoadState] = useState<{
@@ -141,11 +144,25 @@ export function AutoEntryPdfPreview({
   }, [previewUrl]);
 
   useEffect(() => {
-    if (activePageNumber === null) return;
-    pagesRef.current
-      ?.querySelector<HTMLElement>(`[data-testid="expense-auto-entry-pdf-page"][data-page-number="${activePageNumber}"]`)
-      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [activePageNumber, document]);
+    const scrollContainer = scrollContainerRef.current;
+    if (activePageNumber === null || !scrollContainer) return;
+    const targetPage = pagesRef.current?.querySelector<HTMLElement>(
+      `[data-testid="expense-auto-entry-pdf-page"][data-page-number="${activePageNumber}"]`,
+    );
+    if (!targetPage) return;
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const targetRect = targetPage.getBoundingClientRect();
+    const nextScrollTop = getAutoEntryPreviewScrollTop({
+      containerTop: containerRect.top,
+      containerBottom: containerRect.bottom,
+      targetTop: targetRect.top,
+      targetBottom: targetRect.bottom,
+      currentScrollTop: scrollContainer.scrollTop,
+    });
+    if (nextScrollTop === null) return;
+    scrollContainer.scrollTo({ top: nextScrollTop, behavior: "smooth" });
+  }, [activeFieldPath, activePageNumber, document, scrollContainerRef]);
 
   if (error) {
     return <p className="rounded-md border border-destructive/40 bg-background p-4 text-sm text-destructive">PDFを表示できませんでした。ファイルが破損していないか確認してください。</p>;
