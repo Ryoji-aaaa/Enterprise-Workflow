@@ -7,6 +7,7 @@ import {
   documentAnalysisJobErrorMessage,
   documentAnalysisReducer,
   initialDocumentAnalysisState,
+  isDocumentAnalysisProcessing,
   mapDocumentAnalysisViewV1,
   serverStatusToDocumentAnalysisStatus,
   validateDocumentFile,
@@ -128,6 +129,15 @@ test("Backend job statusをUI statusへmappingする", () => {
   assert.equal(serverStatusToDocumentAnalysisStatus("FAILED"), "failed");
   assert.equal(serverStatusToDocumentAnalysisStatus("FAILED_RECOVERY_REQUIRED"), "failed");
   assert.equal(serverStatusToDocumentAnalysisStatus("EXPIRED"), "failed");
+});
+
+test("uploading、queued、runningだけを分析処理中として扱う", () => {
+  for (const status of ["uploading", "queued", "running"] as const) {
+    assert.equal(isDocumentAnalysisProcessing(status), true, status);
+  }
+  for (const status of ["idle", "selected", "succeeded", "failed"] as const) {
+    assert.equal(isDocumentAnalysisProcessing(status), false, status);
+  }
 });
 
 test("FAILED_RECOVERY_REQUIREDは復旧が必要な分析として表示する", () => {

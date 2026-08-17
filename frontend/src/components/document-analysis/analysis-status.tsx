@@ -1,9 +1,13 @@
 "use client";
 
-import { CheckCircle2, Circle, CircleDashed, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, CircleDashed, LoaderCircle, XCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { DocumentAnalysisState, DocumentAnalysisStatus } from "@/lib/document-analysis";
+import {
+  isDocumentAnalysisProcessing,
+  type DocumentAnalysisState,
+  type DocumentAnalysisStatus,
+} from "@/lib/document-analysis";
 
 const statusLabels: Record<DocumentAnalysisStatus, string> = {
   idle: "Idle",
@@ -23,6 +27,25 @@ const statusFlow: DocumentAnalysisStatus[] = [
   "succeeded",
 ];
 
+function CurrentStatusIndicator({ status }: { status: DocumentAnalysisStatus }) {
+  const sharedProps = {
+    "aria-hidden": true,
+    "data-status": status,
+    "data-testid": "document-analysis-status-indicator",
+  } as const;
+
+  if (isDocumentAnalysisProcessing(status)) {
+    return <LoaderCircle {...sharedProps} className="size-4 animate-spin text-primary" />;
+  }
+  if (status === "succeeded") {
+    return <CheckCircle2 {...sharedProps} className="size-4 text-primary" />;
+  }
+  if (status === "failed") {
+    return <XCircle {...sharedProps} className="size-4 text-destructive" />;
+  }
+  return null;
+}
+
 export function AnalysisStatus({
   state,
   viewLoading = false,
@@ -33,7 +56,10 @@ export function AnalysisStatus({
   return (
     <section aria-label="分析状態" className="space-y-3">
       <div>
-        <h2 className="text-sm font-medium">Status</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-medium">Status</h2>
+          <CurrentStatusIndicator status={state.status} />
+        </div>
         <p aria-label="現在の分析状態" className="text-xs text-muted-foreground">
           {statusLabels[state.status]}
         </p>

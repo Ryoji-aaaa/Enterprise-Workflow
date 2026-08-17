@@ -391,10 +391,12 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await expectActiveDrawerNavigationLink(page, "Document Intelligence");
   const runButton = page.getByRole("button", { name: "Run Analysis", exact: true });
   await expect(runButton).toBeDisabled();
+  await expect(page.getByTestId("document-analysis-status-indicator")).toHaveCount(0);
 
   await page.locator("#document-analysis-file-desktop").setInputFiles(resolve("fixtures/receipt.pdf"));
   await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
   await expect(runButton).toBeEnabled();
+  await expect(page.getByTestId("document-analysis-status-indicator")).toHaveCount(0);
   const createResponse = page.waitForResponse((response) =>
     response.url().includes("/api/backend/document-analyses")
     && response.request().method() === "POST",
@@ -408,6 +410,8 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
     timeout: 60_000,
   });
+  await expect(page.getByTestId("document-analysis-status-indicator").first())
+    .toHaveAttribute("data-status", "succeeded");
   await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
 
   await expect(page.getByTestId("document-analysis-file-pane").first()).toHaveCSS("overflow-y", "auto");
@@ -447,6 +451,8 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
     timeout: 60_000,
   });
+  await expect(page.getByTestId("document-analysis-status-indicator").first())
+    .toHaveAttribute("data-status", "succeeded");
   await expect(page.getByText(/PO-2026-0001/).first()).toBeVisible();
   await expect(page.locator("iframe[title='receipt.pdfのPDFプレビュー']").first()).toBeVisible();
   await page.getByRole("button", { name: /receipt\.pdf/ }).first().click();
@@ -475,6 +481,8 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
     timeout: 60_000,
   });
+  await expect(page.getByTestId("document-analysis-status-indicator").first())
+    .toHaveAttribute("data-status", "succeeded");
 
   await navigateFromWorkspaceNavigation(page, "Document Intelligence");
   await expect(page).toHaveURL(/\/document-intelligence$/);
@@ -514,6 +522,8 @@ test("一般ユーザーがDocument AnalysisをBFF越しにFake Providerで実�
   await expect(
     page.getByRole("alert").filter({ hasText: "対応形式はPDF、JPEG、PNGです。" }).first(),
   ).toBeVisible();
+  await expect(page.getByTestId("document-analysis-status-indicator").first())
+    .toHaveAttribute("data-status", "failed");
   expect(documentAnalysisPostRequests).toBe(4);
   expect(externalDocumentAnalysisRequests).toEqual([]);
 
