@@ -1,7 +1,7 @@
 "use client";
 
 import { FileSearch } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import type { AutoEntryPageRef } from "@/lib/auto-entry-review";
 import type { AnalyzableFile } from "@/lib/document-analysis";
@@ -20,18 +20,21 @@ export function ExpenseAutoEntryDocumentPreview({
   serverUrl,
   pages,
   resolvedFields,
+  activeFieldPath,
 }: {
   file: AnalyzableFile | null;
   objectUrl: string | null;
   serverUrl: string | null;
   pages: readonly AutoEntryPageRef[];
   resolvedFields: readonly ResolvedAutoEntryField[];
+  activeFieldPath: string | null;
 }) {
   const previewUrl = objectUrl ?? serverUrl;
   const evidence = useMemo(
     () => getAutoEntryEvidenceSources(resolvedFields),
     [resolvedFields],
   );
+  const previewScrollContainerRef = useRef<HTMLDivElement>(null);
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col">
@@ -45,6 +48,7 @@ export function ExpenseAutoEntryDocumentPreview({
         aria-label={file ? `${file.name}のプレビュー` : "ファイルプレビュー"}
         className="grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-muted/20 p-4"
         data-testid="expense-auto-entry-preview-content"
+        ref={previewScrollContainerRef}
         role="region"
       >
         {!file || !previewUrl ? (
@@ -53,9 +57,16 @@ export function ExpenseAutoEntryDocumentPreview({
             <p className="text-sm">ファイルを選択するとプレビューを表示します。</p>
           </div>
         ) : file.type === "application/pdf" ? (
-          <AutoEntryPdfPreview evidence={evidence} pages={pages} previewUrl={previewUrl} />
+          <AutoEntryPdfPreview
+            activeFieldPath={activeFieldPath}
+            evidence={evidence}
+            pages={pages}
+            previewUrl={previewUrl}
+            scrollContainerRef={previewScrollContainerRef}
+          />
         ) : (
           <AutoEntryImagePreview
+            activeFieldPath={activeFieldPath}
             evidence={evidence}
             name={file.name}
             page={autoEntryPageForNumber(pages, 1)}

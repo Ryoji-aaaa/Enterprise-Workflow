@@ -43,6 +43,7 @@ import {
   getResolvedAutoEntryFields,
   initializeExpenseAutoEntryForm,
   liveAutoEntryReviewToSource,
+  shouldShowAutoEntryField,
 } from "@/lib/expense-auto-entry";
 import {
   isExpenseInputValid,
@@ -80,6 +81,7 @@ export function ExpenseAutoEntryWorkbench() {
   const [form, setForm] = useState<ExpenseAutoEntryForm | null>(null);
   const [confirmedPaths, setConfirmedPaths] = useState<Set<string>>(new Set());
   const [showAttentionOnly, setShowAttentionOnly] = useState(true);
+  const [activeEvidencePath, setActiveEvidencePath] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +107,7 @@ export function ExpenseAutoEntryWorkbench() {
       setForm(initializeExpenseAutoEntryForm(nextReview, today));
       setConfirmedPaths(new Set());
       setShowAttentionOnly(true);
+      setActiveEvidencePath(null);
       setSubmitError(null);
       dispatch({
         type: "view",
@@ -150,6 +153,7 @@ export function ExpenseAutoEntryWorkbench() {
   }, [loadSucceededReview, state]);
 
   function selectFiles(files: FileList) {
+    setActiveEvidencePath(null);
     const validation = validateSingleDocumentSelection(files);
     if (!validation.valid) {
       setBrowserFile(null);
@@ -207,6 +211,30 @@ export function ExpenseAutoEntryWorkbench() {
 
   function updateApplication(values: Partial<ExpenseAutoEntryForm["application"]>) {
     setForm((current) => current ? { ...current, application: { ...current.application, ...values } } : current);
+  }
+
+  function changeAttentionFilter(value: boolean) {
+    if (value && activeEvidencePath !== null) {
+      const activeField = resolvedFields.find((field) => field.path === activeEvidencePath);
+      const documentFieldWillBeHidden = activeField !== undefined
+        && !activeEvidencePath.startsWith("document.lineItems[")
+        && !shouldShowAutoEntryField(activeField, true);
+      if (!activeField || activeField.deleted || documentFieldWillBeHidden) {
+        setActiveEvidencePath(null);
+      }
+    }
+    setShowAttentionOnly(value);
+  }
+
+  function deleteItem(index: number) {
+    const sourceLineItemIndex = form?.application.items[index]?.sourceLineItemIndex;
+    if (sourceLineItemIndex !== null && sourceLineItemIndex !== undefined) {
+      const sourcePathPrefix = `document.lineItems[${sourceLineItemIndex}].`;
+      if (activeEvidencePath?.startsWith(sourcePathPrefix)) setActiveEvidencePath(null);
+    }
+    updateApplication({
+      items: form?.application.items.filter((_, itemIndex) => itemIndex !== index) ?? [],
+    });
   }
 
   function changeExpenseDate(expenseDate: string) {
@@ -304,12 +332,12 @@ export function ExpenseAutoEntryWorkbench() {
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,1fr)]">
-          <div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><ExpenseAutoEntryDocumentPreview file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
+          <div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><ExpenseAutoEntryDocumentPreview activeFieldPath={activeEvidencePath} file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
           <section className="min-w-0 rounded-md border bg-card text-card-foreground">
             <div className="border-b p-4"><AnalysisStatus state={state} viewLoading={reviewLoading} /></div>
             <div className="space-y-6 p-4">
               {submitError ? <Alert variant="destructive"><TriangleAlert /><AlertTitle>作成できませんでした</AlertTitle><AlertDescription>{submitError}</AlertDescription></Alert> : null}
-              {form && reviewSource ? <ExpenseAutoEntryEditor confirmedPaths={confirmedPaths} form={form} onAddItem={() => updateApplication({ items: [...form.application.items, createManualExpenseAutoEntryItem(form.application.expenseDate)] })} onApplicationChange={updateApplication} onConfirmationChange={setConfirmed} onDeleteItem={(index) => updateApplication({ items: form.application.items.filter((_, itemIndex) => itemIndex !== index) })} onDocumentChange={updateDocument} onExpenseDateChange={changeExpenseDate} onItemChange={updateItem} onShowAttentionOnlyChange={setShowAttentionOnly} resolvedFields={resolvedFields} reviewSource={reviewSource} showAttentionOnly={showAttentionOnly}><div className="flex justify-end"><Button disabled={!canDecide} onClick={() => void decide()} type="button">{submitting ? "作成中…" : "決定"}</Button></div></ExpenseAutoEntryEditor> : <p className="text-sm text-muted-foreground">文書を選択すると、分析完了後に入力フォームを表示します。</p>}
+              {form && reviewSource ? <ExpenseAutoEntryEditor confirmedPaths={confirmedPaths} form={form} onAddItem={() => updateApplication({ items: [...form.application.items, createManualExpenseAutoEntryItem(form.application.expenseDate)] })} onApplicationChange={updateApplication} onConfirmationChange={setConfirmed} onDeleteItem={deleteItem} onDocumentChange={updateDocument} onEvidenceFieldFocus={setActiveEvidencePath} onExpenseDateChange={changeExpenseDate} onItemChange={updateItem} onShowAttentionOnlyChange={changeAttentionFilter} resolvedFields={resolvedFields} reviewSource={reviewSource} showAttentionOnly={showAttentionOnly}><div className="flex justify-end"><Button disabled={!canDecide} onClick={() => void decide()} type="button">{submitting ? "作成中…" : "決定"}</Button></div></ExpenseAutoEntryEditor> : <p className="text-sm text-muted-foreground">文書を選択すると、分析完了後に入力フォームを表示します。</p>}
             </div>
           </section>
         </div>

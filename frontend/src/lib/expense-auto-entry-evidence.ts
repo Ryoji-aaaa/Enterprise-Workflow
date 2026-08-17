@@ -43,6 +43,39 @@ export function getAutoEntryPageEvidence(
   return evidence.filter((source) => source.pageNumber === pageNumber);
 }
 
+export function isAutoEntryEvidenceSourceActive(
+  source: AutoEntryEvidenceSource,
+  activeFieldPath: string | null,
+): boolean {
+  return activeFieldPath !== null && source.fieldPath === activeFieldPath;
+}
+
+export function getAutoEntryActiveEvidencePageNumber(
+  evidence: readonly AutoEntryEvidenceSource[],
+  activeFieldPath: string | null,
+): number | null {
+  if (activeFieldPath === null) return null;
+  return evidence.find((source) => source.fieldPath === activeFieldPath)?.pageNumber ?? null;
+}
+
+export function getAutoEntryPreviewScrollTop({
+  containerTop,
+  containerBottom,
+  targetTop,
+  targetBottom,
+  currentScrollTop,
+}: {
+  containerTop: number;
+  containerBottom: number;
+  targetTop: number;
+  targetBottom: number;
+  currentScrollTop: number;
+}): number | null {
+  const targetIsVisible = targetBottom > containerTop && targetTop < containerBottom;
+  if (targetIsVisible) return null;
+  return Math.max(0, currentScrollTop + targetTop - containerTop);
+}
+
 export function scaleAutoEntryPolygon(
   polygon: readonly AutoEntryPoint[],
   sourceWidth: number,

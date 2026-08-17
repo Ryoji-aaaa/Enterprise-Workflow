@@ -13,11 +13,13 @@ export function AutoEntryImagePreview({
   previewUrl,
   page,
   evidence,
+  activeFieldPath,
 }: {
   name: string;
   previewUrl: string;
   page: AutoEntryPageRef | undefined;
   evidence: readonly AutoEntryEvidenceSource[];
+  activeFieldPath: string | null;
 }) {
   const { ref, size } = useRenderedElementSize<HTMLImageElement>();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -38,6 +40,7 @@ export function AutoEntryImagePreview({
         src={previewUrl}
       />
       <AutoEntrySourceOverlay
+        activeFieldPath={activeFieldPath}
         evidence={evidence}
         page={page}
         renderedHeight={size.height}

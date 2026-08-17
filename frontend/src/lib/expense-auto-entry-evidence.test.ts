@@ -3,7 +3,10 @@ import test from "node:test";
 
 import type { AutoEntryField } from "./auto-entry-review.ts";
 import {
+  getAutoEntryActiveEvidencePageNumber,
   getAutoEntryEvidenceSources,
+  getAutoEntryPreviewScrollTop,
+  isAutoEntryEvidenceSourceActive,
   renderAutoEntryPageEvidence,
   scaleAutoEntryPolygon,
 } from "./expense-auto-entry-evidence.ts";
@@ -113,6 +116,91 @@ test("編集済みAI fieldでも元sourceをevidenceとして維持する", () =
 
   assert.equal(evidence.length, 1);
   assert.equal(evidence[0]?.fieldPath, "document.issuerName");
+});
+
+test("active field pathと一致する同一fieldの全sourceだけをactiveにする", () => {
+  const evidence = getAutoEntryEvidenceSources([
+    field("document.issuerName", [
+      { pageNumber: 2, polygon: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }] },
+      { pageNumber: 3, polygon: [{ x: 3, y: 3 }, { x: 4, y: 3 }, { x: 4, y: 4 }] },
+    ]),
+    field("document.totalAmount", [
+      { pageNumber: 1, polygon: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }] },
+    ]),
+  ]);
+
+  assert.deepEqual(
+    evidence.map((source) => isAutoEntryEvidenceSourceActive(source, "document.issuerName")),
+    [true, true, false],
+  );
+  assert.deepEqual(
+    evidence.map((source) => isAutoEntryEvidenceSourceActive(source, null)),
+    [false, false, false],
+  );
+});
+
+test("active fieldの最初のrenderable source pageをscroll targetとして返す", () => {
+  const evidence = getAutoEntryEvidenceSources([
+    field("document.issuerName", [
+      { pageNumber: 4, polygon: [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }] },
+      { pageNumber: 2, polygon: [{ x: 3, y: 3 }, { x: 4, y: 3 }, { x: 4, y: 4 }] },
+    ]),
+    field("document.issuerTaxRegistrationNumber", []),
+    field("document.lineItems[0].itemDescription", [
+      { pageNumber: 3, polygon: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 6 }] },
+    ], { deleted: true }),
+  ]);
+
+  assert.equal(getAutoEntryActiveEvidencePageNumber(evidence, "document.issuerName"), 4);
+  assert.equal(getAutoEntryActiveEvidencePageNumber(
+    evidence,
+    "document.issuerTaxRegistrationNumber",
+  ), null);
+  assert.equal(getAutoEntryActiveEvidencePageNumber(
+    evidence,
+    "document.lineItems[0].itemDescription",
+  ), null);
+  assert.equal(getAutoEntryActiveEvidencePageNumber(evidence, null), null);
+});
+
+test("Previewより上のtarget pageへPreview内部のscroll位置を返す", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: -200,
+    targetBottom: 80,
+    currentScrollTop: 500,
+  }), 200);
+});
+
+test("Previewより下のtarget pageへPreview内部のscroll位置を返す", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: 540,
+    targetBottom: 900,
+    currentScrollTop: 100,
+  }), 540);
+});
+
+test("target pageがPreviewと交差していればscrollしない", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: 450,
+    targetBottom: 700,
+    currentScrollTop: 100,
+  }), null);
+});
+
+test("Preview内部のscroll位置を0未満にしない", () => {
+  assert.equal(getAutoEntryPreviewScrollTop({
+    containerTop: 100,
+    containerBottom: 500,
+    targetTop: -200,
+    targetBottom: 80,
+    currentScrollTop: 50,
+  }), 0);
 });
 
 test("3点未満の不正polygonと無効なpage寸法は安全に描画しない", () => {
