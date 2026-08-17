@@ -82,6 +82,19 @@ async function makeAutoEntryLineItemMissing(page: Page): Promise<void> {
   });
 }
 
+async function makeAutoEntryTaxRegistrationSourceLess(page: Page): Promise<void> {
+  await page.route("**/api/backend/document-analyses/*/auto-entry-review", async (route) => {
+    const response = await route.fetch();
+    const review = await response.json() as {
+      document: {
+        issuerTaxRegistrationNumber: { sources: unknown[] };
+      };
+    };
+    review.document.issuerTaxRegistrationNumber.sources = [];
+    await route.fulfill({ response, json: review });
+  });
+}
+
 test("AUTO_ENTRY基本画面はFake ProviderのReviewを表示してreload復元できる", async ({ page }) => {
   test.setTimeout(90_000);
 
@@ -326,6 +339,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(drawer).toBeHidden();
   await expect(menuTrigger).toBeFocused();
 
+  await makeAutoEntryTaxRegistrationSourceLess(page);
   const createAnalysisResponse = page.waitForResponse((response) =>
     response.url().includes("/api/backend/document-analyses")
       && response.request().method() === "POST",
@@ -335,11 +349,26 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     provider: "CONTENT_UNDERSTANDING",
     profile: "AUTO_ENTRY",
   });
-  await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" }).locator("iframe"))
+  await expect(page.getByRole("region", { name: "receipt.pdfのプレビュー" })
+    .getByTestId("expense-auto-entry-pdf-page"))
     .toBeVisible();
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
     timeout: 60_000,
   });
+
+  const evidenceOverlay = page.getByTestId("expense-auto-entry-source-overlay").first();
+  const issuerEvidence = page.locator('polygon[data-field-path="document.issuerName"]');
+  await expect(evidenceOverlay).toBeVisible();
+  await expect(evidenceOverlay).toHaveCSS("pointer-events", "none");
+  await expect(issuerEvidence).toHaveCount(1);
+  await expect(issuerEvidence).toHaveAttribute("data-page-number", "1");
+  await expect(issuerEvidence).toHaveAttribute("data-source-index", "0");
+  await expect(page.locator(
+    'polygon[data-field-path="document.lineItems[0].itemDescription"]',
+  )).toHaveCount(1);
+  await expect(page.locator(
+    'polygon[data-field-path="document.issuerTaxRegistrationNumber"]',
+  )).toHaveCount(0);
 
   await expect(page.getByLabel("内容", { exact: true })).toBeVisible();
   await expect(page.getByLabel("金額（円）", { exact: true })).toBeVisible();
@@ -347,8 +376,10 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await expect(workbenchTax.getByText("消費税（読取値）", { exact: false })).toContainText("1,000");
   await expect(workbenchTax.getByText("OK", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await expect(issuerEvidence).toHaveCount(1);
   await expect(page.getByLabel("総請求額（円）", { exact: true })).toHaveValue("10500");
   await page.getByRole("button", { name: "要確認のみ", exact: true }).click();
+  await expect(issuerEvidence).toHaveCount(1);
   const workbenchAdjustments = page.getByTestId("expense-auto-entry-adjustments");
   await expect(workbenchAdjustments).toContainText("調整額（読取値）");
   await expect(workbenchAdjustments).toContainText("値引き（減算）");

@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { FileUp, TriangleAlert } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
 import { AnalysisStatus } from "@/components/document-analysis/analysis-status";
-import { DocumentPreview } from "@/components/document-analysis/document-preview";
 import { ExpenseAutoEntryEditor } from "@/components/expense-auto-entry/expense-auto-entry-editor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,15 @@ import {
 import { createSynchronousMutationGuard } from "@/lib/synchronous-mutation-guard";
 
 const today = new Date().toISOString().slice(0, 10);
+
+const ExpenseAutoEntryDocumentPreview = dynamic(
+  () => import("@/components/expense-auto-entry/expense-auto-entry-document-preview")
+    .then((module) => module.ExpenseAutoEntryDocumentPreview),
+  {
+    ssr: false,
+    loading: () => <p className="p-4 text-sm text-muted-foreground">プレビューを準備しています…</p>,
+  },
+);
 
 function fileMetadata(file: File): AnalyzableFile {
   return { name: file.name, size: file.size, type: file.type };
@@ -295,7 +304,7 @@ export function ExpenseAutoEntryWorkbench() {
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,1fr)]">
-          <div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><DocumentPreview file={previewFile} objectUrl={objectUrl} serverUrl={null} /></div>
+          <div className="min-h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><ExpenseAutoEntryDocumentPreview file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
           <section className="min-w-0 rounded-md border bg-card text-card-foreground">
             <div className="border-b p-4"><AnalysisStatus state={state} viewLoading={reviewLoading} /></div>
             <div className="space-y-6 p-4">

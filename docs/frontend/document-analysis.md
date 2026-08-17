@@ -128,7 +128,9 @@ finding codeは表示時だけ業務利用者向けの日本語へ変換する�
 値が`null`で`status=MISSING`のfieldは「未取得」と表示する。特に`TaxRatePercent=null`は、
 `Category=STANDARD`/`REDUCED`や`CategoryNotation`が`10%対象額`/`軽減8%対象額`であっても、
 10または8へ補完せず「未取得」のまま表示する。sourceはpage numberとして表示するだけで、polygon
-overlay、編集、修正保存、経費申請への転記は提供しない。
+overlay、編集、修正保存、経費申請への転記は提供しない。この制約は読み取り専用の
+`/content-understanding/auto-entry`に対するものであり、`/expenses/auto-entry`は経費入力に使用した
+tracked fieldのsourceだけを専用Previewへoverlay表示する。
 
 reloadまたはRecent analysesからの復元では、分析Jobの`originalFileName`と`contentType`を使って
 BFFのsource previewを表示する。Browserの`File` objectは復元しないため、「分析を実行」は無効の
