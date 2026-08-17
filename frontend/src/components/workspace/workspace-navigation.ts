@@ -27,11 +27,6 @@ export type WorkspaceNavigationItem = {
   isVisible: (user: CurrentUser) => boolean;
 };
 
-export type WorkspaceMockNavigationItem = {
-  label: string;
-  icon: LucideIcon;
-};
-
 function hasPermission(permission: string) {
   return (user: CurrentUser) => user.permissions.includes(permission);
 }
@@ -91,13 +86,12 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
     icon: ScanLine,
     isVisible: canUseContentUnderstanding,
   },
-];
-
-export const workspaceMockNavigationItems: readonly WorkspaceMockNavigationItem[] = [
-  { label: "モック文字３", icon: FileChartColumn },
-  { label: "モック文字４", icon: ClipboardList },
-  { label: "モック文字５", icon: Users },
-  { label: "モック文字６", icon: Shapes },
+  {
+    href: "/ui-samples",
+    label: "UIサンプル",
+    icon: FileChartColumn,
+    isVisible: () => true,
+  },
 ];
 
 export function getVisibleWorkspaceNavigationItems(

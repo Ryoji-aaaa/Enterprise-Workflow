@@ -10,7 +10,6 @@ import { useCurrentUser } from "./current-user-context";
 import {
   getActiveWorkspaceNavigationItem,
   getVisibleWorkspaceNavigationItems,
-  workspaceMockNavigationItems,
 } from "./workspace-navigation";
 
 export function WorkspaceNavigationContent({
@@ -51,20 +50,6 @@ export function WorkspaceNavigationContent({
             </LinkButton>
           );
         })}
-        {workspaceMockNavigationItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Button
-              className="h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm text-sidebar-foreground/70"
-              key={item.label}
-              type="button"
-              variant="ghost"
-            >
-              <Icon className="size-4.5" />
-              <span>{item.label}</span>
-            </Button>
-          );
-        })}
       </nav>
       <div className="border-t p-3">
         <Button
@@ -73,7 +58,7 @@ export function WorkspaceNavigationContent({
           variant="ghost"
         >
           <Settings className="size-4.5" />
-          <span>モック文字７</span>
+          <span>設定(モック)</span>
         </Button>
       </div>
     </div>

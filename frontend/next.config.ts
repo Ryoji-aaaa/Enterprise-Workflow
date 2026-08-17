@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const workspacePaths = [
   "/top",
+  "/ui-samples",
   "/expenses/:path*",
   "/approvals/:path*",
   "/organization-chart",

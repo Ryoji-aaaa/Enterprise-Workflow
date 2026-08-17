@@ -9,6 +9,8 @@ make test SUITES=e2e
 ホストへNode.jsやブラウザを導入せず、Node.js 24.18.0、
 Playwright 1.62.0、Chromiumを含む専用imageでheadless実行する。
 `docker-compose.test.yml`だけに`e2e`サービスを定義し、通常の`make up`では起動しない。
+E2E serviceは`LANG`と`LC_ALL`を`C.UTF-8`に固定し、日本語のdownload推奨ファイル名を
+Chromiumが実利用環境と同じUnicode文字列として扱える状態で検証する。
 
 実行処理は次の順序で行う。
 

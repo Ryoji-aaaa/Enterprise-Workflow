@@ -73,9 +73,11 @@ redirect loopを防ぐ。
 
 ログイン後の業務画面は`app/(workspace)/layout.tsx`でBetter Auth sessionを共通検証する。
 sessionがない場合は`/login`へ戻す。Route Groupを使用するためURLは従来どおり
-`/top`、`/expenses`、`/approvals`、`/organization-chart`、`/admin/...`のままである。
-`/top`は固有のモックダッシュボード本文だけを返し、認証確認、ヘッダー、サイドメニューは
-ワークスペース共通処理へ分離する。
+`/top`、`/ui-samples`、`/expenses`、`/approvals`、`/organization-chart`、`/admin/...`のままである。
+`/top`は経費AUTO_ENTRY PoCの概要、操作方法、技術構成、評価用サンプル請求書のdownloadと
+`/expenses/auto-entry`への導線を表示する。
+`/ui-samples`は従来のモックダッシュボードを表示する。各Page Componentは本文だけを返し、
+認証確認、ヘッダー、サイドメニューはワークスペース共通処理へ分離する。
 
 ワークスペース共通処理はpathnameの完全一致だけでlayout modeを決める。`/top`は
 Navigation-orientedとし、`md`以上では15remの常設サイドメニュー、`md`未満ではヘッダー左端の
@@ -83,7 +85,8 @@ Navigation-orientedとし、`md`以上では15remの常設サイドメニュー�
 かかわらず常設サイドメニューの列を予約せず、同じSheetを現在内容の上へ重ねる。Headerの旧横型
 モバイルナビゲーションは表示しない。常設サイドメニューとSheetは、権限・機能フラグ・雇用区分・
 active routeを判定する同じnavigation描画を共有する。Sheetはリンク選択とroute変更で閉じ、開閉状態を
-Cookie、Web Storage、URL、Backendへ保存しない。
+Cookie、Web Storage、URL、Backendへ保存しない。`/ui-samples`はContent-orientedであり、
+「UIサンプル」ナビゲーションはApplication Userへ業務Permissionにかかわらず表示する。
 
 利用者情報はBetter Authのprofileを直接表示せず、`WorkspaceGate`がBFFの
 `/api/backend/me`からSpring Bootの`GET /api/me`結果を一度取得し、`CurrentUserContext`へ

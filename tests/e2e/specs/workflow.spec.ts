@@ -231,7 +231,7 @@ test("未認証ユーザーをワークスペース画面からログイン画�
   await expectNoWorkspaceChrome(page);
 });
 
-test("一般ユーザーがログインしてモックダッシュボードを表示できる", async ({ page }) => {
+test("一般ユーザーがログインしてPoC案内とUIサンプルを表示できる", async ({ page }) => {
   await login(page, userEmail, userPassword);
 
   await expect(page).toHaveURL(/\/top$/);
@@ -253,11 +253,33 @@ test("一般ユーザーがログインしてモックダッシュボードを�
   await page.keyboard.press("Escape");
   await expect(userMenu).toBeHidden();
   await expect(
-    page.getByRole("heading", { name: "モック文字８", exact: true }),
+    page.getByRole("heading", {
+      name: "AIを利用した請求書・注文書からの経費申請自動入力 PoC",
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "モック文字９", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "操作方法", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "自動入力を試す", exact: true }))
+    .toHaveAttribute("href", "/expenses/auto-entry");
+  for (const sample of [
+    {
+      filename: "請求書サンプル_01.png",
+      href: "/poc/expense-auto-entry/invoice-sample-01.png",
+    },
+    {
+      filename: "請求書サンプル_02.jpg",
+      href: "/poc/expense-auto-entry/invoice-sample-02.jpg",
+    },
+  ]) {
+    const sampleLink = page.getByRole("link", { name: sample.filename, exact: true });
+    await expect(sampleLink).toBeVisible();
+    await expect(sampleLink).toHaveAttribute("href", sample.href);
+    await expect(sampleLink).toHaveAttribute("download", sample.filename);
+    const downloadPromise = page.waitForEvent("download");
+    await sampleLink.click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(sample.filename);
+  }
 
   const authenticationCookies = (await page.context().cookies()).filter((cookie) =>
     /better-auth.*(?:session|account_data)/.test(cookie.name),
@@ -301,6 +323,19 @@ test("一般ユーザーがログインしてモックダッシュボードを�
     meRequestsAfterTop += 1;
     await route.continue();
   });
+  await navigateFromWorkspaceNavigation(page, "UIサンプル");
+  await expect(page).toHaveURL(/\/ui-samples$/);
+  await expect(page.getByRole("heading", { name: "モック文字８", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "モック文字９", exact: true })).toBeVisible();
+  const uiSamplesResponse = await page.request.get("/ui-samples");
+  expect(uiSamplesResponse.status()).toBe(200);
+  const uiSamplesCacheControl = uiSamplesResponse.headers()["cache-control"] ?? "";
+  expect(
+    uiSamplesCacheControl.includes("no-store")
+      || (uiSamplesCacheControl.includes("no-cache") && uiSamplesCacheControl.includes("must-revalidate")),
+  ).toBeTruthy();
+  await expectContentOrientedWorkspaceChrome(page);
+  await expectActiveDrawerNavigationLink(page, "UIサンプル");
   await navigateFromWorkspaceNavigation(page, "経費申請");
   await expect(page.getByRole("heading", { name: "経費申請", exact: true })).toBeVisible();
   await expectContentOrientedWorkspaceChrome(page);

@@ -69,6 +69,8 @@ services:
     shm_size: 1gb
     environment:
       HOME: /tmp
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
       BASE_URL: ${BETTER_AUTH_URL}
       KEYCLOAK_URL: ${KEYCLOAK_EXTERNAL_URL}
       MAILPIT_URL: http://localhost:${MAILPIT_UI_PORT}
