@@ -323,15 +323,15 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
 
     const runLabel = `STAGING AUTO_ENTRY ACCEPTANCE ${Date.now()}`;
     await page.getByRole("button", { name: "すべて", exact: true }).click();
-    await page.getByLabel("件名", { exact: true }).fill(runLabel);
+    await page.getByRole("textbox", { name: "件名", exact: true }).fill(runLabel);
     await page
-      .getByLabel("利用目的", { exact: true })
+      .getByRole("textbox", { name: "利用目的", exact: true })
       .fill("AUTO_ENTRY staging acceptance");
     await page
-      .getByLabel("内容", { exact: true })
+      .getByRole("textbox", { name: "内容", exact: true })
       .first()
       .fill("staging acceptance item");
-    await page.getByLabel("金額（円）", { exact: true }).first().fill("1000");
+    await page.getByRole("spinbutton", { name: "金額（円）", exact: true }).first().fill("1000");
 
     updateDiagnostic("handoff", terminal);
     const handoffResponse = page.waitForResponse(
