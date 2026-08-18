@@ -10,10 +10,31 @@ const userEmail = requiredEnvironment("DEV_USER_EMAIL");
 const userPassword = requiredEnvironment("DEV_USER_PASSWORD");
 const seedUserPassword = requiredEnvironment("DEV_SEED_USER_PASSWORD");
 const receiptPdf = readFileSync(resolve("fixtures/receipt.pdf"));
-const receiptPng = Buffer.from(
-  readFileSync(resolve("fixtures/receipt.png"), "utf8").trim(),
-  "base64",
-);
+
+function createTwoPagePdf(): Buffer {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 5 0 R >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> /Contents 6 0 R >>",
+    "<< /Length 0 >>\nstream\n\nendstream",
+    "<< /Length 0 >>\nstream\n\nendstream",
+  ];
+  const offsets: number[] = [];
+  let content = "%PDF-1.4\n";
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(content, "ascii"));
+    content += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(content, "ascii");
+  content += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  content += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  content += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
+  content += `startxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(content, "ascii");
+}
+
+const twoPageReceiptPdf = createTwoPagePdf();
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -99,6 +120,37 @@ async function makeAutoEntryTaxRegistrationSourceLess(page: Page): Promise<void>
       };
     };
     review.document.issuerTaxRegistrationNumber.sources = [];
+    await route.fulfill({ response, json: review });
+  });
+}
+
+async function makeAutoEntryIssuerEvidenceUseSecondPage(page: Page): Promise<void> {
+  await page.route("**/api/backend/document-analyses/*/auto-entry-review", async (route) => {
+    const response = await route.fetch();
+    const review = await response.json() as {
+      pages: Array<{
+        pageNumber: number;
+        width: number;
+        height: number;
+        unit: string;
+        angleDegrees: number | null;
+      }>;
+      document: {
+        issuerName: {
+          sources: Array<{
+            pageNumber: number;
+            polygon: Array<{ x: number; y: number }>;
+          }>;
+        };
+      };
+    };
+    const firstPage = review.pages[0];
+    if (!firstPage) throw new Error("AUTO_ENTRY review must include a page.");
+    review.pages = [firstPage, { ...firstPage, pageNumber: 2 }];
+    review.document.issuerName.sources = review.document.issuerName.sources.map((source) => ({
+      ...source,
+      pageNumber: 2,
+    }));
     await route.fulfill({ response, json: review });
   });
 }
@@ -201,6 +253,21 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await makeAutoEntryTaxRegistrationSourceLess(page);
   await page.goto("/expenses/auto-entry");
 
+  const zoomValue = page.getByTestId("expense-auto-entry-zoom-value");
+  const zoomOut = page.getByRole("button", { name: "プレビューを縮小", exact: true });
+  const zoomIn = page.getByRole("button", { name: "プレビューを拡大", exact: true });
+  await expect(zoomValue).toHaveText("100%");
+  await expect(zoomOut).toBeDisabled();
+  await expect(zoomIn).toBeDisabled();
+  const emptyPreview = page.getByTestId("expense-auto-entry-preview-content");
+  await expect(emptyPreview).toHaveAttribute("data-pan-available", "false");
+
+  const sampleImageResponse = await page.request.get(
+    "/poc/expense-auto-entry/invoice-sample-01.png",
+  );
+  expect(sampleImageResponse.ok()).toBe(true);
+  const sampleImage = await sampleImageResponse.body();
+
   const createAnalysisResponse = page.waitForResponse((response) =>
     response.url().includes("/api/backend/document-analyses")
       && response.request().method() === "POST",
@@ -208,7 +275,7 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await page.locator("#expense-auto-entry-file").setInputFiles({
     name: "receipt.png",
     mimeType: "image/png",
-    buffer: receiptPng,
+    buffer: sampleImage,
   });
   expect(await (await createAnalysisResponse).json()).toMatchObject({
     provider: "CONTENT_UNDERSTANDING",
@@ -251,6 +318,33 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect(preview.locator(
     'polygon[data-field-path="document.issuerTaxRegistrationNumber"]',
   )).toHaveCount(0);
+
+  const imageBeforeZoom = await image.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { height: rect.height, width: rect.width };
+  });
+  const issuerPolygonBeforeZoom = await issuerEvidence.evaluate((element: SVGPolygonElement) => {
+    const bounds = element.getBBox();
+    return { height: bounds.height, width: bounds.width };
+  });
+  await zoomIn.click();
+  await expect(zoomValue).toHaveText("125%");
+  await expect.poll(async () => image.evaluate((element) => (
+    element.getBoundingClientRect().width
+  ))).toBeCloseTo(imageBeforeZoom.width * 1.25, 2);
+  const imageAfterZoom = await image.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { height: rect.height, width: rect.width };
+  });
+  const issuerPolygonAfterZoom = await issuerEvidence.evaluate((element: SVGPolygonElement) => {
+    const bounds = element.getBBox();
+    return { height: bounds.height, width: bounds.width };
+  });
+  expect(imageAfterZoom.width / imageBeforeZoom.width).toBeCloseTo(1.25, 2);
+  expect(imageAfterZoom.height / imageBeforeZoom.height).toBeCloseTo(1.25, 2);
+  expect(issuerPolygonAfterZoom.width / issuerPolygonBeforeZoom.width).toBeCloseTo(1.25, 2);
+  expect(issuerPolygonAfterZoom.height / issuerPolygonBeforeZoom.height).toBeCloseTo(1.25, 2);
+  expect(await issuerEvidence.getAttribute("points")).not.toMatch(/NaN|Infinity/);
 
   const filterSwitch = attentionFilterSwitch(page);
   await expect(filterSwitch).not.toBeChecked();
@@ -305,6 +399,270 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await page.getByRole("button", { name: "明細1を削除", exact: true }).click();
   await expect(lineDescriptionEvidence).toHaveCount(0);
   await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
+
+  await expect(zoomValue).toHaveText("125%");
+  await zoomOut.click();
+  await zoomOut.click();
+  await zoomOut.click();
+  await expect(zoomValue).toHaveText("50%");
+  await expect(zoomOut).toBeDisabled();
+  await expect(preview).toHaveAttribute("data-pan-available", "false");
+  for (let step = 0; step < 10; step += 1) await zoomIn.click();
+  await expect(zoomValue).toHaveText("300%");
+  await expect(zoomIn).toBeDisabled();
+  await expect(preview).toHaveAttribute("data-pan-available", "true");
+  await expect(preview).toHaveCSS("cursor", "grab");
+
+  await issuerName.focus();
+  await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  const imagePositionBeforePan = await image.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const polygonPositionBeforePan = await issuerEvidence.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const previewBounds = await preview.boundingBox();
+  if (!previewBounds) throw new Error("AUTO_ENTRY image preview bounds are required.");
+  const dragStart = {
+    x: previewBounds.x + previewBounds.width * 0.7,
+    y: previewBounds.y + previewBounds.height * 0.7,
+  };
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await expect(preview).toHaveAttribute("data-panning", "true");
+  await expect(preview).toHaveCSS("cursor", "grabbing");
+  await page.mouse.move(dragStart.x - 100, dragStart.y - 100, { steps: 5 });
+  await page.mouse.up();
+  await expect(preview).toHaveAttribute("data-panning", "false");
+  const imageScrollAfterPan = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  expect(imageScrollAfterPan.left).toBeGreaterThan(0);
+  expect(imageScrollAfterPan.top).toBeGreaterThan(0);
+  const imagePositionAfterPan = await image.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const polygonPositionAfterPan = await issuerEvidence.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  expect(polygonPositionAfterPan.x - imagePositionAfterPan.x)
+    .toBeCloseTo(polygonPositionBeforePan.x - imagePositionBeforePan.x, 1);
+  expect(polygonPositionAfterPan.y - imagePositionAfterPan.y)
+    .toBeCloseTo(polygonPositionBeforePan.y - imagePositionBeforePan.y, 1);
+  await page.mouse.wheel(0, 80);
+  await expect.poll(async () => preview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(imageScrollAfterPan.top);
+
+  const replacementAnalysisResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+      && response.request().method() === "POST",
+  );
+  await page.locator("#expense-auto-entry-file").setInputFiles({
+    name: "replacement.pdf",
+    mimeType: "application/pdf",
+    buffer: receiptPdf,
+  });
+  expect((await replacementAnalysisResponse).ok()).toBe(true);
+  await expect(zoomValue).toHaveText("100%");
+  await expect(zoomOut).toBeEnabled();
+  await expect(zoomIn).toBeEnabled();
+  const replacementPreview = page.getByRole("region", {
+    name: "replacement.pdfのプレビュー",
+  });
+  await expect.poll(async () => replacementPreview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }))).toEqual({ left: 0, top: 0 });
+});
+
+test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描画する", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => 10 });
+  });
+  const applicant = await loadStagingPersona("STANDARD_APPLICANT");
+  await login(page, applicant.email, seedUserPassword);
+  await makeAutoEntryIssuerEvidenceUseSecondPage(page);
+  await page.goto("/expenses/auto-entry");
+
+  const createAnalysisResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/backend/document-analyses")
+      && response.request().method() === "POST",
+  );
+  await page.locator("#expense-auto-entry-file").setInputFiles({
+    name: "two-page-receipt.pdf",
+    mimeType: "application/pdf",
+    buffer: twoPageReceiptPdf,
+  });
+  expect((await createAnalysisResponse).ok()).toBe(true);
+
+  const preview = page.getByRole("region", { name: "two-page-receipt.pdfのプレビュー" });
+  const pdfPages = preview.getByTestId("expense-auto-entry-pdf-page");
+  await expect(pdfPages).toHaveCount(2);
+  await expect(pdfPages.nth(1)).toBeVisible();
+  await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
+    timeout: 60_000,
+  });
+
+  const zoomValue = page.getByTestId("expense-auto-entry-zoom-value");
+  const zoomOut = page.getByRole("button", { name: "プレビューを縮小", exact: true });
+  const zoomIn = page.getByRole("button", { name: "プレビューを拡大", exact: true });
+  const issuerEvidence = preview.locator(
+    'polygon[data-field-path="document.issuerName"][data-page-number="2"]',
+  );
+  await expect(zoomValue).toHaveText("100%");
+  await expect(issuerEvidence).toHaveCount(1);
+
+  const pageWidthsBeforeZoom = await pdfPages.evaluateAll((elements) => (
+    elements.map((element) => element.getBoundingClientRect().width)
+  ));
+  const canvasWidthsBeforeZoom = await pdfPages.locator("canvas").evaluateAll((elements) => (
+    elements.map((element) => element.getBoundingClientRect().width)
+  ));
+  const issuerPolygonBeforeZoom = await issuerEvidence.evaluate((element: SVGPolygonElement) => {
+    const bounds = element.getBBox();
+    return { height: bounds.height, width: bounds.width };
+  });
+
+  await zoomIn.click();
+  await expect(zoomValue).toHaveText("125%");
+  await expect.poll(async () => pdfPages.nth(0).evaluate((element) => (
+    element.getBoundingClientRect().width
+  ))).toBeCloseTo((pageWidthsBeforeZoom[0] ?? 0) * 1.25, 1);
+  const pageWidthsAfterZoom = await pdfPages.evaluateAll((elements) => (
+    elements.map((element) => element.getBoundingClientRect().width)
+  ));
+  const canvasWidthsAfterZoom = await pdfPages.locator("canvas").evaluateAll((elements) => (
+    elements.map((element) => element.getBoundingClientRect().width)
+  ));
+  const issuerPolygonAfterZoom = await issuerEvidence.evaluate((element: SVGPolygonElement) => {
+    const bounds = element.getBBox();
+    return { height: bounds.height, width: bounds.width };
+  });
+  expect(pageWidthsAfterZoom).toHaveLength(2);
+  expect(canvasWidthsAfterZoom).toHaveLength(2);
+  pageWidthsAfterZoom.forEach((width, index) => {
+    expect(width / (pageWidthsBeforeZoom[index] ?? 1)).toBeCloseTo(1.25, 1);
+  });
+  canvasWidthsAfterZoom.forEach((width, index) => {
+    expect(width / (canvasWidthsBeforeZoom[index] ?? 1)).toBeCloseTo(1.25, 1);
+  });
+  expect(pageWidthsAfterZoom[0]).toBeCloseTo(pageWidthsAfterZoom[1] ?? 0, 1);
+  expect(issuerPolygonAfterZoom.width / issuerPolygonBeforeZoom.width).toBeCloseTo(1.25, 1);
+  expect(issuerPolygonAfterZoom.height / issuerPolygonBeforeZoom.height).toBeCloseTo(1.25, 1);
+  expect((await issuerEvidence.getAttribute("points")) ?? "").not.toMatch(/NaN|Infinity/);
+
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+  await expect(zoomValue).toHaveText("200%");
+  await expect.poll(async () => pdfPages.nth(0).evaluate((element) => (
+    element.getBoundingClientRect().width
+  ))).toBeCloseTo((pageWidthsBeforeZoom[0] ?? 0) * 2, 1);
+  const scrollExtent = await preview.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+    scrollHeight: element.scrollHeight,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(scrollExtent.scrollWidth).toBeGreaterThan(scrollExtent.clientWidth);
+  expect(scrollExtent.scrollHeight).toBeGreaterThan(scrollExtent.clientHeight);
+  await expect(preview).toHaveAttribute("data-pan-available", "true");
+
+  const secondPage = pdfPages.nth(1);
+  const pdfPagePositionBeforePan = await secondPage.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const pdfPolygonPositionBeforePan = await issuerEvidence.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const pdfPreviewBounds = await preview.boundingBox();
+  if (!pdfPreviewBounds) throw new Error("AUTO_ENTRY PDF preview bounds are required.");
+  const pdfDragStart = {
+    x: pdfPreviewBounds.x + pdfPreviewBounds.width * 0.7,
+    y: pdfPreviewBounds.y + pdfPreviewBounds.height * 0.7,
+  };
+  await page.mouse.move(pdfDragStart.x, pdfDragStart.y);
+  await page.mouse.down();
+  await expect(preview).toHaveCSS("cursor", "grabbing");
+  await page.mouse.move(pdfDragStart.x - 100, pdfDragStart.y - 100, { steps: 5 });
+  await page.mouse.up();
+  const pdfScrollAfterPan = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  expect(pdfScrollAfterPan.left).toBeGreaterThan(0);
+  expect(pdfScrollAfterPan.top).toBeGreaterThan(0);
+  const pdfPagePositionAfterPan = await secondPage.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const pdfPolygonPositionAfterPan = await issuerEvidence.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  expect(pdfPolygonPositionAfterPan.x - pdfPagePositionAfterPan.x)
+    .toBeCloseTo(pdfPolygonPositionBeforePan.x - pdfPagePositionBeforePan.x, 1);
+  expect(pdfPolygonPositionAfterPan.y - pdfPagePositionAfterPan.y)
+    .toBeCloseTo(pdfPolygonPositionBeforePan.y - pdfPagePositionBeforePan.y, 1);
+
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+  await zoomIn.click();
+  await expect(zoomValue).toHaveText("300%");
+  const canvasPixelsAtMaximumZoom = await pdfPages.locator("canvas").evaluateAll((elements) => (
+    elements.map((element) => {
+      const canvas = element as HTMLCanvasElement;
+      return canvas.width * canvas.height;
+    })
+  ));
+  canvasPixelsAtMaximumZoom.forEach((pixelCount) => {
+    expect(pixelCount).toBeLessThanOrEqual(16_000_000);
+  });
+  const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
+  const browserScrollBeforeFocus = await page.evaluate(() => window.scrollY);
+  const editorTopBeforeFocus = (await issuerName.boundingBox())?.y;
+  const previewScrollBeforeFocus = await preview.evaluate((element) => element.scrollTop);
+  await issuerName.evaluate((element: HTMLInputElement) => element.focus({ preventScroll: true }));
+  await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  await expect.poll(async () => preview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(previewScrollBeforeFocus);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeFocus);
+  expect((await issuerName.boundingBox())?.y).toBe(editorTopBeforeFocus);
+
+  await zoomOut.click();
+  await expect(zoomValue).toHaveText("275%");
+  await expect.poll(async () => pdfPages.nth(0).evaluate((element) => (
+    element.getBoundingClientRect().width
+  ))).toBeCloseTo((pageWidthsBeforeZoom[0] ?? 0) * 2.75, 1);
+  await expect.poll(async () => preview.evaluate((element) => {
+    const secondPageElement = element.querySelector<HTMLElement>(
+      '[data-testid="expense-auto-entry-pdf-page"][data-page-number="2"]',
+    );
+    if (!secondPageElement) return false;
+    const containerBounds = element.getBoundingClientRect();
+    const pageBounds = secondPageElement.getBoundingClientRect();
+    return pageBounds.top < containerBounds.bottom && pageBounds.bottom > containerBounds.top;
+  })).toBe(true);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeFocus);
+  expect((await issuerName.boundingBox())?.y).toBe(editorTopBeforeFocus);
+  await zoomOut.click();
+  await zoomOut.click();
+  await zoomOut.click();
+  await zoomOut.click();
+  await zoomOut.click();
+  await zoomOut.click();
+  await zoomOut.click();
+  await expect(zoomValue).toHaveText("100%");
 });
 
 test("通常経費フォームも申請結果不明時は再実行を止めて詳細確認へ誘導する", async ({ page }) => {

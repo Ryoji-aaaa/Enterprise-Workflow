@@ -54,7 +54,17 @@ SVG polygonとして保持する。`angleDegrees`はprovider page上のcontent a
 Previewでは原本を追加回転しない。PDF固有rotationはPDF.js viewportへ任せ、その最終表示領域へReview座標を
 対応付ける。Preview領域のresize時は表示寸法を再取得してcanvasとoverlayを同じ領域へ追従させる。複数pageの
 PDFでAI fieldへfocusした場合は、最初のsource pageが見える位置までPreview内部だけをscrollし、Browser
-viewportと右側Editorの位置は移動しない。polygonへのzoom、viewport scale変更、fit-to-selectionは行わない。
+viewportと右側Editorの位置は移動しない。現在のPreview幅にfitした表示を100%とし、50%から300%まで
+25%単位で拡大・縮小できる。JPEG / PNGはfit時の寸法を基準に表示寸法を変更し、PDFはPDF.jsのviewport
+scaleを変更して全pageを同じ倍率で再描画する。Overlay独自のZoom倍率は持たず、Zoom後の画像 / canvasと
+同じ最終表示幅・高さからpolygonを再計算する。Zoom後もfield focusによるPDF pageへのPreview内部scrollを
+維持し、100%を超える原本はPreview内の縦横scrollで閲覧する。ZoomはFrontendだけの表示状態でありBackendへ
+保存せず、新しいファイルを選択すると100%へ戻す。fit-to-selectionは行わない。
+Zoom後の原本はPreview内部でscrollでき、Desktopではdocument表示領域を左クリックでdragして縦横に
+Panningできる。Panningはdocumentへ座標変換を加えず、Preview scroll containerの`scrollLeft` / `scrollTop`を
+変更するため、画像またはPDF canvasとOverlayは同じcontainer内で一緒に移動する。Pan位置はBackendへ保存せず、
+新しいファイルを選択するとscrollの左上へ戻す。touch端末ではcustom Panningを開始せず、browser標準のtouch scrollと
+inertiaを維持する。mouse wheelとscrollbarによる従来のscrollも引き続き利用できる。
 
 Reviewから入力・編集する対象は、請求社 / 発行元、インボイス登録番号、総請求額、各明細の品名と金額だけに
 限定する。`null`のAI値は空値のままにし、税率、用途、支払先その他の値を推測補完しない。AI明細は
