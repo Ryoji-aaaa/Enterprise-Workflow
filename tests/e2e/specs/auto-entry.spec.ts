@@ -273,6 +273,7 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
 test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する", async ({ page }) => {
   test.setTimeout(90_000);
 
+  await page.setViewportSize({ width: 1280, height: 800 });
   const applicant = await loadStagingPersona("STANDARD_APPLICANT");
   await login(page, applicant.email, seedUserPassword);
   await makeAutoEntryTaxRegistrationSourceLess(page);
@@ -394,11 +395,75 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
     throw new Error("AUTO_ENTRY sticky preview bounds and viewport are required.");
   }
   expect(stickyPreviewBounds.y).toBeGreaterThanOrEqual(64);
-  expect(stickyPreviewBounds.y + stickyPreviewBounds.height).toBeLessThanOrEqual(viewport.height);
+  expect(stickyPreviewBounds.y + stickyPreviewBounds.height)
+    .toBeLessThanOrEqual(viewport.height + 1);
+  expect(stickyPreviewBounds.height).toBeCloseTo(576, 0);
   expect(stickyPreviewBounds.y).toBeLessThan(previewCardBeforePageScroll.y);
   await lineDescription.focus();
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
   await expectEvidenceInsidePreview(lineDescriptionEvidence);
+
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await lineDescription.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await previewCard.boundingBox())?.height ?? 0)
+    .toBeCloseTo(504, 0);
+  const lowHeightPreviewBounds = await previewCard.boundingBox();
+  if (!lowHeightPreviewBounds) {
+    throw new Error("AUTO_ENTRY low-height preview bounds are required.");
+  }
+  expect(lowHeightPreviewBounds.y).toBeGreaterThanOrEqual(64);
+  expect(lowHeightPreviewBounds.y + lowHeightPreviewBounds.height).toBeLessThanOrEqual(601);
+
+  await invoiceTotal.focus();
+  await expect(totalEvidence).toHaveAttribute("data-active", "true");
+  const lowHeightScrollBeforeFocus = await lineDescriptionEvidence.evaluate((element) => {
+    const container = element.closest<HTMLElement>(
+      '[data-testid="expense-auto-entry-preview-content"]',
+    );
+    if (!container) throw new Error("AUTO_ENTRY image preview container is required.");
+    const containerBounds = container.getBoundingClientRect();
+    const evidenceBounds = element.getBoundingClientRect();
+    const evidenceCenterX = evidenceBounds.left - containerBounds.left
+      + container.scrollLeft + evidenceBounds.width / 2;
+    const evidenceCenterY = evidenceBounds.top - containerBounds.top
+      + container.scrollTop + evidenceBounds.height / 2;
+    container.scrollLeft = evidenceCenterX < container.scrollWidth / 2
+      ? container.scrollWidth - container.clientWidth
+      : 0;
+    container.scrollTop = evidenceCenterY < container.scrollHeight / 2
+      ? container.scrollHeight - container.clientHeight
+      : 0;
+    return { left: container.scrollLeft, top: container.scrollTop };
+  });
+  const lineDescriptionIsOutsideLowHeightPreview = await lineDescriptionEvidence.evaluate(
+    (element) => {
+      const container = element.closest<HTMLElement>(
+        '[data-testid="expense-auto-entry-preview-content"]',
+      );
+      if (!container) return false;
+      const containerBounds = container.getBoundingClientRect();
+      const evidenceBounds = element.getBoundingClientRect();
+      return evidenceBounds.right < containerBounds.left + 24
+        || evidenceBounds.left > containerBounds.left + container.clientWidth - 24
+        || evidenceBounds.bottom < containerBounds.top + 24
+        || evidenceBounds.top > containerBounds.top + container.clientHeight - 24;
+    },
+  );
+  expect(lineDescriptionIsOutsideLowHeightPreview).toBe(true);
+  const browserScrollBeforeLowHeightFocus = await page.evaluate(() => window.scrollY);
+  await lineDescription.evaluate(
+    (element: HTMLInputElement) => element.focus({ preventScroll: true }),
+  );
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(lineDescriptionEvidence);
+  const lowHeightScrollAfterFocus = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  expect(lowHeightScrollAfterFocus).not.toEqual(lowHeightScrollBeforeFocus);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeLowHeightFocus);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.evaluate(() => window.scrollTo(0, 0));
 
   await issuerName.focus();

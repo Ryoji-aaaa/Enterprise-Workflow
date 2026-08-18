@@ -73,9 +73,10 @@ manual Pan位置を変更せず、drag Panning中にも自動追従を割り込�
 画像 / canvas、Overlayと共通のPreview scroll containerだけを移動する。この追従位置はFrontend UI stateであり
 Backendへ永続化しない。
 
-Desktopの入力画面では左Previewカードを高さ36remのまま共通header下へsticky表示し、右側FormをBrowser pageで
-縦scrollしてもPreviewをviewport内へ維持する。Preview内部のdocument scrollとは独立しており、Mobileの縦積み
-layoutではsticky表示せず通常のdocument flowを維持する。
+Desktopの入力画面では左Previewカードを最大36remとして共通header下へsticky表示し、viewport高さが不足する
+場合はheaderと上下余白を除いた利用可能高さまで縮小する。右側FormをBrowser pageで縦scrollしてもPreview全体を
+viewport内へ維持し、Preview内部のdocument scrollとは独立させる。Mobileの縦積みlayoutでは高さ36remのまま
+sticky表示せず通常のdocument flowを維持する。
 
 Reviewから入力・編集する対象は、請求社 / 発行元、インボイス登録番号、総請求額、各明細の品名と金額だけに
 限定する。`null`のAI値は空値のままにし、税率、用途、支払先その他の値を推測補完しない。AI明細は
