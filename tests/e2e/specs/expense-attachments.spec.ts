@@ -16,7 +16,6 @@ const receiptPng = Buffer.from(
 type ExpenseDetail = {
   id: string;
   status: string;
-  pendingStepId: string | null;
 };
 
 type ExpenseAttachment = {
@@ -176,11 +175,20 @@ test("Azurite経由で経費証憑を登録・閲覧・差戻し後に差し替�
     expect(submittedResponse.status()).toBe(200);
     const submitted = (await submittedResponse.json()) as ExpenseDetail;
     expect(submitted.status).toBe("PENDING_APPROVAL");
+    const workflowResponse = await applicant.request.get(
+      `/api/backend/workflow/subjects/EXPENSE_APPLICATION/${draft.id}/latest`,
+    );
+    expect(workflowResponse.status()).toBe(200);
+    const workflow = await workflowResponse.json() as {
+      steps: Array<{ stepId: string; status: string }>;
+    };
+    const pendingStepId = workflow.steps.find((step) => step.status === "PENDING")?.stepId;
+    expect(pendingStepId).toBeDefined();
     await applicant.reload();
     await expect(applicant.getByLabel(/ファイルを追加/)).toHaveCount(0);
     await expect(applicant.getByRole("button", { name: "削除" })).toHaveCount(0);
 
-    await manager.goto(`/approvals/${draft.id}`);
+    await manager.goto(`/approvals/${pendingStepId}`);
     await expect(manager.getByText("receipt-resubmitted.pdf", { exact: true })).toBeVisible();
     const managerDownload = await manager.request.get(
       `/api/backend/expense-applications/${draft.id}/attachments/${reuploadedAttachment.id}/content?download=true`,
@@ -195,11 +203,12 @@ test("Azurite経由で経費証憑を登録・閲覧・差戻し後に差し替�
     expect(outsiderRead.status()).toBe(404);
 
     const returnedResponse = await manager.request.post(
-      `/api/backend/expense-approvals/${submitted.pendingStepId}/return`,
+      `/api/backend/workflow/tasks/${pendingStepId}/return`,
       { data: { comment: "証憑を差し替えてください" } },
     );
     expect(returnedResponse.status()).toBe(200);
-    expect(((await returnedResponse.json()) as ExpenseDetail).status).toBe("RETURNED");
+    expect(((await returnedResponse.json()) as { instanceStatus: string }).instanceStatus)
+      .toBe("RETURNED");
 
     await applicant.reload();
     const returnedPdfCard = applicant.locator("li").filter({

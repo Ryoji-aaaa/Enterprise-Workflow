@@ -71,8 +71,8 @@ import jp.co.sdcj.workflow.domain.UserOrganizationAssignment;
 import jp.co.sdcj.workflow.domain.UserRoleAssignment;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationAutoEntryContextRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStepRepository;
 import jp.co.sdcj.workflow.repository.OrganizationRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
@@ -126,8 +126,8 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
     @Autowired PermissionRepository permissionRepository;
     @Autowired RolePermissionRepository rolePermissionRepository;
     @Autowired UserRoleAssignmentRepository roleAssignmentRepository;
-    @Autowired ExpenseApprovalRunRepository runRepository;
-    @Autowired ExpenseApprovalStepRepository stepRepository;
+    @Autowired WorkflowInstanceRepository workflowInstanceRepository;
+    @Autowired WorkflowInstanceStepRepository workflowStepRepository;
     @Autowired DocumentAnalysisDispatcher dispatcher;
     @MockitoBean DocumentAnalysisStorage documentStorage;
     @MockitoBean AttachmentStorage attachmentStorage;
@@ -908,36 +908,37 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                 .contains("\"autoEntry\":true", "\"autoEntryUnresolvedCount\":0")
                 .doesNotContain("T1234567890123", "サンプル商事株式会社", "業務用備品");
 
-        var firstRun = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                applicationId).orElseThrow();
-        UUID managerStepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(
-                firstRun.getId()).getFirst().getId();
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", managerStepId)
+        var firstInstance = workflowInstanceRepository
+                .findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(
+                        "EXPENSE_APPLICATION", applicationId).orElseThrow();
+        UUID managerStepId = workflowStepRepository
+                .findAllByWorkflowInstanceIdOrderByStepOrder(firstInstance.getId()).getFirst().getId();
+        mockMvc.perform(post("/api/workflow/tasks/{stepId}/return", managerStepId)
                         .with(validJwt(manager, "manager"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"comment\":\"内容を再確認してください\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("RETURNED"));
+                .andExpect(jsonPath("$.instanceStatus").value("RETURNED"));
 
         mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
                         .with(validJwt(otherUser, "other")))
                 .andExpect(status().isNotFound());
         mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
                         .with(validJwt(applicant, "auto-entry")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.approvalRun.runNumber").value(2));
+                .andExpect(status().isOk());
         String resubmittedAudit = submissionAudit(
                 "EXPENSE_APPLICATION_RESUBMITTED", applicationId);
         assertThat(resubmittedAudit)
                 .contains("\"autoEntry\":true", "\"autoEntryUnresolvedCount\":0")
                 .doesNotContain("T1234567890123", "サンプル商事株式会社", "業務用備品");
-        assertThat(runRepository.findAllByExpenseApplicationIdOrderByRunNumberDesc(applicationId))
+        assertThat(workflowInstanceRepository
+                .findAllBySubjectTypeAndSubjectIdOrderByRunNumberDesc("EXPENSE_APPLICATION", applicationId))
                 .extracting("runNumber", "status")
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(
-                                2, jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.PENDING),
+                                2, jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStatus.PENDING),
                         org.assertj.core.groups.Tuple.tuple(
-                                1, jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.RETURNED));
+                                1, jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStatus.RETURNED));
     }
 
     @Test
@@ -1048,17 +1049,18 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                     .isEqualTo("EXPENSE_APPLICATION_INVALID_STATUS");
         }
 
-        assertThat(runRepository.countByExpenseApplicationId(applicationId)).isEqualTo(1);
+        assertThat(workflowInstanceRepository.countBySubjectTypeAndSubjectId(
+                "EXPENSE_APPLICATION", applicationId)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("""
-                select count(*) from expense_approval_steps step
-                join expense_approval_runs run on run.id = step.approval_run_id
-                where run.expense_application_id = ?
+                select count(*) from workflow_instance_steps step
+                join workflow_instances instance on instance.id = step.workflow_instance_id
+                where instance.subject_type = 'EXPENSE_APPLICATION' and instance.subject_id = ?
                 """, Integer.class, applicationId)).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject("""
-                select count(*) from expense_approval_candidates candidate
-                join expense_approval_steps step on step.id = candidate.approval_step_id
-                join expense_approval_runs run on run.id = step.approval_run_id
-                where run.expense_application_id = ?
+                select count(*) from workflow_instance_candidates candidate
+                join workflow_instance_steps step on step.id = candidate.workflow_instance_step_id
+                join workflow_instances instance on instance.id = step.workflow_instance_id
+                where instance.subject_type = 'EXPENSE_APPLICATION' and instance.subject_id = ?
                 """, Integer.class, applicationId)).isEqualTo(2);
         assertThat(auditCount("EXPENSE_APPLICATION_SUBMITTED")).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("""
@@ -1379,9 +1381,10 @@ class ExpenseAutoEntryDraftApiIntegrationTest {
                 "notification_outbox",
                 "expense_application_auto_entry_contexts",
                 "expense_application_attachments",
-                "expense_approval_candidates",
-                "expense_approval_steps",
-                "expense_approval_runs",
+                "workflow_instance_actions",
+                "workflow_instance_candidates",
+                "workflow_instance_steps",
+                "workflow_instances",
                 "expense_application_items",
                 "expense_applications",
                 "document_analysis_jobs",

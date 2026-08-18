@@ -67,24 +67,7 @@ export type ExpenseApplication = {
   version: number;
   editable: boolean;
   cancellable: boolean;
-  pendingStepId: string | null;
-  canApprove: boolean;
   items: ExpenseItem[];
-  approvalRun: {
-    runNumber: number;
-    status: string;
-    startedAt: string;
-    steps: Array<{
-      id: string;
-      order: number;
-      type: "DEPARTMENT_MANAGER" | "ACCOUNTING";
-      targetOrganizationUnitName: string;
-      status: string;
-      processedBy: string | null;
-      processedAt: string | null;
-      comment: string | null;
-    }>;
-  } | null;
 };
 
 export type ExpenseSummary = Pick<
@@ -100,12 +83,6 @@ export type ExpensePage = {
   totalElements: number;
   totalPages: number;
 };
-
-export function canShowExpenseApprovalActions(
-  application: Pick<ExpenseApplication, "canApprove" | "pendingStepId">,
-): boolean {
-  return application.canApprove && application.pendingStepId !== null;
-}
 
 export function totalExpenseAmount(items: ExpenseItem[]): number {
   return items.reduce((total, item) => total + (Number.isFinite(item.amount) ? item.amount : 0), 0);
@@ -149,12 +126,11 @@ export function categoryFieldLabels(category: ExpenseCategory): string[] {
 const errorMessages: Record<string, string> = {
   PRIMARY_ASSIGNMENT_NOT_FOUND: "有効な主所属が登録されていないため申請できません。",
   DIVISION_NOT_FOUND: "所属事業部を特定できないため申請できません。",
-  DEPARTMENT_MANAGER_NOT_FOUND: "部門承認者が登録されていないため申請できません。",
-  ACCOUNTING_UNIT_NOT_FOUND: "経理課が登録されていないため申請できません。",
-  ACCOUNTING_APPROVER_NOT_FOUND: "経理承認者が登録されていないため申請できません。",
+  WORKFLOW_ASSIGNEE_NOT_FOUND: "承認候補者が登録されていないため申請できません。",
+  WORKFLOW_DEFINITION_INVALID: "承認経路の設定が不正なため申請できません。管理者へ連絡してください。",
   EXPENSE_APPLICATION_CATEGORY_FIELD_REQUIRED: "カテゴリ別の必須項目を入力してください。",
-  APPROVAL_STEP_NOT_PENDING: "この承認は既に処理されています。最新情報を再読込してください。",
-  APPROVAL_NOT_ALLOWED: "この申請を承認する権限がありません。",
+  WORKFLOW_STEP_NOT_PENDING: "この承認は既に処理されています。最新情報を再読込してください。",
+  WORKFLOW_ACTION_NOT_ALLOWED: "この申請を承認する権限がありません。",
   SELF_APPROVAL_NOT_ALLOWED: "自分自身の申請は承認できません。",
   RETURN_REASON_REQUIRED: "差戻し理由を入力してください。",
   OPTIMISTIC_LOCK_CONFLICT: "他の更新と競合しました。最新情報を再読込してください。",

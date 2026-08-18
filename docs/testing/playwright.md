@@ -52,8 +52,8 @@ Chromiumが実利用環境と同じUnicode文字列として扱える状態で�
 19. `/top`のdesktopでは常設サイドメニューを表示してハンバーガーを非表示にし、`/top`のmobileと
     `/top`以外では権限に応じた左Drawerナビゲーションを表示する。旧横型モバイルナビゲーションは
     表示せず、Escapeとリンク選択でDrawerが閉じ、active linkの`aria-current="page"`を維持する
-20. 一般ユーザー、課長、事業部長の経費申請経路をBFF経由で完了する
-21. 経費申請を理由付きで差し戻し、新しいRunで再申請・承認する
+20. 一般ユーザー、所属長、最上位所属長の経費申請経路を汎用workflow APIとBFF経由で完了する
+21. 経費申請を理由付きで差し戻し、新しいInstanceで再申請・承認する
 22. 候補者外ユーザーの経費承認を403で拒否し、Mailpit通知を確認する
 23. 下書きへPDF・PNGを添付し、一覧、preview、download、削除を確認する
 24. 申請後は添付変更UIを非表示にし、現在Candidateだけが閲覧できることを確認する
@@ -74,7 +74,7 @@ Chromiumが実利用環境と同じUnicode文字列として扱える状態で�
     active状態を確認したうえで、Fake Providerの分析、Review（`OK` / `REVIEW` / `MISSING`）、AI値を
     初期値とする編集、attention filter、請求額照合、正式handoff、Confirmationの
     reload復元、専用PUT保存、申請、現在Candidateの正式な原本証憑閲覧、差戻し後の編集・再申請・新しい
-    Approval Runを確認する。`TaxRatePercent=null`は補完せず`MISSING`として扱い、照合はAI値や経費金額を
+    workflow timelineを確認する。`TaxRatePercent=null`は補完せず`MISSING`として扱い、照合はAI値や経費金額を
     自動変更しないnon-blocking表示とする
 33. 通常経費の新規申請でsubmitの503後にGETが`DRAFT`を返した場合、再試行時に新しいDRAFTをPOSTせず、
     最初に保存したApplication IDへのPUTとsubmitを使用することを確認する
@@ -111,7 +111,7 @@ trace、screenshot、videoを関連付けるために使用する。JSONはPlayw
 - 件名が`[Workflow] 未登録ユーザーからアクセスがありました`のMailpitメッセージ
 - 前回のPlaywright成果物
 - 中断された前回テストが残した社長の`仮 社長 E2E`表示名と有効な`AUDITOR`割当
-- 件名が`E2E`で始まる経費申請と、その明細・承認Run・Step・Candidate・添付metadata
+- 件名が`E2E`で始まる経費申請と、その明細・workflow Instance・Step・Candidate・Action・添付metadata
 
 事後検証では未登録ユーザーの申請が1行、`request_count`が2以上、開発管理者宛の対象通知が
 宛先単位で1件であることを確認する。他ユーザーのDBデータや別件名のメールは削除しない。
@@ -125,8 +125,8 @@ Persona catalogの正本は
 password、token、Cookie、Keycloak credential、DB生成IDは含めない。
 
 persona名は人名や組織名ではなく、業務上の意味を表す。通常申請は`STANDARD_APPLICANT`、
-部門承認は`DEPARTMENT_MANAGER`、事業部長承認は`DIVISION_HEAD`、経理承認は
-`ACCOUNTING_APPROVER`、全社・最上位権限の確認は`PRESIDENT`を基本にする。
+同一所属の所属長承認は`DEPARTMENT_MANAGER`、親組織の所属長承認は`DIVISION_HEAD`、経理承認は
+`ACCOUNTING_APPROVER`、親組織がない最上位所属長の経路確認は`PRESIDENT`を基本にする。
 `STANDARD_APPLICANT`をすべてのテストで使うことを標準とはせず、必要な組織階層、役職、
 Permissionに合うpersonaを選択する。local E2Eも同じcatalogをread-only mountし、
 `STAGING_TEST_PERSONAS_PATH`から実行時に解決する。これはlocal環境をstagingとして扱うものではなく、

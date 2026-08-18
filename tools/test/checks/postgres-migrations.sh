@@ -247,7 +247,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V018 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V020 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -277,7 +277,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V018 schema.
+# validates the complete V020 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -708,8 +708,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 18 THEN
-        RAISE EXCEPTION 'expected 18 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 20 THEN
+        RAISE EXCEPTION 'expected 20 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -1135,8 +1135,8 @@ DO $$
 DECLARE
     retired_role_id UUID;
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18 THEN
-        RAISE EXCEPTION 'V014 database did not upgrade through V018';
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20 THEN
+        RAISE EXCEPTION 'V014 database did not upgrade through V020';
     END IF;
     IF (SELECT count(*)
         FROM role_permissions mapping
@@ -1212,7 +1212,7 @@ docker rm --force "${BACKEND_CONTAINER}" >/dev/null
 # the AUTO_ENTRY source attachment.
 migration_section "V017 AUTO_ENTRY provenance constraint upgrade"
 create_database workflow_v017_upgrade
-start_backend workflow_v017_upgrade 017
+start_backend workflow_v017_upgrade 017 none
 workflow_psql workflow_v017_upgrade <<'SQL' >/dev/null
 DO $$
 BEGIN
@@ -1233,8 +1233,8 @@ start_backend workflow_v017_upgrade
 workflow_psql workflow_v017_upgrade <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18 THEN
-        RAISE EXCEPTION 'V017 database did not upgrade through V018';
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20 THEN
+        RAISE EXCEPTION 'V017 database did not upgrade through V020';
     END IF;
     IF (SELECT count(*) FROM pg_constraint WHERE conname IN (
         'uk_expense_attachment_id_application',
@@ -1354,7 +1354,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -1374,10 +1374,13 @@ BEGIN
     END IF;
     IF (SELECT count(*) FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name IN (
-            'expense_applications', 'expense_application_items', 'expense_approval_runs',
-            'expense_approval_steps', 'expense_approval_candidates',
+            'expense_applications', 'expense_application_items',
             'expense_application_attachments',
-            'expense_application_auto_entry_contexts', 'notification_outbox')) <> 8
+            'expense_application_auto_entry_contexts', 'notification_outbox',
+            'workflow_definitions', 'workflow_definition_versions', 'workflow_nodes',
+            'workflow_transitions', 'workflow_assignee_rules', 'workflow_instances',
+            'workflow_instance_steps', 'workflow_instance_candidates',
+            'workflow_instance_actions')) <> 14
        OR NOT EXISTS (SELECT 1 FROM pg_sequences
                       WHERE schemaname = 'public'
                         AND sequencename = 'expense_application_number_seq') THEN
@@ -1401,10 +1404,6 @@ BEGIN
             'ck_expense_applications_currency', 'ck_expense_applications_category',
             'ck_expense_applications_status', 'uk_expense_application_items_order',
             'ck_expense_application_items_amount', 'ck_expense_application_items_order',
-            'uk_expense_approval_runs_number', 'ck_expense_approval_runs_number',
-            'ck_expense_approval_runs_status', 'uk_expense_approval_steps_order',
-            'ck_expense_approval_steps_order', 'ck_expense_approval_steps_type',
-            'ck_expense_approval_steps_status', 'uk_expense_approval_candidates_user',
             'uk_expense_application_attachments_storage_object',
             'uk_expense_attachment_id_application',
             'ck_expense_application_attachments_file_size',
@@ -1415,8 +1414,18 @@ BEGIN
             'uk_expense_auto_entry_context_source_attachment',
             'ck_expense_auto_entry_context_schema_version',
             'ck_expense_auto_entry_context_auto_entry_schema_version',
-            'fk_expense_auto_entry_source_attachment_application'
-        )) <> 27 THEN
+            'fk_expense_auto_entry_source_attachment_application',
+            'uk_workflow_definitions_code', 'uk_workflow_definition_versions_number',
+            'ck_workflow_definition_versions_number', 'ck_workflow_definition_versions_status',
+            'ck_workflow_definition_versions_period', 'uk_workflow_nodes_key',
+            'ck_workflow_nodes_type', 'ck_workflow_nodes_approval_mode',
+            'uk_workflow_transitions_key', 'uk_workflow_assignee_rules_node',
+            'uk_workflow_instances_subject_run', 'ck_workflow_instances_run_number',
+            'ck_workflow_instances_status', 'uk_workflow_instance_steps_order',
+            'ck_workflow_instance_steps_order', 'ck_workflow_instance_steps_mode',
+            'ck_workflow_instance_steps_status', 'uk_workflow_instance_candidates_user',
+            'ck_workflow_instance_actions_type'
+        )) <> 38 THEN
         RAISE EXCEPTION 'expense application constraints are invalid';
     END IF;
     IF NOT EXISTS (
@@ -1530,7 +1539,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 18
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 21

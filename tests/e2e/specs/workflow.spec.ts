@@ -144,9 +144,27 @@ type ExpenseDetail = {
   id: string;
   version: number;
   status: string;
-  pendingStepId: string | null;
-  approvalRun: { runNumber: number; steps: Array<{ targetOrganizationUnitName: string }> };
 };
+
+type WorkflowInstance = {
+  runNumber: number;
+  status: string;
+  steps: Array<{ stepId: string; nodeKey: string; stepName: string; status: string }>;
+};
+
+async function latestWorkflow(page: Page, applicationId: string): Promise<WorkflowInstance> {
+  const response = await page.request.get(
+    `/api/backend/workflow/subjects/EXPENSE_APPLICATION/${applicationId}/latest`,
+  );
+  expect(response.status()).toBe(200);
+  return await response.json() as WorkflowInstance;
+}
+
+function pendingStep(workflow: WorkflowInstance): string {
+  const step = workflow.steps.find((candidate) => candidate.status === "PENDING");
+  expect(step).toBeDefined();
+  return step!.stepId;
+}
 
 function expensePayload(title: string, version?: number) {
   return {
@@ -678,84 +696,90 @@ test("無効なBetter Auth sessionへのBFF 401で認証Cookieを削除する", 
   expect(authenticationCookies).toHaveLength(0);
 });
 
-test("経費申請の一般・部門長・事業部長経路と差戻し再申請をBFF越しに処理する", async ({ browser }) => {
-  const [applicantPersona, managerPersona, divisionHeadPersona, accountingPersona] = await Promise.all([
+test("経費申請の一般・部門長・最上位部門長経路と差戻し再申請をBFF越しに処理する", async ({ browser }) => {
+  const [applicantPersona, managerPersona, divisionHeadPersona, presidentPersona, accountingPersona] = await Promise.all([
     loadStagingPersona("STANDARD_APPLICANT"),
     loadStagingPersona("DEPARTMENT_MANAGER"),
     loadStagingPersona("DIVISION_HEAD"),
+    loadStagingPersona("PRESIDENT"),
     loadStagingPersona("ACCOUNTING_APPROVER"),
   ]);
   const suffix = Date.now();
   const applicant = await expensePage(browser, applicantPersona.email);
   const manager = await expensePage(browser, managerPersona.email);
   const divisionHead = await expensePage(browser, divisionHeadPersona.email);
+  const president = await expensePage(browser, presidentPersona.email);
   const accounting = await expensePage(browser, accountingPersona.email);
   const outsider = await expensePage(browser, divisionHeadPersona.email);
   try {
     const general = await createAndSubmitExpense(applicant, `E2E一般申請-${suffix}`);
-    expect(general.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
-      .toEqual(["第1SI営業課", "経理課"]);
-    expect(general.pendingStepId).not.toBeNull();
+    const generalWorkflow = await latestWorkflow(applicant, general.id);
+    expect(generalWorkflow.steps.map((step) => step.nodeKey))
+      .toEqual(["SAME_UNIT_MANAGER", "ACCOUNTING"]);
     await manager.goto("/approvals");
     await expectContentOrientedWorkspaceChrome(manager);
     await expectActiveDrawerNavigationLink(manager, "承認待ち");
     await expect(manager.getByText(`E2E一般申請-${suffix}`, { exact: true })).toBeVisible();
 
     const outsiderResponse = await outsider.request.post(
-      `/api/backend/expense-approvals/${general.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(generalWorkflow)}/approve`, { data: {} },
     );
     expect(outsiderResponse.status()).toBe(403);
     const managerApproved = await manager.request.post(
-      `/api/backend/expense-approvals/${general.pendingStepId}/approve`,
+      `/api/backend/workflow/tasks/${pendingStep(generalWorkflow)}/approve`,
       { data: { comment: "E2E部門承認" } },
     );
     expect(managerApproved.status()).toBe(200);
-    const accountingDetail = (await managerApproved.json()) as ExpenseDetail;
+    const accountingWorkflow = await latestWorkflow(accounting, general.id);
     const finalApproved = await accounting.request.post(
-      `/api/backend/expense-approvals/${accountingDetail.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(accountingWorkflow)}/approve`, { data: {} },
     );
     expect(finalApproved.status()).toBe(200);
-    expect(((await finalApproved.json()) as ExpenseDetail).status).toBe("APPROVED");
+    expect(((await finalApproved.json()) as { instanceStatus: string }).instanceStatus).toBe("APPROVED");
     await applicant.goto(`/expenses/${general.id}`);
     await expect(applicant.getByText("承認済み", { exact: true }).first()).toBeVisible();
 
     const managerApplication = await createAndSubmitExpense(
       manager, `E2E課長申請-${suffix}`,
     );
-    expect(managerApplication.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
-      .toEqual(["第1SI事業部", "経理課"]);
+    const managerWorkflow = await latestWorkflow(manager, managerApplication.id);
+    expect(managerWorkflow.steps.map((step) => step.nodeKey))
+      .toEqual(["PARENT_UNIT_MANAGER", "ACCOUNTING"]);
     const divisionApproved = await divisionHead.request.post(
-      `/api/backend/expense-approvals/${managerApplication.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(managerWorkflow)}/approve`, { data: {} },
     );
     expect(divisionApproved.status()).toBe(200);
-    const managerAccounting = (await divisionApproved.json()) as ExpenseDetail;
+    const managerAccounting = await latestWorkflow(accounting, managerApplication.id);
     const managerFinal = await accounting.request.post(
-      `/api/backend/expense-approvals/${managerAccounting.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(managerAccounting)}/approve`, { data: {} },
     );
     expect(managerFinal.status()).toBe(200);
-    expect(((await managerFinal.json()) as ExpenseDetail).status).toBe("APPROVED");
+    expect(((await managerFinal.json()) as { instanceStatus: string }).instanceStatus).toBe("APPROVED");
 
     const divisionApplication = await createAndSubmitExpense(
-      divisionHead, `E2E事業部長申請-${suffix}`,
+      president, `E2E最上位部門長申請-${suffix}`,
     );
-    expect(divisionApplication.approvalRun.steps.map((step) => step.targetOrganizationUnitName))
-      .toEqual(["経理課"]);
+    const topWorkflow = await latestWorkflow(president, divisionApplication.id);
+    expect(topWorkflow.steps.map((step) => step.nodeKey)).toEqual(["ACCOUNTING"]);
     const divisionFinal = await accounting.request.post(
-      `/api/backend/expense-approvals/${divisionApplication.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(topWorkflow)}/approve`, { data: {} },
     );
     expect(divisionFinal.status()).toBe(200);
-    expect(((await divisionFinal.json()) as ExpenseDetail).status).toBe("APPROVED");
+    expect(((await divisionFinal.json()) as { instanceStatus: string }).instanceStatus).toBe("APPROVED");
 
     const returnedApplication = await createAndSubmitExpense(
       applicant, `E2E差戻し申請-${suffix}`,
     );
     const returnedResponse = await manager.request.post(
-      `/api/backend/expense-approvals/${returnedApplication.pendingStepId}/return`,
+      `/api/backend/workflow/tasks/${pendingStep(await latestWorkflow(applicant, returnedApplication.id))}/return`,
       { data: { comment: "E2E差戻し理由" } },
     );
     expect(returnedResponse.status()).toBe(200);
-    const returned = (await returnedResponse.json()) as ExpenseDetail;
-    expect(returned.status).toBe("RETURNED");
+    expect(((await returnedResponse.json()) as { instanceStatus: string }).instanceStatus).toBe("RETURNED");
+    const returnedDetailResponse = await applicant.request.get(
+      `/api/backend/expense-applications/${returnedApplication.id}`,
+    );
+    const returned = await returnedDetailResponse.json() as ExpenseDetail;
     const updated = await applicant.request.put(
       `/api/backend/expense-applications/${returned.id}`,
       { data: expensePayload(`E2E差戻し再申請-${suffix}`, returned.version) },
@@ -765,18 +789,18 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
       `/api/backend/expense-applications/${returned.id}/resubmit`,
     );
     expect(resubmitted.status()).toBe(200);
-    const runTwo = (await resubmitted.json()) as ExpenseDetail;
-    expect(runTwo.approvalRun.runNumber).toBe(2);
+    const runTwo = await latestWorkflow(applicant, returned.id);
+    expect(runTwo.runNumber).toBe(2);
     const runTwoManagerResponse = await manager.request.post(
-      `/api/backend/expense-approvals/${runTwo.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(runTwo)}/approve`, { data: {} },
     );
     expect(runTwoManagerResponse.status()).toBe(200);
-    const runTwoManager = (await runTwoManagerResponse.json()) as ExpenseDetail;
+    const runTwoManager = await latestWorkflow(accounting, returned.id);
     const runTwoFinalResponse = await accounting.request.post(
-      `/api/backend/expense-approvals/${runTwoManager.pendingStepId}/approve`, { data: {} },
+      `/api/backend/workflow/tasks/${pendingStep(runTwoManager)}/approve`, { data: {} },
     );
     expect(runTwoFinalResponse.status()).toBe(200);
-    expect(((await runTwoFinalResponse.json()) as ExpenseDetail).status).toBe("APPROVED");
+    expect(((await runTwoFinalResponse.json()) as { instanceStatus: string }).instanceStatus).toBe("APPROVED");
 
     const applicantDetailResponse = await applicant.request.get(
       `/api/backend/expense-applications/${returned.id}`,
@@ -784,7 +808,7 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
     expect(applicantDetailResponse.status()).toBe(200);
     const applicantDetail = (await applicantDetailResponse.json()) as ExpenseDetail;
     expect(applicantDetail.status).toBe("APPROVED");
-    expect(applicantDetail.approvalRun.runNumber).toBe(2);
+    expect((await latestWorkflow(applicant, returned.id)).runNumber).toBe(2);
     await applicant.goto(`/expenses/${general.id}`);
     await expectContentOrientedWorkspaceChrome(applicant);
     await expectActiveDrawerNavigationLink(applicant, "経費申請");
@@ -800,7 +824,7 @@ test("経費申請の一般・部門長・事業部長経路と差戻し再申�
   } finally {
     await Promise.all([
       applicant.context().close(), manager.context().close(), divisionHead.context().close(),
-      accounting.context().close(), outsider.context().close(),
+      president.context().close(), accounting.context().close(), outsider.context().close(),
     ]);
   }
 });

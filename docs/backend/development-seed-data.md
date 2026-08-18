@@ -52,7 +52,7 @@ Document Analysis権限、事業部ancestor、部門承認者と経理承認者�
 `ACCOUNTING_APPROVER`は唯一の経理承認者であることを契約にしない。経理課の有効な所属ユーザーが
 増えても、承認経路candidateに含まれることを保証する。
 
-通常テストが作成・更新してよいデータは、経費申請、申請明細、承認Run/Step/Candidate、
+通常テストが作成・更新してよいデータは、経費申請、申請明細、workflow Instance/Step/Candidate/Action、
 Document Analysis、AUTO_ENTRY context、添付、通知などのtransaction dataを基本とする。
 組織、組織単位、役職、canonical user profile、所属、ロール、Permission対応、Role割当、
 canonical Keycloak user stateは通常テストで変更しない。master fixtureそのものの変更を検証する場合は、

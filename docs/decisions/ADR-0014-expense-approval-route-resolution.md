@@ -1,5 +1,8 @@
 # ADR-0014: 経費承認経路を申請時に確定する
 
+- Status: Superseded
+- Superseded by: [ADR-0019](ADR-0019-generic-workflow-engine.md)
+
 - Status: Accepted
 - Date: 2026-08-02
 - Related files: `backend/src/main/resources/db/migration/V009__create_expense_application_schema.sql`,

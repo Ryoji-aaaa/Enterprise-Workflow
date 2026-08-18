@@ -29,19 +29,4 @@ public interface ExpenseApplicationRepository extends JpaRepository<ExpenseAppli
     @Query("select application from ExpenseApplication application where application.id = :id")
     Optional<ExpenseApplication> findByIdForUpdate(@Param("id") UUID id);
 
-    @Query("""
-            select application from ExpenseApplication application
-            where exists (
-                select candidate.id from ExpenseApprovalCandidate candidate,
-                    ExpenseApprovalStep step, ExpenseApprovalRun run
-                where candidate.candidateUserId = :userId
-                  and candidate.approvalStepId = step.id
-                  and step.approvalRunId = run.id
-                  and run.expenseApplicationId = application.id
-                  and step.status = jp.co.sdcj.workflow.domain.ExpenseApprovalStepStatus.PENDING
-                  and run.status = jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.PENDING
-            )
-            """)
-    Page<ExpenseApplication> findPendingForCandidate(
-            @Param("userId") UUID userId, Pageable pageable);
 }

@@ -9,7 +9,7 @@
 
 ## Transactional Outbox
 
-V011で`notification_outbox`を追加し、通知種別、発生元、申請・承認ID、宛先snapshot、件名、本文、
+V011で`notification_outbox`を追加し、通知種別、発生元、申請・workflow Instance/Step ID、宛先snapshot、件名、本文、
 重複排除key、状態、試行回数、次回試行日時、送付日時とsanitized errorを保存する。業務処理は同じ
 transaction内でOutbox行を作成するため、業務更新だけがcommitされて通知要求が失われる状態を防ぐ。
 `disabled`ではNo-op publisherを使用し、Outbox行も作成しない。
@@ -32,6 +32,9 @@ Dispatcherが送付成功した場合だけ互換列`notification_sent_at`を更
 
 Candidateが複数いる場合は宛先ごとにOutbox行を作る。承認、差戻し、利用申請記録がrollbackした場合は
 対応するOutbox行もrollbackする。
+
+V019は`approval_run_id`と`approval_step_id`を`workflow_instance_id`と`workflow_step_id`へrenameする。
+通知の宛先は申請時に保存したCandidate snapshotを使用し、操作時に現在組織から再解決しない。
 
 ## 履歴APIと認可
 

@@ -10,8 +10,7 @@ Document Analysis `AUTO_ENTRY`からの下書き確定を提供し、汎用OCR�
 
 ## データモデル
 
-V009は`expense_applications`、`expense_application_items`、`expense_approval_runs`、
-`expense_approval_steps`、`expense_approval_candidates`と申請番号用sequenceを追加する。
+V009は`expense_applications`、`expense_application_items`と申請番号用sequenceを追加する。
 申請番号は`EXP-YYYYMMDD-000001`形式で、明細合計をBackendが再計算する。通貨はJPYだけを
 許可する。各明細と明細合計は1円以上999,999,999,999円以下の整数とし、合計超過は
 `EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED`の422業務エラーとして保存前に拒否する。
@@ -32,32 +31,35 @@ V018は`expense_application_attachments (id, expense_application_id)`へ一意�
 AUTO_ENTRY contextの`(source_attachment_id, expense_application_id)`から複合外部キーで参照する。
 これにより原本添付が同じ経費申請に属することをDBでも保証し、異なる申請の添付をcontextへ対応付けない。
 
-Runは申請・再申請ごとに作成し、Stepは`DEPARTMENT_MANAGER`と`ACCOUNTING`、Candidateは
-そのStepを処理できるユーザーを表す。再申請時も旧Run・Step・Candidateを更新せず、新しい
-Runを追加する。Application、Run、Stepはversionを持ち、承認時にはStepとApplicationを
-悲観ロックしてCandidateの最初の1名だけが確定できる。
+V019はV009で作成した経費専用の承認Run、Step、Candidateを削除し、版管理された汎用
+`workflow_instances`、`workflow_instance_steps`、`workflow_instance_candidates`、
+`workflow_instance_actions`へ置き換える。V020は経費承認定義`EXPENSE_APPROVAL` version 1を公開する。
+申請・再申請ごとに新しいInstanceを作り、旧Instanceとその履歴は更新しない。ApplicationとStepはversionを
+持ち、承認時にはStepを悲観lockしてCandidateの最初の1名だけが確定できる。詳細は
+[汎用ワークフローエンジン](workflow-engine.md)を参照する。
 
 ## 状態遷移
 
 ```text
 DRAFT -> PENDING_APPROVAL -> APPROVED
-                         \-> RETURNED -> PENDING_APPROVAL（新Run）
+                         \-> RETURNED -> PENDING_APPROVAL（新Instance）
                          \-> CANCELLED（承認済みStepがない場合だけ）
 ```
 
 最初のStepは`PENDING`、後続は`WAITING`で作成する。現在Stepの承認後に次を`PENDING`へ
-変更し、最後のStepが承認されたときだけApplicationとRunを`APPROVED`にする。差戻しでは
+変更し、最後のStepが承認されたときだけApplicationとInstanceを`APPROVED`にする。差戻しでは
 現在Stepを`RETURNED`、後続を`CANCELLED`にし、理由を必須保存する。
 
 ## 承認経路
 
-基準時点の有効な`PRIMARY`所属を起点とし、親方向で最初の`DIVISION`を事業部とする。
+経路はV020の公開定義を型付き条件DSLで評価する。基準時点の有効な`PRIMARY`所属を起点とし、
+親方向で最初の`DIVISION`を事業部とする。
 部門長は有効な所属・ユーザー・役職のうち`positions.approval_level > 0`で判定し、ACTINGを
 含む。同じ組織に複数候補がいる場合は全員をCandidateへ保存し、誰か1名の処理でStepを完了する。
 
-- 一般ユーザー: 主所属部門の部門長、経理課
-- 非DIVISIONの部門長: 親方向で最初に候補がいる組織の部門長、経理課
-- DIVISIONの部門長: 経理課のみ
+- 一般ユーザー: 主所属組織の所属長、経理課
+- 親組織がある所属長: 親方向で最初に候補がいる組織の所属長、経理課
+- 親組織がない最上位所属長: 経理課のみ
 
 親探索は申請者の事業部を越えない。経理課は同じ法人の
 `organization_units.unit_code = 'ACCOUNTING_SECTION'`で特定し、有効な所属ユーザー全員を
@@ -68,7 +70,7 @@ DRAFT -> PENDING_APPROVAL -> APPROVED
 
 ## スナップショットと認可
 
-申請時に申請者の所属・役職・事業部をRunのJSONへ、組織名をApplication/Stepへ、候補者ID・
+申請時に申請者の所属・役職・事業部をInstanceのJSONへ、組織名をApplication/Stepへ、候補者ID・
 表示名・email・所属ID・役職名をCandidateへ保存する。承認時の正本は現在組織ではなくCandidate
 であるため、その後の異動で進行中・完了済み経路は変わらない。
 
@@ -85,16 +87,16 @@ AUTO_ENTRYの認可境界は次のとおりである。新しいAUTO_ENTRY専用
 | Formal Handoff | `EXPENSE_APPLICATION_CREATE`、`DOCUMENT_ANALYSIS_READ_OWN` | 本人所有の完了済みAUTO_ENTRY分析。`CONTENT_UNDERSTANDING_ANALYZE`は要求しない |
 | 保存済みAUTO_ENTRY GET | `EXPENSE_APPLICATION_READ_OWN` | 申請者本人。分析Permissionは要求しない |
 | 保存済みAUTO_ENTRY PUT | `EXPENSE_APPLICATION_CREATE` | 申請者本人、`DRAFT`または`RETURNED`、両version一致 |
-| 原本添付一覧・content | `EXPENSE_APPLICATION_READ_OWN`または`EXPENSE_APPLICATION_APPROVE` | 申請者本人または現在RunのCandidate |
+| 原本添付一覧・content | `EXPENSE_APPLICATION_READ_OWN`または`EXPENSE_APPLICATION_APPROVE` | 申請者本人または現在InstanceのCandidate |
 | 添付追加・削除 | `EXPENSE_APPLICATION_CREATE` | 申請者本人、`DRAFT`または`RETURNED`。原本添付は削除不可 |
 | 申請・再申請 | `EXPENSE_APPLICATION_CREATE` | 申請者本人、対応する`DRAFT`または`RETURNED` |
 | 承認・差戻し | `EXPENSE_APPLICATION_APPROVE` | 現在Candidateかつ自己承認ではない |
 
 正式な経費証憑とAI原値・人間確認状態は開示境界が異なる。現在Candidateは原本添付を閲覧できるが、
-申請者本人でないCandidateへ`auto-entry-draft` contextを返さない。過去RunだけのCandidateも閲覧できない。
+申請者本人でないCandidateへ`auto-entry-draft` contextを返さない。過去InstanceだけのCandidateも閲覧できない。
 
 添付の追加・削除は申請者本人かつ`DRAFT`または`RETURNED`の場合だけ許可する。閲覧は申請者本人と
-現在RunのCandidateだけに許可し、Candidate外には申請の存在を開示しない。Frontendの表示制御に
+現在InstanceのCandidateだけに許可し、Candidate外には申請の存在を開示しない。Frontendの表示制御に
 依存せず、一覧、content取得、追加、削除の各Backend APIで同じ条件を検証する。
 
 ## API
@@ -104,8 +106,10 @@ POST /api/expense-applications
 GET /api/expense-applications
 GET/PUT /api/expense-applications/{id}
 POST /api/expense-applications/{id}/submit|resubmit|cancel
-GET /api/expense-approvals/pending
-POST /api/expense-approvals/{stepId}/approve|return
+GET /api/workflow/tasks
+GET /api/workflow/tasks/{stepId}
+POST /api/workflow/tasks/{stepId}/approve|return
+GET /api/workflow/subjects/EXPENSE_APPLICATION/{applicationId}/latest
 GET/POST /api/expense-applications/{id}/attachments
 GET /api/expense-applications/{id}/attachments/{attachmentId}/content
 DELETE /api/expense-applications/{id}/attachments/{attachmentId}
@@ -113,8 +117,9 @@ POST /api/expense-applications/from-auto-entry
 GET/PUT /api/expense-applications/{id}/auto-entry-draft
 ```
 
-一覧は`page`、`size`と任意の`status`を受け取る。他人の詳細は最新RunのCandidateに
-限って参照でき、過去RunだけのCandidateには開示しない。通知は最初・次の候補、最終承認・差戻し時の
+経費一覧は`page`、`size`と任意の`status`を受け取る。経費responseはworkflowのpending step、
+候補者、実行履歴を含めず、timelineと操作は汎用APIから取得する。他人の詳細は最新InstanceのCandidateに
+限って参照でき、過去InstanceだけのCandidateには開示しない。通知は最初・次の候補、最終承認・差戻し時の
 申請者について、業務transaction内で宛先ごとのOutbox行を作る。ローカルDispatcherのメール失敗は
 再試行し、業務transactionをロールバックしない。Azureと`disabled` modeではOutbox行を作らない。
 
@@ -205,7 +210,8 @@ GETとPUTではcontextの原本添付が同じ申請に属し、論理削除さ�
 ## 監査
 
 作成、更新、申請、再申請、取下げ、Step承認、差戻し、最終承認を`audit_logs`へ追記する。
-成功した状態変更と監査は同じtransactionで保存する。申請ID・番号、Run番号、Step ID・種別、
+ワークフロー操作自体は`workflow_instance_actions`にも追記し、業務状態と同じtransactionで確定する。
+成功した状態変更と監査は同じtransactionで保存する。申請ID・番号、Instance run番号、Step ID・node key、
 状態前後、差戻し理由の必要最小限だけを記録し、token、Cookie、認証ヘッダーは保存しない。
 Candidate外・自己承認・所有者外の参照または更新は、既存の拒否監査方針に従って別transactionで
 `DENIED`を記録する。
@@ -221,7 +227,7 @@ schema version、source attachment ID、unresolved件数だけをallowlistで保
 snapshotを複製しない。Document Analysis原本の取得成功監査も、Formal Handoffのwinner transactionだけで
 1件記録する。順次・同時の冪等再試行は新たな作成成功監査として記録しない。
 
-AUTO_ENTRY申請・再申請の`after_data`には通常の申請番号、状態、Run番号に加えて、`autoEntry=true`、
+AUTO_ENTRY申請・再申請の`after_data`には通常の申請番号、状態、Instance run番号に加えて、`autoEntry=true`、
 未解決件数、AUTO_ENTRY schema versionだけを含める。発行元、明細、AI原値、request JSONは含めない。
 原本添付の削除拒否は`EXPENSE_ATTACHMENT_DELETE_DENIED`と固定理由
 `EXPENSE_AUTO_ENTRY_SOURCE_ATTACHMENT_REQUIRED`で記録する。補償削除失敗は
