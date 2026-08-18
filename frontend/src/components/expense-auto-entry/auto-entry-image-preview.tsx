@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AutoEntryPageRef } from "@/lib/auto-entry-review";
 import type { AutoEntryEvidenceSource } from "@/lib/expense-auto-entry-evidence";
@@ -15,6 +15,7 @@ export function AutoEntryImagePreview({
   page,
   evidence,
   activeFieldPath,
+  onLayoutChange,
 }: {
   name: string;
   previewUrl: string;
@@ -22,6 +23,7 @@ export function AutoEntryImagePreview({
   page: AutoEntryPageRef | undefined;
   evidence: readonly AutoEntryEvidenceSource[];
   activeFieldPath: string | null;
+  onLayoutChange: () => void;
 }) {
   const { ref: containerRef, size: containerSize } = useRenderedElementSize<HTMLDivElement>();
   const [imageSize, setImageSize] = useState<{
@@ -39,6 +41,11 @@ export function AutoEntryImagePreview({
     ? renderedWidth * currentImageSize.naturalHeight / currentImageSize.naturalWidth
     : 0;
 
+  useEffect(() => {
+    if (renderedWidth <= 0 || renderedHeight <= 0) return;
+    onLayoutChange();
+  }, [onLayoutChange, renderedHeight, renderedWidth]);
+
   if (failedUrl === previewUrl) {
     return <p className="rounded-md border border-destructive/40 bg-background p-4 text-sm text-destructive">画像を表示できませんでした。ファイルが破損していないか確認してください。</p>;
   }
@@ -47,6 +54,7 @@ export function AutoEntryImagePreview({
     <div className="flex min-h-full w-full min-w-0" ref={containerRef}>
       <div
         className="relative m-auto shrink-0 overflow-hidden rounded-md bg-background ring-1 ring-foreground/10"
+        data-rendered-zoom={renderedWidth > 0 ? zoom : undefined}
         data-testid="expense-auto-entry-image-page"
         style={renderedWidth > 0 ? { height: renderedHeight, width: renderedWidth } : undefined}
       >

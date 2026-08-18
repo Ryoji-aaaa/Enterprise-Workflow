@@ -25,6 +25,7 @@ import { AutoEntryPdfPreview } from "./auto-entry-pdf-preview";
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.25;
+const EVIDENCE_VISIBILITY_MARGIN = 24;
 
 type PreviewPanSession = {
   pointerId: number;
@@ -32,6 +33,12 @@ type PreviewPanSession = {
   startY: number;
   initialScrollLeft: number;
   initialScrollTop: number;
+};
+
+type EvidenceFollowTarget = {
+  fieldPath: string;
+  pageNumber: number;
+  sourceIndex: number;
 };
 
 function previewCanPan(element: HTMLDivElement): boolean {
@@ -60,16 +67,27 @@ export function ExpenseAutoEntryDocumentPreview({
   );
   const previewScrollContainerRef = useRef<HTMLDivElement>(null);
   const panSessionRef = useRef<PreviewPanSession | null>(null);
+  const evidenceFollowTargetRef = useRef<EvidenceFollowTarget | null>(null);
   const [zoomState, setZoomState] = useState({ previewUrl: null as string | null, zoom: 1 });
   const [isPanAvailable, setIsPanAvailable] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [documentLayoutVersion, setDocumentLayoutVersion] = useState(0);
   const zoom = zoomState.previewUrl === previewUrl ? zoomState.zoom : 1;
   const zoomAvailable = file !== null && previewUrl !== null;
+  const activeEvidence = activeFieldPath === null
+    ? undefined
+    : evidence.find((source) => source.fieldPath === activeFieldPath);
+  const activeEvidencePageNumber = activeEvidence?.pageNumber;
+  const activeEvidenceSourceIndex = activeEvidence?.sourceIndex;
 
   const updatePanAvailability = useCallback(() => {
     const element = previewScrollContainerRef.current;
     const nextValue = element !== null && previewCanPan(element);
     setIsPanAvailable((current) => current === nextValue ? current : nextValue);
+  }, []);
+
+  const handleDocumentLayoutChange = useCallback(() => {
+    setDocumentLayoutVersion((current) => current + 1);
   }, []);
 
   useEffect(() => {
@@ -79,9 +97,89 @@ export function ExpenseAutoEntryDocumentPreview({
     element.scrollLeft = 0;
     element.scrollTop = 0;
     panSessionRef.current = null;
+    evidenceFollowTargetRef.current = null;
     setIsPanning(false);
     updatePanAvailability();
   }, [previewUrl, updatePanAvailability]);
+
+  useEffect(() => {
+    evidenceFollowTargetRef.current = activeFieldPath !== null
+      && activeEvidencePageNumber !== undefined
+      && activeEvidenceSourceIndex !== undefined
+      ? {
+          fieldPath: activeFieldPath,
+          pageNumber: activeEvidencePageNumber,
+          sourceIndex: activeEvidenceSourceIndex,
+        }
+      : null;
+  }, [activeEvidencePageNumber, activeEvidenceSourceIndex, activeFieldPath, previewUrl]);
+
+  useEffect(() => {
+    const target = evidenceFollowTargetRef.current;
+    const scrollContainer = previewScrollContainerRef.current;
+    if (!target || target.fieldPath !== activeFieldPath || !scrollContainer) return;
+
+    let animationFrame = window.requestAnimationFrame(() => {
+      animationFrame = 0;
+      if (panSessionRef.current !== null) {
+        evidenceFollowTargetRef.current = null;
+        return;
+      }
+
+      const activePolygon = Array.from(
+        scrollContainer.querySelectorAll<SVGPolygonElement>('polygon[data-active="true"]'),
+      ).find((polygon) => (
+        Number(polygon.dataset.pageNumber) === target.pageNumber
+        && Number(polygon.dataset.sourceIndex) === target.sourceIndex
+      ));
+      if (!activePolygon) return;
+
+      const renderedPage = activePolygon.closest<HTMLElement>("[data-rendered-zoom]");
+      if (!renderedPage || Number(renderedPage.dataset.renderedZoom) !== zoom) return;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const polygonRect = activePolygon.getBoundingClientRect();
+      const visibleLeft = containerRect.left + scrollContainer.clientLeft
+        + EVIDENCE_VISIBILITY_MARGIN;
+      const visibleTop = containerRect.top + scrollContainer.clientTop
+        + EVIDENCE_VISIBILITY_MARGIN;
+      const visibleRight = containerRect.left + scrollContainer.clientLeft
+        + scrollContainer.clientWidth - EVIDENCE_VISIBILITY_MARGIN;
+      const visibleBottom = containerRect.top + scrollContainer.clientTop
+        + scrollContainer.clientHeight - EVIDENCE_VISIBILITY_MARGIN;
+      let deltaX = 0;
+      let deltaY = 0;
+
+      if (polygonRect.left < visibleLeft) {
+        deltaX = polygonRect.left - visibleLeft;
+      } else if (polygonRect.right > visibleRight) {
+        deltaX = polygonRect.right - visibleRight;
+      }
+      if (polygonRect.top < visibleTop) {
+        deltaY = polygonRect.top - visibleTop;
+      } else if (polygonRect.bottom > visibleBottom) {
+        deltaY = polygonRect.bottom - visibleBottom;
+      }
+
+      evidenceFollowTargetRef.current = null;
+      if (deltaX === 0 && deltaY === 0) return;
+      scrollContainer.scrollTo({
+        left: scrollContainer.scrollLeft + deltaX,
+        top: scrollContainer.scrollTop + deltaY,
+      });
+    });
+
+    return () => {
+      if (animationFrame !== 0) window.cancelAnimationFrame(animationFrame);
+    };
+  }, [
+    activeEvidencePageNumber,
+    activeEvidenceSourceIndex,
+    activeFieldPath,
+    documentLayoutVersion,
+    previewUrl,
+    zoom,
+  ]);
 
   useEffect(() => {
     const element = previewScrollContainerRef.current;
@@ -237,6 +335,7 @@ export function ExpenseAutoEntryDocumentPreview({
           <AutoEntryPdfPreview
             activeFieldPath={activeFieldPath}
             evidence={evidence}
+            onLayoutChange={handleDocumentLayoutChange}
             pages={pages}
             previewUrl={previewUrl}
             scrollContainerRef={previewScrollContainerRef}
@@ -247,6 +346,7 @@ export function ExpenseAutoEntryDocumentPreview({
             activeFieldPath={activeFieldPath}
             evidence={evidence}
             name={file.name}
+            onLayoutChange={handleDocumentLayoutChange}
             page={autoEntryPageForNumber(pages, 1)}
             previewUrl={previewUrl}
             zoom={zoom}
