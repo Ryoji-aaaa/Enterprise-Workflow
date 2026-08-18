@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { loadStagingPersona } from "../support/staging-persona";
 
@@ -73,6 +73,31 @@ async function login(
 
 function attentionFilterSwitch(page: Page) {
   return page.getByRole("switch", { name: "表示フィルター" });
+}
+
+async function expectEvidenceInsidePreview(
+  evidence: Locator,
+  margin = 24,
+): Promise<void> {
+  await expect.poll(async () => evidence.evaluate((element, visibilityMargin) => {
+    const preview = element.closest<HTMLElement>(
+      '[data-testid="expense-auto-entry-preview-content"]',
+    );
+    if (!preview) return false;
+
+    const previewBounds = preview.getBoundingClientRect();
+    const evidenceBounds = element.getBoundingClientRect();
+    const visibleLeft = previewBounds.left + preview.clientLeft + visibilityMargin;
+    const visibleTop = previewBounds.top + preview.clientTop + visibilityMargin;
+    const visibleRight = previewBounds.left + preview.clientLeft
+      + preview.clientWidth - visibilityMargin;
+    const visibleBottom = previewBounds.top + preview.clientTop
+      + preview.clientHeight - visibilityMargin;
+    return evidenceBounds.left >= visibleLeft - 1
+      && evidenceBounds.top >= visibleTop - 1
+      && evidenceBounds.right <= visibleRight + 1
+      && evidenceBounds.bottom <= visibleBottom + 1;
+  }, margin)).toBe(true);
 }
 
 async function makeAutoEntryLineItemMissing(page: Page): Promise<void> {
@@ -248,6 +273,7 @@ test("要確認のみではMISSINGの自動入力明細を最後まで修正で�
 test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する", async ({ page }) => {
   test.setTimeout(90_000);
 
+  await page.setViewportSize({ width: 1280, height: 800 });
   const applicant = await loadStagingPersona("STANDARD_APPLICANT");
   await login(page, applicant.email, seedUserPassword);
   await makeAutoEntryTaxRegistrationSourceLess(page);
@@ -356,6 +382,89 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   );
   const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
   const invoiceTotal = page.getByLabel("総請求額（円）", { exact: true });
+  const lineDescription = page.getByRole("textbox", { name: "内容", exact: true }).first();
+
+  const previewCard = page.getByTestId("expense-auto-entry-preview-card");
+  const previewCardBeforePageScroll = await previewCard.boundingBox();
+  if (!previewCardBeforePageScroll) throw new Error("AUTO_ENTRY preview card bounds are required.");
+  await lineDescription.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const stickyPreviewBounds = await previewCard.boundingBox();
+  const viewport = page.viewportSize();
+  if (!stickyPreviewBounds || !viewport) {
+    throw new Error("AUTO_ENTRY sticky preview bounds and viewport are required.");
+  }
+  expect(stickyPreviewBounds.y).toBeGreaterThanOrEqual(64);
+  expect(stickyPreviewBounds.y + stickyPreviewBounds.height)
+    .toBeLessThanOrEqual(viewport.height + 1);
+  expect(stickyPreviewBounds.height).toBeCloseTo(576, 0);
+  expect(stickyPreviewBounds.y).toBeLessThan(previewCardBeforePageScroll.y);
+  await lineDescription.focus();
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(lineDescriptionEvidence);
+
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await lineDescription.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await previewCard.boundingBox())?.height ?? 0)
+    .toBeCloseTo(504, 0);
+  const lowHeightPreviewBounds = await previewCard.boundingBox();
+  if (!lowHeightPreviewBounds) {
+    throw new Error("AUTO_ENTRY low-height preview bounds are required.");
+  }
+  expect(lowHeightPreviewBounds.y).toBeGreaterThanOrEqual(64);
+  expect(lowHeightPreviewBounds.y + lowHeightPreviewBounds.height).toBeLessThanOrEqual(601);
+
+  await invoiceTotal.focus();
+  await expect(totalEvidence).toHaveAttribute("data-active", "true");
+  const lowHeightScrollBeforeFocus = await lineDescriptionEvidence.evaluate((element) => {
+    const container = element.closest<HTMLElement>(
+      '[data-testid="expense-auto-entry-preview-content"]',
+    );
+    if (!container) throw new Error("AUTO_ENTRY image preview container is required.");
+    const containerBounds = container.getBoundingClientRect();
+    const evidenceBounds = element.getBoundingClientRect();
+    const evidenceCenterX = evidenceBounds.left - containerBounds.left
+      + container.scrollLeft + evidenceBounds.width / 2;
+    const evidenceCenterY = evidenceBounds.top - containerBounds.top
+      + container.scrollTop + evidenceBounds.height / 2;
+    container.scrollLeft = evidenceCenterX < container.scrollWidth / 2
+      ? container.scrollWidth - container.clientWidth
+      : 0;
+    container.scrollTop = evidenceCenterY < container.scrollHeight / 2
+      ? container.scrollHeight - container.clientHeight
+      : 0;
+    return { left: container.scrollLeft, top: container.scrollTop };
+  });
+  const lineDescriptionIsOutsideLowHeightPreview = await lineDescriptionEvidence.evaluate(
+    (element) => {
+      const container = element.closest<HTMLElement>(
+        '[data-testid="expense-auto-entry-preview-content"]',
+      );
+      if (!container) return false;
+      const containerBounds = container.getBoundingClientRect();
+      const evidenceBounds = element.getBoundingClientRect();
+      return evidenceBounds.right < containerBounds.left + 24
+        || evidenceBounds.left > containerBounds.left + container.clientWidth - 24
+        || evidenceBounds.bottom < containerBounds.top + 24
+        || evidenceBounds.top > containerBounds.top + container.clientHeight - 24;
+    },
+  );
+  expect(lineDescriptionIsOutsideLowHeightPreview).toBe(true);
+  const browserScrollBeforeLowHeightFocus = await page.evaluate(() => window.scrollY);
+  await lineDescription.evaluate(
+    (element: HTMLInputElement) => element.focus({ preventScroll: true }),
+  );
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(lineDescriptionEvidence);
+  const lowHeightScrollAfterFocus = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  expect(lowHeightScrollAfterFocus).not.toEqual(lowHeightScrollBeforeFocus);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeLowHeightFocus);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await issuerName.focus();
   await expect(issuerEvidence).toHaveAttribute("data-active", "true");
@@ -366,7 +475,7 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect(issuerEvidence).toHaveAttribute("data-active", "false");
   await expect(totalEvidence).toHaveAttribute("data-active", "true");
 
-  await page.getByRole("textbox", { name: "内容", exact: true }).focus();
+  await lineDescription.focus();
   await expect(totalEvidence).toHaveAttribute("data-active", "false");
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
 
@@ -458,6 +567,52 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   await expect.poll(async () => preview.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(imageScrollAfterPan.top);
 
+  await issuerName.blur();
+  await preview.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth - element.clientWidth;
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+  });
+  const imageScrollBeforeFollow = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  const browserScrollBeforeImageFollow = await page.evaluate(() => window.scrollY);
+  await issuerName.evaluate((element: HTMLInputElement) => element.focus({ preventScroll: true }));
+  await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(issuerEvidence);
+  const imageScrollAfterFollow = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  expect(imageScrollAfterFollow.left).toBeLessThan(imageScrollBeforeFollow.left);
+  expect(imageScrollAfterFollow.top).toBeLessThan(imageScrollBeforeFollow.top);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeImageFollow);
+  const imagePositionAfterFollow = await image.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  const polygonPositionAfterFollow = await issuerEvidence.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return { x: bounds.x, y: bounds.y };
+  });
+  expect(polygonPositionAfterFollow.x - imagePositionAfterFollow.x)
+    .toBeCloseTo(polygonPositionBeforePan.x - imagePositionBeforePan.x, 1);
+  expect(polygonPositionAfterFollow.y - imagePositionAfterFollow.y)
+    .toBeCloseTo(polygonPositionBeforePan.y - imagePositionBeforePan.y, 1);
+
+  await issuerName.blur();
+  const visibleScrollBeforeRefocus = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  await issuerName.evaluate((element: HTMLInputElement) => element.focus({ preventScroll: true }));
+  await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(issuerEvidence);
+  await expect.poll(async () => preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }))).toEqual(visibleScrollBeforeRefocus);
+
   const replacementAnalysisResponse = page.waitForResponse((response) =>
     response.url().includes("/api/backend/document-analyses")
       && response.request().method() === "POST",
@@ -478,6 +633,16 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
     left: element.scrollLeft,
     top: element.scrollTop,
   }))).toEqual({ left: 0, top: 0 });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(previewCard).toHaveCSS("position", "static");
+  const mobilePreviewBounds = await previewCard.boundingBox();
+  const mobileEditorBounds = await page.getByTestId("expense-auto-entry-editor-card").boundingBox();
+  if (!mobilePreviewBounds || !mobileEditorBounds) {
+    throw new Error("AUTO_ENTRY mobile preview and editor bounds are required.");
+  }
+  expect(mobilePreviewBounds.y + mobilePreviewBounds.height)
+    .toBeLessThanOrEqual(mobileEditorBounds.y);
 });
 
 test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描画する", async ({ page }) => {
@@ -574,6 +739,60 @@ test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描�
   expect(scrollExtent.scrollWidth).toBeGreaterThan(scrollExtent.clientWidth);
   expect(scrollExtent.scrollHeight).toBeGreaterThan(scrollExtent.clientHeight);
   await expect(preview).toHaveAttribute("data-pan-available", "true");
+
+  const totalEvidence = preview.locator(
+    'polygon[data-field-path="document.totalAmount"][data-page-number="1"]',
+  );
+  const lineDescriptionEvidence = preview.locator(
+    'polygon[data-field-path="document.lineItems[0].itemDescription"][data-page-number="1"]',
+  );
+  await expect(totalEvidence).toHaveCount(1);
+  await expect(lineDescriptionEvidence).toHaveCount(1);
+  await page.getByLabel("総請求額（円）", { exact: true }).focus();
+  await expect(totalEvidence).toHaveAttribute("data-active", "true");
+  const samePagePan = await lineDescriptionEvidence.evaluate((element) => {
+    const container = element.closest<HTMLElement>(
+      '[data-testid="expense-auto-entry-preview-content"]',
+    );
+    if (!container) throw new Error("AUTO_ENTRY PDF preview container is required.");
+    const containerBounds = container.getBoundingClientRect();
+    const evidenceBounds = element.getBoundingClientRect();
+    const evidenceCenterX = evidenceBounds.left - containerBounds.left
+      + container.scrollLeft + evidenceBounds.width / 2;
+    const evidenceCenterY = evidenceBounds.top - containerBounds.top
+      + container.scrollTop + evidenceBounds.height / 2;
+    container.scrollLeft = evidenceCenterX < container.scrollWidth / 2
+      ? container.scrollWidth - container.clientWidth
+      : 0;
+    container.scrollTop = Math.max(0, Math.min(
+      container.scrollHeight - container.clientHeight,
+      evidenceCenterY - container.clientHeight / 2,
+    ));
+    return { left: container.scrollLeft, top: container.scrollTop };
+  });
+  const lineDescriptionIsOutsideHorizontally = await lineDescriptionEvidence.evaluate((element) => {
+    const container = element.closest<HTMLElement>(
+      '[data-testid="expense-auto-entry-preview-content"]',
+    );
+    if (!container) return false;
+    const containerBounds = container.getBoundingClientRect();
+    const evidenceBounds = element.getBoundingClientRect();
+    return evidenceBounds.right < containerBounds.left + 24
+      || evidenceBounds.left > containerBounds.left + container.clientWidth - 24;
+  });
+  expect(lineDescriptionIsOutsideHorizontally).toBe(true);
+  const browserScrollBeforeSamePageFocus = await page.evaluate(() => window.scrollY);
+  await page.getByRole("textbox", { name: "内容", exact: true }).first()
+    .evaluate((element: HTMLInputElement) => element.focus({ preventScroll: true }));
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(lineDescriptionEvidence);
+  const samePageFollow = await preview.evaluate((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  expect(samePageFollow.left).not.toBe(samePagePan.left);
+  expect(samePageFollow.top).toBeCloseTo(samePagePan.top, 0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeSamePageFocus);
 
   const secondPage = pdfPages.nth(1);
   const pdfPagePositionBeforePan = await secondPage.evaluate((element) => {

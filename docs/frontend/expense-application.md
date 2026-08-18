@@ -66,6 +66,18 @@ Panningできる。Panningはdocumentへ座標変換を加えず、Preview scrol
 新しいファイルを選択するとscrollの左上へ戻す。touch端末ではcustom Panningを開始せず、browser標準のtouch scrollと
 inertiaを維持する。mouse wheelとscrollbarによる従来のscrollも引き続き利用できる。
 
+入力項目を変更した場合は、最初のsourceに対応するactive Evidence polygonの最終表示矩形を確認し、
+Preview表示範囲の内側24pxから外れている軸だけを必要最小量scrollする。同じPDF page内でもpolygon位置まで
+追従し、別pageでは既存のpage追従後にpolygon位置を調整する。polygonがすでに余白内へ完全表示されている場合は
+manual Pan位置を変更せず、drag Panning中にも自動追従を割り込ませない。JPEG / PNGとPDFのいずれも
+画像 / canvas、Overlayと共通のPreview scroll containerだけを移動する。この追従位置はFrontend UI stateであり
+Backendへ永続化しない。
+
+Desktopの入力画面では左Previewカードを最大36remとして共通header下へsticky表示し、viewport高さが不足する
+場合はheaderと上下余白を除いた利用可能高さまで縮小する。右側FormをBrowser pageで縦scrollしてもPreview全体を
+viewport内へ維持し、Preview内部のdocument scrollとは独立させる。Mobileの縦積みlayoutでは高さ36remのまま
+sticky表示せず通常のdocument flowを維持する。
+
 Reviewから入力・編集する対象は、請求社 / 発行元、インボイス登録番号、総請求額、各明細の品名と金額だけに
 限定する。`null`のAI値は空値のままにし、税率、用途、支払先その他の値を推測補完しない。AI明細は
 `sourceLineItemIndex`を保持した経費明細へ1件ずつ対応付け、明細がない場合と人が追加する明細には

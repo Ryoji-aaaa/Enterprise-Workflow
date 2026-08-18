@@ -333,8 +333,8 @@ export function ExpenseAutoEntryWorkbench() {
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(28rem,1fr)]">
-          <div className="h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground"><ExpenseAutoEntryDocumentPreview activeFieldPath={activeEvidencePath} file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
-          <section className="min-w-0 rounded-md border bg-card text-card-foreground">
+          <div className="h-[36rem] overflow-hidden rounded-md border bg-card text-card-foreground lg:sticky lg:top-20 lg:h-[min(36rem,calc(100svh-6rem))] lg:self-start" data-testid="expense-auto-entry-preview-card"><ExpenseAutoEntryDocumentPreview activeFieldPath={activeEvidencePath} file={previewFile} objectUrl={objectUrl} pages={review?.pages ?? []} resolvedFields={resolvedFields} serverUrl={null} /></div>
+          <section className="min-w-0 rounded-md border bg-card text-card-foreground" data-testid="expense-auto-entry-editor-card">
             <div className="border-b p-4"><AnalysisStatus state={state} viewLoading={reviewLoading} /></div>
             <div className="space-y-6 p-4">
               {submitError ? <Alert variant="destructive"><TriangleAlert /><AlertTitle>作成できませんでした</AlertTitle><AlertDescription>{submitError}</AlertDescription></Alert> : null}

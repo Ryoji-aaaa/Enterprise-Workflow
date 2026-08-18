@@ -41,7 +41,7 @@ function AutoEntryPdfPage({
 }) {
   const { ref: containerRef, size: containerSize } = useRenderedElementSize<HTMLDivElement>();
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
-  const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
+  const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0, zoom: 0 });
 
   useEffect(() => {
     if (!canvas || containerSize.width <= 0) return;
@@ -62,7 +62,7 @@ function AutoEntryPdfPage({
       canvas.height = Math.floor(viewport.height * outputScale);
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
-      setRenderedSize({ width: viewport.width, height: viewport.height });
+      setRenderedSize({ width: viewport.width, height: viewport.height, zoom });
       renderTask = pdfPage.render({
         canvas,
         viewport,
@@ -91,6 +91,7 @@ function AutoEntryPdfPage({
       <div
         className="relative mx-auto overflow-hidden rounded-md bg-background shadow-sm ring-1 ring-foreground/10"
         data-page-number={pageNumber}
+        data-rendered-zoom={renderedSize.zoom > 0 ? renderedSize.zoom : undefined}
         data-testid="expense-auto-entry-pdf-page"
         style={renderedSize.width > 0 ? { height: renderedSize.height, width: renderedSize.width } : undefined}
       >
@@ -113,6 +114,7 @@ export function AutoEntryPdfPreview({
   evidence,
   activeFieldPath,
   scrollContainerRef,
+  onLayoutChange,
   zoom,
 }: {
   previewUrl: string;
@@ -120,6 +122,7 @@ export function AutoEntryPdfPreview({
   evidence: readonly AutoEntryEvidenceSource[];
   activeFieldPath: string | null;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
+  onLayoutChange: () => void;
   zoom: number;
 }) {
   const pagesRef = useRef<HTMLDivElement>(null);
@@ -137,7 +140,8 @@ export function AutoEntryPdfPreview({
   }, [previewUrl]);
   const handlePageLayoutChange = useCallback(() => {
     setPageLayoutVersion((current) => current + 1);
-  }, []);
+    onLayoutChange();
+  }, [onLayoutChange]);
 
   useEffect(() => {
     let disposed = false;
