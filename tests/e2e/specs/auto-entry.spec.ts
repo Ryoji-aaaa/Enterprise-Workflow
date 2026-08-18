@@ -483,6 +483,9 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
 test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描画する", async ({ page }) => {
   test.setTimeout(90_000);
 
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => 10 });
+  });
   const applicant = await loadStagingPersona("STANDARD_APPLICANT");
   await login(page, applicant.email, seedUserPassword);
   await makeAutoEntryIssuerEvidenceUseSecondPage(page);
@@ -616,6 +619,15 @@ test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描�
   await zoomIn.click();
   await zoomIn.click();
   await expect(zoomValue).toHaveText("300%");
+  const canvasPixelsAtMaximumZoom = await pdfPages.locator("canvas").evaluateAll((elements) => (
+    elements.map((element) => {
+      const canvas = element as HTMLCanvasElement;
+      return canvas.width * canvas.height;
+    })
+  ));
+  canvasPixelsAtMaximumZoom.forEach((pixelCount) => {
+    expect(pixelCount).toBeLessThanOrEqual(16_000_000);
+  });
   const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
   const browserScrollBeforeFocus = await page.evaluate(() => window.scrollY);
   const editorTopBeforeFocus = (await issuerName.boundingBox())?.y;
@@ -628,6 +640,21 @@ test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描�
   expect((await issuerName.boundingBox())?.y).toBe(editorTopBeforeFocus);
 
   await zoomOut.click();
+  await expect(zoomValue).toHaveText("275%");
+  await expect.poll(async () => pdfPages.nth(0).evaluate((element) => (
+    element.getBoundingClientRect().width
+  ))).toBeCloseTo((pageWidthsBeforeZoom[0] ?? 0) * 2.75, 1);
+  await expect.poll(async () => preview.evaluate((element) => {
+    const secondPageElement = element.querySelector<HTMLElement>(
+      '[data-testid="expense-auto-entry-pdf-page"][data-page-number="2"]',
+    );
+    if (!secondPageElement) return false;
+    const containerBounds = element.getBoundingClientRect();
+    const pageBounds = secondPageElement.getBoundingClientRect();
+    return pageBounds.top < containerBounds.bottom && pageBounds.bottom > containerBounds.top;
+  })).toBe(true);
+  expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeFocus);
+  expect((await issuerName.boundingBox())?.y).toBe(editorTopBeforeFocus);
   await zoomOut.click();
   await zoomOut.click();
   await zoomOut.click();

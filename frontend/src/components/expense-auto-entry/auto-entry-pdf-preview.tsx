@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
 import type { AutoEntryPageRef } from "@/lib/auto-entry-review";
+import { getPdfCanvasOutputScale } from "@/lib/expense-auto-entry-pdf";
 import {
   autoEntryPageForNumber,
   getAutoEntryActiveEvidencePageNumber,
@@ -52,13 +53,16 @@ function AutoEntryPdfPage({
       const baseViewport = pdfPage.getViewport({ scale: 1 });
       const fitScale = containerSize.width / baseViewport.width;
       const viewport = pdfPage.getViewport({ scale: fitScale * zoom });
-      const outputScale = window.devicePixelRatio || 1;
+      const outputScale = getPdfCanvasOutputScale({
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
+        devicePixelRatio: window.devicePixelRatio || 1,
+      });
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
       setRenderedSize({ width: viewport.width, height: viewport.height });
-      onPageLayoutChange();
       renderTask = pdfPage.render({
         canvas,
         viewport,
@@ -76,6 +80,11 @@ function AutoEntryPdfPage({
       renderTask?.cancel();
     };
   }, [canvas, containerSize.width, document, onPageLayoutChange, onRenderError, pageNumber, zoom]);
+
+  useEffect(() => {
+    if (renderedSize.width <= 0 || renderedSize.height <= 0) return;
+    onPageLayoutChange();
+  }, [onPageLayoutChange, renderedSize.height, renderedSize.width]);
 
   return (
     <div className="w-full" ref={containerRef}>
@@ -174,7 +183,7 @@ export function AutoEntryPdfPreview({
     });
     if (nextScrollTop === null) return;
     scrollContainer.scrollTo({ top: nextScrollTop, behavior: "smooth" });
-  }, [activeFieldPath, activePageNumber, document, pageLayoutVersion, scrollContainerRef, zoom]);
+  }, [activeFieldPath, activePageNumber, document, pageLayoutVersion, scrollContainerRef]);
 
   if (error) {
     return <p className="rounded-md border border-destructive/40 bg-background p-4 text-sm text-destructive">PDFを表示できませんでした。ファイルが破損していないか確認してください。</p>;
