@@ -34,7 +34,7 @@ public record ExpenseApplicationResponse(
                 application.getReturnedAt(), application.getCancelledAt(), application.getReturnReason(),
                 application.getVersion(), owner && (application.getStatus() == ExpenseApplicationStatus.DRAFT
                         || application.getStatus() == ExpenseApplicationStatus.RETURNED),
-                owner && application.getStatus() == ExpenseApplicationStatus.PENDING_APPROVAL,
+                owner && details.workflowCancellable(),
                 details.items().stream().map(item -> new Item(item.getId(), item.getDisplayOrder(),
                         item.getExpenseDate(), item.getDescription(), item.getAmount(), item.getMerchantName(),
                         item.getOrigin(), item.getDestination(), item.getTransportationType(),

@@ -99,6 +99,15 @@ public class WorkflowRuntimeService {
     }
 
     @Transactional(readOnly = true)
+    public boolean canCancelLatest(String subjectType, UUID subjectId) {
+        return instances.findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(subjectType, subjectId)
+                .filter(instance -> instance.getStatus() == WorkflowInstanceStatus.PENDING)
+                .filter(instance -> !steps.existsByWorkflowInstanceIdAndStatus(
+                        instance.getId(), WorkflowStepStatus.APPROVED))
+                .isPresent();
+    }
+
+    @Transactional(readOnly = true)
     public WorkflowInstanceDetails latest(String subjectType, UUID subjectId) {
         WorkflowInstance instance = instances.findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(subjectType, subjectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "WORKFLOW_INSTANCE_NOT_FOUND",

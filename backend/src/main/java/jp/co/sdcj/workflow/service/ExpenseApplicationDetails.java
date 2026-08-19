@@ -7,5 +7,6 @@ import jp.co.sdcj.workflow.domain.ExpenseApplicationItem;
 
 public record ExpenseApplicationDetails(
         ExpenseApplication application,
-        List<ExpenseApplicationItem> items) {
+        List<ExpenseApplicationItem> items,
+        boolean workflowCancellable) {
 }

@@ -87,7 +87,7 @@ public class ExpenseApplicationService {
                 application.getId().toString(), null,
                 Map.of("applicationNumber", application.getApplicationNumber(),
                         "status", application.getStatus().name()), null);
-        return new ExpenseApplicationDetails(application, items);
+        return details(application, items);
     }
 
     @Transactional
@@ -168,7 +168,7 @@ public class ExpenseApplicationService {
                 organization.unit().getOrganizationId(), organization.unit(), organization.division());
         workflowEngine.start("EXPENSE_APPROVAL", ExpenseWorkflowContextProvider.SUBJECT_TYPE,
                 applicationId, applicant, now);
-        return new ExpenseApplicationDetails(application, items);
+        return details(application, items);
     }
 
     @Transactional
@@ -178,7 +178,7 @@ public class ExpenseApplicationService {
             throw conflict("EXPENSE_APPLICATION_INVALID_STATUS", "現在の状態では取り下げできません。");
         }
         workflowRuntime.cancelLatest(ExpenseWorkflowContextProvider.SUBJECT_TYPE, applicationId, applicant);
-        return new ExpenseApplicationDetails(application,
+        return details(application,
                 itemRepository.findAllByExpenseApplicationIdOrderByDisplayOrder(applicationId));
     }
 
@@ -200,7 +200,10 @@ public class ExpenseApplicationService {
         List<ExpenseApplicationItem> items = knownItems == null
                 ? itemRepository.findAllByExpenseApplicationIdOrderByDisplayOrder(application.getId())
                 : knownItems;
-        return new ExpenseApplicationDetails(application, items);
+        boolean workflowCancellable = application.getStatus() == ExpenseApplicationStatus.PENDING_APPROVAL
+                && workflowRuntime.canCancelLatest(
+                        ExpenseWorkflowContextProvider.SUBJECT_TYPE, application.getId());
+        return new ExpenseApplicationDetails(application, items, workflowCancellable);
     }
 
     private ExpenseApplication ownedForUpdate(UUID id, AppUser user) {

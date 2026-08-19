@@ -5,7 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -23,7 +25,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -309,6 +314,79 @@ class ExpenseApplicationApiIntegrationTest {
     }
 
     @Test
+    void 同一ANY_ONE_Stepへの実並行承認は1件だけ成功する() throws Exception {
+        AppUser secondManager = user(
+                "concurrent.manager@sdcj.co.jp", "同時承認候補", "concurrent-manager", Instant.now());
+        assign(secondManager, section, managerPosition, AssignmentType.ACTING);
+        grant(secondManager, approverRole, Instant.now());
+        UUID applicationId = submit(member, "member");
+        var instance = latest(applicationId);
+        var workflowSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        UUID managerStepId = workflowSteps.getFirst().getId();
+        UUID accountingStepId = workflowSteps.get(1).getId();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> concurrentApprove(
+                    managerStepId, sectionManager, "section-manager", ready, start));
+            var second = executor.submit(() -> concurrentApprove(
+                    managerStepId, secondManager, "concurrent-manager", ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+
+        var persistedSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        assertThat(persistedSteps.getFirst().getStatus()).isEqualTo(WorkflowStepStatus.APPROVED);
+        assertThat(persistedSteps.getFirst().getProcessedByUserId())
+                .isIn(sectionManager.getId(), secondManager.getId());
+        assertThat(persistedSteps.get(1).getStatus()).isEqualTo(WorkflowStepStatus.PENDING);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from workflow_instance_actions
+                where workflow_instance_step_id = ? and action_type = 'APPROVE'
+                """, Integer.class, managerStepId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from notification_outbox where workflow_step_id = ?
+                """, Integer.class, accountingStepId)).isEqualTo(1);
+    }
+
+    @Test
+    void 取下げ可否はWorkflow処理状態と一致し成功時は未処理StepをCancelする() throws Exception {
+        UUID processedApplicationId = submit(member, "member");
+        var processedInstance = latest(processedApplicationId);
+        UUID managerStepId = steps.findAllByWorkflowInstanceIdOrderByStepOrder(processedInstance.getId())
+                .getFirst().getId();
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStepId)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/expense-applications/{id}", processedApplicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.cancellable").value(false));
+        mockMvc.perform(post("/api/expense-applications/{id}/cancel", processedApplicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_ALREADY_PROCESSED"));
+
+        UUID cancellableApplicationId = submit(member, "member");
+        var cancellableInstance = latest(cancellableApplicationId);
+        mockMvc.perform(post("/api/expense-applications/{id}/cancel", cancellableApplicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.cancellable").value(false));
+        assertThat(latest(cancellableApplicationId).getStatus())
+                .isEqualTo(WorkflowInstanceStatus.CANCELLED);
+        assertThat(steps.findAllByWorkflowInstanceIdOrderByStepOrder(cancellableInstance.getId()))
+                .extracting("status")
+                .containsOnly(WorkflowStepStatus.CANCELLED);
+    }
+
+    @Test
     void 組織ScopeのCandidateはSnapshotした対象組織で承認できる() throws Exception {
         userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
         grant(sectionManager, approverRole, section, Instant.now());
@@ -485,6 +563,30 @@ class ExpenseApplicationApiIntegrationTest {
     }
 
     @Test
+    void 添付削除のDB更新失敗時はBlobを削除せず論理削除と成功監査をRollbackする() throws Exception {
+        String applicationId = createDraft(member, "member");
+        String attachmentId = upload(applicationId, member, "member", "delete-db-failure.pdf");
+        String objectName = "expense-evidence/%s/%s".formatted(applicationId, attachmentId);
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("test DB failure"))
+                .when(attachmentRepository).flush();
+
+        mockMvc.perform(delete(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}",
+                        applicationId, attachmentId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
+                .getDeletedAt()).isNull();
+        assertThat(storedAttachments).containsOnlyKeys(objectName);
+        verify(attachmentStorage, never()).delete(anyString());
+        assertThat(auditLogs.findAll(org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+                .extracting("actionType")
+                .doesNotContain("EXPENSE_ATTACHMENT_DELETED");
+    }
+
+    @Test
     void Blob削除失敗時も論理削除を維持しSanitizeした監査とログを残す(
             CapturedOutput output) throws Exception {
         String applicationId = createDraft(member, "member");
@@ -585,7 +687,9 @@ class ExpenseApplicationApiIntegrationTest {
     private UUID submit(AppUser user, String subject) throws Exception {
         String id = createDraft(user, subject);
         mockMvc.perform(post("/api/expense-applications/{id}/submit", id).with(jwt(user, subject)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.cancellable").value(true));
         return UUID.fromString(id);
     }
     private String createDraft(AppUser user, String subject) throws Exception {
@@ -668,6 +772,18 @@ class ExpenseApplicationApiIntegrationTest {
                 builder.issuer(ISSUER).subject(subject).audience(List.of("account"))
                 .claim("email", user.getEmail()).claim("email_verified", true)
                 .claim("name", user.getDisplayName()).claim("azp", "workflow-web"));
+    }
+    private int concurrentApprove(
+            UUID stepId, AppUser approver, String subject,
+            CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent approval start timed out");
+        }
+        return mockMvc.perform(post("/api/workflow/tasks/{id}/approve", stepId)
+                        .with(jwt(approver, subject))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andReturn().getResponse().getStatus();
     }
     private String upload(
             String applicationId, AppUser user, String subject, String fileName) throws Exception {

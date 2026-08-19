@@ -60,9 +60,13 @@ public class WorkflowDefinitionValidator {
             edges.computeIfAbsent(transition.getFromNodeId(), ignored -> new java.util.ArrayList<>())
                     .add(transition.getToNodeId());
         });
-        detectCycles(starts.getFirst().getId(), edges, new HashSet<>(), new HashSet<>());
-        if (!reachable(starts.getFirst().getId(), ends.getFirst().getId(), edges))
-            invalid("END is not reachable from START");
+        Set<UUID> cycleVisited = new HashSet<>();
+        for (UUID nodeId : nodes.keySet()) {
+            detectCycles(nodeId, edges, new HashSet<>(), cycleVisited);
+        }
+        Set<UUID> reachable = reachableFrom(starts.getFirst().getId(), edges);
+        if (!reachable.contains(ends.getFirst().getId())) invalid("END is not reachable from START");
+        if (!reachable.containsAll(nodes.keySet())) invalid("All nodes must be reachable from START");
     }
     private static void detectCycles(UUID node, Map<UUID, List<UUID>> edges,
             Set<UUID> visiting, Set<UUID> visited) {
@@ -72,11 +76,11 @@ public class WorkflowDefinitionValidator {
         for (UUID target : edges.getOrDefault(node, List.of())) detectCycles(target, edges, visiting, visited);
         visiting.remove(node);
     }
-    private static boolean reachable(UUID start, UUID end, Map<UUID, List<UUID>> edges) {
+    private static Set<UUID> reachableFrom(UUID start, Map<UUID, List<UUID>> edges) {
         Set<UUID> visited = new HashSet<>(); ArrayDeque<UUID> queue = new ArrayDeque<>(); queue.add(start);
-        while (!queue.isEmpty()) { UUID node = queue.remove(); if (node.equals(end)) return true;
+        while (!queue.isEmpty()) { UUID node = queue.remove();
             if (visited.add(node)) queue.addAll(edges.getOrDefault(node, List.of())); }
-        return false;
+        return visited;
     }
     private static void invalid(String message) { throw new WorkflowDefinitionException(message); }
 }

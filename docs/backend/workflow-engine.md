@@ -68,6 +68,9 @@ CandidateごとにsnapshotされたglobalまたはOrganization Unit scopeでの�
 同一transaction内で再確認する。現在組織からCandidateを再計算しない。二重送信や別Candidateの競合では最初の1件だけを
 確定し、後続は409で拒否する。Step、Instance、対象業務の状態変更、action、監査、次候補通知を同じ
 transaction境界で扱う。Actionは最低限`APPROVE`、`RETURN`、`CANCEL`を記録する。
+取下げは最新Instanceが`PENDING`で、`APPROVED` Stepが1件もない場合だけ許可する。成功時は
+`WAITING`と`PENDING`の全Stepを`CANCELLED`へ変更し、Instanceと対象業務も同じtransactionで
+`CANCELLED`へ変更する。
 
 ## 業務統合
 

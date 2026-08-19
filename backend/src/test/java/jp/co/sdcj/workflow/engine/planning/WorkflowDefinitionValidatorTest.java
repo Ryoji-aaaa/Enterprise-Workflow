@@ -1,5 +1,6 @@
 package jp.co.sdcj.workflow.engine.planning;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -57,6 +58,58 @@ class WorkflowDefinitionValidatorTest {
     }
 
     @Test
+    void disconnectedCycleIsRejected() {
+        WorkflowNode unusedA = approval("UNUSED_A");
+        WorkflowNode unusedB = approval("UNUSED_B");
+        WorkflowDefinitionModel disconnectedCycle = new WorkflowDefinitionModel(
+                definition, version,
+                List.of(start, approval, end, unusedA, unusedB),
+                List.of(
+                        transition("START_APPROVAL", start, approval, null),
+                        transition("APPROVAL_END", approval, end, null),
+                        transition("UNUSED_A_B", unusedA, unusedB, null),
+                        transition("UNUSED_B_A", unusedB, unusedA, null)),
+                List.of(rule(approval), rule(unusedA), rule(unusedB)));
+
+        assertThatThrownBy(() -> validator.validate(disconnectedCycle, schema))
+                .isInstanceOf(WorkflowDefinitionException.class)
+                .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void unreachableNodeIsRejected() {
+        WorkflowNode unused = approval("UNUSED");
+        WorkflowDefinitionModel unreachable = new WorkflowDefinitionModel(
+                definition, version,
+                List.of(start, approval, end, unused),
+                List.of(
+                        transition("START_APPROVAL", start, approval, null),
+                        transition("APPROVAL_END", approval, end, null)),
+                List.of(rule(approval), rule(unused)));
+
+        assertThatThrownBy(() -> validator.validate(unreachable, schema))
+                .isInstanceOf(WorkflowDefinitionException.class)
+                .hasMessageContaining("reachable from START");
+    }
+
+    @Test
+    void validBranchGraphIsAccepted() {
+        WorkflowNode branchA = approval("BRANCH_A");
+        WorkflowNode branchB = approval("BRANCH_B");
+        WorkflowDefinitionModel branch = new WorkflowDefinitionModel(
+                definition, version,
+                List.of(start, branchA, branchB, end),
+                List.of(
+                        transition("START_A", start, branchA, null),
+                        transition("START_B", start, branchB, null),
+                        transition("A_END", branchA, end, null),
+                        transition("B_END", branchB, end, null)),
+                List.of(rule(branchA), rule(branchB)));
+
+        assertThatCode(() -> validator.validate(branch, schema)).doesNotThrowAnyException();
+    }
+
+    @Test
     void cycleMultipleStartUnknownFieldAndUnknownResolverAreRejected() {
         assertThatThrownBy(() -> validator.validate(model(List.of(start, approval, end), List.of(
                 transition("A", start, approval, null), transition("B", approval, start, null))), schema))
@@ -86,7 +139,14 @@ class WorkflowDefinitionValidatorTest {
 
     private WorkflowDefinitionModel model(List<WorkflowNode> nodes, List<WorkflowTransition> transitions) {
         return new WorkflowDefinitionModel(definition, version, nodes, transitions,
-                List.of(new WorkflowAssigneeRule(approval.getId(), "TEST", "{}", "P", true)));
+                List.of(rule(approval)));
+    }
+    private WorkflowNode approval(String key) {
+        return new WorkflowNode(version.getId(), key, WorkflowNodeType.APPROVAL,
+                key, WorkflowApprovalMode.ANY_ONE);
+    }
+    private WorkflowAssigneeRule rule(WorkflowNode node) {
+        return new WorkflowAssigneeRule(node.getId(), "TEST", "{}", "P", true);
     }
     private WorkflowTransition transition(String key, WorkflowNode from, WorkflowNode to, String condition) {
         return new WorkflowTransition(version.getId(), key, from.getId(), to.getId(), condition);

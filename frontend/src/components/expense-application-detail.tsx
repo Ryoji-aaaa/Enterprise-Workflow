@@ -9,15 +9,17 @@ import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthenticationRequiredError, fetchBackend } from "@/lib/backend-browser-client";
 import {
+  loadLatestExpenseWorkflow,
+  performExpenseDetailAction,
+} from "@/lib/expense-detail";
+import {
   categoryLabels,
-  expenseErrorMessage,
   statusLabels,
   type ExpenseApplication,
   yen,
 } from "@/lib/expense-application";
 import type { WorkflowInstance } from "@/lib/workflow";
 
-type ErrorBody = { code?: string; message?: string };
 export function ExpenseApplicationDetail({ applicationId, showWorkflow = true, backHref = "/expenses" }: { applicationId: string; showWorkflow?: boolean; backHref?: string }) {
   const [application, setApplication] = useState<ExpenseApplication | null>(null);
   const [workflow, setWorkflow] = useState<WorkflowInstance | null>(null);
@@ -44,16 +46,12 @@ export function ExpenseApplicationDetail({ applicationId, showWorkflow = true, b
   useEffect(() => {
     if (!showWorkflow) return;
     const controller = new AbortController();
-    fetchBackend(`/api/backend/workflow/subjects/EXPENSE_APPLICATION/${applicationId}/latest`, {
-      cache: "no-store", signal: controller.signal,
-    }).then(async (response) => {
-      if (response.ok) setWorkflow(await response.json() as WorkflowInstance);
-      else if (response.status !== 404) throw new Error("承認経路を取得できませんでした。");
-    }).catch((cause) => {
-      if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
-        setError(cause instanceof Error ? cause.message : "承認経路を取得できませんでした。");
-      }
-    });
+    loadLatestExpenseWorkflow(applicationId, fetchBackend, controller.signal)
+      .then(setWorkflow).catch((cause) => {
+        if (!controller.signal.aborted && !(cause instanceof AuthenticationRequiredError)) {
+          setError(cause instanceof Error ? cause.message : "承認経路を取得できませんでした。");
+        }
+      });
     return () => controller.abort();
   }, [applicationId, showWorkflow]);
 
@@ -61,14 +59,15 @@ export function ExpenseApplicationDetail({ applicationId, showWorkflow = true, b
     setProcessing(true);
     setError(null);
     try {
-      const response = await fetchBackend(path, {
-        method: "POST",
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
+      await performExpenseDetailAction({
+        actionPath: path,
+        applicationId,
+        showWorkflow,
+        body,
+        onApplication: setApplication,
+        onWorkflow: setWorkflow,
+        fetchImplementation: fetchBackend,
       });
-      const result = (await response.json()) as ExpenseApplication & ErrorBody;
-      if (!response.ok) throw new Error(expenseErrorMessage(result.code, result.message ?? "処理できませんでした。"));
-      setApplication(result);
     } catch (cause) {
       if (!(cause instanceof AuthenticationRequiredError)) {
         setError(cause instanceof Error ? cause.message : "処理できませんでした。");

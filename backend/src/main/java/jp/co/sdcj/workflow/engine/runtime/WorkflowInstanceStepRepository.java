@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface WorkflowInstanceStepRepository extends JpaRepository<WorkflowInstanceStep, UUID> {
     List<WorkflowInstanceStep> findAllByWorkflowInstanceIdOrderByStepOrder(UUID instanceId);
+    boolean existsByWorkflowInstanceIdAndStatus(UUID instanceId, WorkflowStepStatus status);
     Optional<WorkflowInstanceStep> findFirstByWorkflowInstanceIdAndStatusOrderByStepOrder(
             UUID instanceId, WorkflowStepStatus status);
     @Lock(LockModeType.PESSIMISTIC_WRITE)

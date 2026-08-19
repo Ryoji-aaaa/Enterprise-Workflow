@@ -153,6 +153,18 @@ class WorkflowRuntimeServiceTest {
     }
 
     @Test
+    void cancellationEligibilityRequiresPendingInstanceWithoutApprovedSteps() {
+        when(instances.findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(
+                SUBJECT_TYPE, instance.getSubjectId())).thenReturn(Optional.of(instance));
+        when(steps.existsByWorkflowInstanceIdAndStatus(
+                instance.getId(), WorkflowStepStatus.APPROVED)).thenReturn(false, true);
+
+        assertThat(service.canCancelLatest(SUBJECT_TYPE, instance.getSubjectId())).isTrue();
+        assertThat(service.canCancelLatest(SUBJECT_TYPE, instance.getSubjectId())).isFalse();
+        assertThat(service.canCancelLatest(SUBJECT_TYPE, UUID.randomUUID())).isFalse();
+    }
+
+    @Test
     void organizationScopedSnapshotIsUsedForCurrentPermissionCheck() {
         UUID organizationUnitId = UUID.randomUUID();
         when(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(first.getId(), actor.getId()))

@@ -183,6 +183,8 @@ previewでき、すべてdownloadできる。申請者本人の`DRAFT`または`
 
 詳細の承認候補者名は一般申請者へ列挙せず、組織名とStep種別、処理済みの場合だけ
 実処理者・日時・コメントを表示する。
+取下げ操作はBackend responseの`cancellable`がtrueの場合だけ表示する。取下げ成功後は申請responseで
+状態を更新したうえでlatest workflowを再取得し、page reloadなしで未処理Stepの取消をtimelineへ反映する。
 
 ## BFFとエラー
 
