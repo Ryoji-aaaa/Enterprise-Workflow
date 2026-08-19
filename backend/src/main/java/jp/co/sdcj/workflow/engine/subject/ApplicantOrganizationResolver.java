@@ -57,9 +57,17 @@ public class ApplicantOrganizationResolver {
 
     private OrganizationUnit parent(OrganizationUnit unit, LocalDate date) {
         if (unit == null || unit.getParentUnitId() == null) return null;
-        return units.findById(unit.getParentUnitId())
-                .filter(value -> Objects.equals(value.getOrganizationId(), unit.getOrganizationId()))
-                .filter(value -> value.isEffectiveOn(date)).orElse(null);
+        OrganizationUnit parent = units.findById(unit.getParentUnitId())
+                .orElseThrow(ApplicantOrganizationResolver::invalidParent);
+        if (!Objects.equals(parent.getOrganizationId(), unit.getOrganizationId())
+                || !parent.isEffectiveOn(date)) {
+            throw invalidParent();
+        }
+        return parent;
+    }
+
+    private static ApiException invalidParent() {
+        return error("PARENT_ORGANIZATION_UNIT_INVALID", "親組織の設定が不正です。");
     }
 
     private static ApiException error(String code, String message) {

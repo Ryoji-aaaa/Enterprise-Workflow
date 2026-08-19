@@ -20,12 +20,15 @@ public class WorkflowInstanceCandidate {
     @Column(name = "candidate_email_snapshot", nullable = false, length = 320) private String candidateEmailSnapshot;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "candidate_source_snapshot", nullable = false) private String candidateSourceSnapshot;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "permission_scope_snapshot", nullable = false) private String permissionScopeSnapshot;
     @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     protected WorkflowInstanceCandidate() {}
-    public WorkflowInstanceCandidate(UUID stepId, AppUser user, String sourceSnapshot) {
+    public WorkflowInstanceCandidate(
+            UUID stepId, AppUser user, String sourceSnapshot, String permissionScopeSnapshot) {
         id = UUID.randomUUID(); workflowInstanceStepId = stepId; candidateUserId = user.getId();
         candidateNameSnapshot = user.getDisplayName(); candidateEmailSnapshot = user.getEmail();
-        candidateSourceSnapshot = sourceSnapshot;
+        candidateSourceSnapshot = sourceSnapshot; this.permissionScopeSnapshot = permissionScopeSnapshot;
     }
     @PrePersist void insert() { if (createdAt == null) createdAt = Instant.now(); }
     public UUID getId() { return id; }
@@ -34,4 +37,5 @@ public class WorkflowInstanceCandidate {
     public String getCandidateNameSnapshot() { return candidateNameSnapshot; }
     public String getCandidateEmailSnapshot() { return candidateEmailSnapshot; }
     public String getCandidateSourceSnapshot() { return candidateSourceSnapshot; }
+    public String getPermissionScopeSnapshot() { return permissionScopeSnapshot; }
 }

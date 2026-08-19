@@ -9,11 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.domain.AppUser;
+import jp.co.sdcj.workflow.engine.assignee.WorkflowPermissionScopeSnapshot;
 import jp.co.sdcj.workflow.service.AuditActor;
 import jp.co.sdcj.workflow.service.AuditLogService;
 import jp.co.sdcj.workflow.service.AuditTextSanitizer;
 import jp.co.sdcj.workflow.service.PermissionService;
 import jp.co.sdcj.workflow.engine.subject.WorkflowSubjectLifecycleHandlerRegistry;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class WorkflowRuntimeService {
@@ -24,12 +27,15 @@ public class WorkflowRuntimeService {
     private final PermissionService permissions;
     private final AuditLogService audit;
     private final WorkflowSubjectLifecycleHandlerRegistry lifecycles;
+    private final ObjectMapper objectMapper;
     public WorkflowRuntimeService(WorkflowInstanceRepository instances,
             WorkflowInstanceStepRepository steps, WorkflowInstanceCandidateRepository candidates,
             WorkflowInstanceActionRepository actions, PermissionService permissions,
-            AuditLogService audit, WorkflowSubjectLifecycleHandlerRegistry lifecycles) {
+            AuditLogService audit, WorkflowSubjectLifecycleHandlerRegistry lifecycles,
+            ObjectMapper objectMapper) {
         this.instances = instances; this.steps = steps; this.candidates = candidates;
-        this.actions = actions; this.permissions = permissions; this.audit = audit; this.lifecycles = lifecycles;
+        this.actions = actions; this.permissions = permissions; this.audit = audit;
+        this.lifecycles = lifecycles; this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -106,7 +112,10 @@ public class WorkflowRuntimeService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "WORKFLOW_STEP_NOT_FOUND",
                         "ワークフローステップが見つかりません。"));
         if (step.getStatus() != WorkflowStepStatus.PENDING) throw conflict("WORKFLOW_STEP_NOT_PENDING");
-        if (!candidates.existsByWorkflowInstanceStepIdAndCandidateUserId(stepId, actor.getId())) {
+        WorkflowInstanceCandidate candidate = candidates
+                .findByWorkflowInstanceStepIdAndCandidateUserId(stepId, actor.getId())
+                .orElse(null);
+        if (candidate == null) {
             audit.recordDenied(AuditActor.user(actor), "WORKFLOW_ACTION_DENIED",
                     "WORKFLOW_STEP", stepId.toString(), "NOT_CANDIDATE");
             throw new ApiException(HttpStatus.FORBIDDEN, "WORKFLOW_ACTION_NOT_ALLOWED",
@@ -119,7 +128,7 @@ public class WorkflowRuntimeService {
                     "WORKFLOW_STEP", stepId.toString(), "SELF_APPROVAL");
             throw new ApiException(HttpStatus.FORBIDDEN, "SELF_APPROVAL_NOT_ALLOWED", "自分自身の申請は承認できません。");
         }
-        if (!permissions.hasPermission(actor.getId(), step.getRequiredPermissionCodeSnapshot())) {
+        if (!hasCurrentPermission(actor, step, candidate)) {
             audit.recordDenied(AuditActor.user(actor), "WORKFLOW_ACTION_DENIED",
                     "WORKFLOW_STEP", stepId.toString(), "PERMISSION_REVOKED");
             throw new ApiException(HttpStatus.FORBIDDEN, "WORKFLOW_PERMISSION_REVOKED",
@@ -127,6 +136,23 @@ public class WorkflowRuntimeService {
         }
         if (instance.getStatus() != WorkflowInstanceStatus.PENDING) throw conflict("WORKFLOW_INSTANCE_NOT_PENDING");
         return new Locked(instance, step, steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId()));
+    }
+    private boolean hasCurrentPermission(AppUser actor, WorkflowInstanceStep step,
+            WorkflowInstanceCandidate candidate) {
+        try {
+            WorkflowPermissionScopeSnapshot scope = objectMapper.readValue(
+                    candidate.getPermissionScopeSnapshot(), WorkflowPermissionScopeSnapshot.class);
+            return switch (scope.scopeType()) {
+                case GLOBAL -> permissions.hasPermission(
+                        actor.getId(), step.getRequiredPermissionCodeSnapshot());
+                case ORGANIZATION_UNIT -> permissions.hasPermission(
+                        actor.getId(), step.getRequiredPermissionCodeSnapshot(),
+                        scope.organizationUnitId());
+            };
+        } catch (JacksonException | IllegalArgumentException exception) {
+            throw new IllegalStateException("Workflow candidate permission scope snapshot is invalid",
+                    exception);
+        }
     }
     private static WorkflowActionResult result(WorkflowInstance instance, WorkflowInstanceStep step) {
         return new WorkflowActionResult(instance.getId(), step.getId(), instance.getStatus(), step.getStatus(),

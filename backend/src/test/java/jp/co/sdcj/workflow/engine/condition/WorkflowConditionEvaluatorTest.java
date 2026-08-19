@@ -49,4 +49,34 @@ class WorkflowConditionEvaluatorTest {
                 "{\"field\":\"application.totalAmount\",\"operator\":\"EQ\",\"value\":\"100\"}", schema))
                 .isInstanceOf(WorkflowDefinitionException.class);
     }
+
+    @Test
+    void orderingOperatorsReturnFalseForNullActualValues() {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("application.totalAmount", null);
+        WorkflowContext context = new WorkflowContext(values);
+
+        for (String operator : java.util.List.of("GT", "GTE", "LT", "LTE")) {
+            assertThat(evaluator.evaluate("""
+                    {"field":"application.totalAmount","operator":"%s","value":100000}
+                    """.formatted(operator), context, schema)).isFalse();
+        }
+        assertThat(evaluator.evaluate("""
+                {"field":"application.totalAmount","operator":"IS_NULL"}
+                """, context, schema)).isTrue();
+        assertThat(evaluator.evaluate("""
+                {"field":"application.totalAmount","operator":"IS_NOT_NULL"}
+                """, context, schema)).isFalse();
+    }
+
+    @Test
+    void orderingOperatorsRejectNullDefinitionValues() {
+        for (String operator : java.util.List.of("GT", "GTE", "LT", "LTE")) {
+            assertThatThrownBy(() -> evaluator.validate("""
+                    {"field":"application.totalAmount","operator":"%s","value":null}
+                    """.formatted(operator), schema))
+                    .isInstanceOf(WorkflowDefinitionException.class)
+                    .hasMessageContaining("non-null");
+        }
+    }
 }

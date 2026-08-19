@@ -51,14 +51,20 @@ public class WorkflowEngine {
     @Transactional
     public WorkflowInstanceDetails start(String workflowCode, String subjectType, UUID subjectId,
             AppUser requester) {
-        Instant now = Instant.now();
+        return start(workflowCode, subjectType, subjectId, requester, Instant.now());
+    }
+
+    @Transactional
+    public WorkflowInstanceDetails start(String workflowCode, String subjectType, UUID subjectId,
+            AppUser requester, Instant evaluationTime) {
         try {
-            var definition = definitions.published(workflowCode, now);
+            var definition = definitions.published(workflowCode, evaluationTime);
             if (!definition.definition().getSubjectType().equals(subjectType))
                 throw new WorkflowDefinitionException("Workflow subject type mismatch");
             WorkflowContextProvider provider = contexts.require(subjectType);
-            var context = provider.provide(subjectId, requester, now);
-            var plan = planner.plan(definition, context, provider.schema(), requester.getId(), now);
+            var context = provider.provide(subjectId, requester, evaluationTime);
+            var plan = planner.plan(
+                    definition, context, provider.schema(), requester.getId(), evaluationTime);
             int runNumber = Math.toIntExact(instances.countBySubjectTypeAndSubjectId(subjectType, subjectId) + 1);
             Map<String, Object> resolution = new LinkedHashMap<>();
             resolution.put("workflowCode", definition.definition().getWorkflowCode());
@@ -68,7 +74,7 @@ public class WorkflowEngine {
             resolution.put("selectedTransitionKeys", plan.selectedTransitionKeys());
             WorkflowInstance instance = instances.save(new WorkflowInstance(
                     definition.version().getId(), subjectType, subjectId, runNumber, requester.getId(),
-                    json(context.values()), json(resolution), now));
+                    json(context.values()), json(resolution), evaluationTime));
             WorkflowInstanceStep first = null;
             List<WorkflowInstanceCandidate> firstCandidates = List.of();
             for (int index = 0; index < plan.steps().size(); index++) {
@@ -83,11 +89,13 @@ public class WorkflowEngine {
                         json(ruleSnapshot), index == 0 ? WorkflowStepStatus.PENDING : WorkflowStepStatus.WAITING));
                 List<WorkflowInstanceCandidate> saved = candidates.saveAll(planned.candidates().stream()
                         .map(candidate -> new WorkflowInstanceCandidate(step.getId(), candidate.user(),
-                                json(candidate.sourceSnapshot()))).toList());
+                                json(candidate.sourceSnapshot()),
+                                json(candidate.permissionScopeSnapshot()))).toList());
                 if (index == 0) { first = step; firstCandidates = saved; }
             }
             if (first == null) throw new WorkflowDefinitionException("Workflow plan has no first step");
-            lifecycles.require(subjectType).started(instance, first, firstCandidates, requester, now);
+            lifecycles.require(subjectType).started(
+                    instance, first, firstCandidates, requester, evaluationTime);
             return new WorkflowInstanceDetails(instance,
                     steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId()));
         } catch (WorkflowDefinitionException exception) {

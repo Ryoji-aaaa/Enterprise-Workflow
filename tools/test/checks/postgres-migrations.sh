@@ -247,7 +247,7 @@ fi
   || fail "failed V002 migration was not rolled back"
 
 # Exercise the supported in-place V001 upgrade with representative linked and
-# pre-registered legacy users. Flyway applies V002 through V020 via the real app.
+# pre-registered legacy users. Flyway applies V002 through V021 via the real app.
 migration_section "V001 upgrade and expand-contract migration"
 create_database workflow_upgrade
 start_backend workflow_upgrade 001 none
@@ -277,7 +277,7 @@ SQL
 # old revision. V007 is released only by the separate startup below.
 # The current application maps columns introduced after the V006 compatibility
 # window. Start it without schema validation here; the final startup below
-# validates the complete V020 schema.
+# validates the complete V021 schema.
 start_backend workflow_upgrade 006 none
 workflow_psql workflow_upgrade <<'SQL' >/dev/null
 DO $$
@@ -708,8 +708,8 @@ BEGIN
     SELECT count(*) INTO successful_migrations
     FROM flyway_schema_history
     WHERE success;
-    IF successful_migrations <> 20 THEN
-        RAISE EXCEPTION 'expected 20 successful Flyway migrations, got %', successful_migrations;
+    IF successful_migrations <> 21 THEN
+        RAISE EXCEPTION 'expected 21 successful Flyway migrations, got %', successful_migrations;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -1135,8 +1135,8 @@ DO $$
 DECLARE
     retired_role_id UUID;
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20 THEN
-        RAISE EXCEPTION 'V014 database did not upgrade through V020';
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 21 THEN
+        RAISE EXCEPTION 'V014 database did not upgrade through V021';
     END IF;
     IF (SELECT count(*)
         FROM role_permissions mapping
@@ -1233,8 +1233,8 @@ start_backend workflow_v017_upgrade
 workflow_psql workflow_v017_upgrade <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20 THEN
-        RAISE EXCEPTION 'V017 database did not upgrade through V020';
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 21 THEN
+        RAISE EXCEPTION 'V017 database did not upgrade through V021';
     END IF;
     IF (SELECT count(*) FROM pg_constraint WHERE conname IN (
         'uk_expense_attachment_id_application',
@@ -1354,7 +1354,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20 THEN
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 21 THEN
         RAISE EXCEPTION 'fresh database did not receive all migrations';
     END IF;
     IF (SELECT count(*) FROM app_users) <> 1
@@ -1424,8 +1424,9 @@ BEGIN
             'ck_workflow_instances_status', 'uk_workflow_instance_steps_order',
             'ck_workflow_instance_steps_order', 'ck_workflow_instance_steps_mode',
             'ck_workflow_instance_steps_status', 'uk_workflow_instance_candidates_user',
+            'ck_workflow_instance_candidates_permission_scope',
             'ck_workflow_instance_actions_type'
-        )) <> 38 THEN
+        )) <> 39 THEN
         RAISE EXCEPTION 'expense application constraints are invalid';
     END IF;
     IF NOT EXISTS (
@@ -1539,7 +1540,7 @@ start_backend workflow_fresh
 workflow_psql workflow_fresh <<'SQL' >/dev/null
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 20
+    IF (SELECT count(*) FROM flyway_schema_history WHERE success) <> 21
        OR (SELECT count(*) FROM app_users) <> 1
        OR (SELECT count(*) FROM roles) <> 9
        OR (SELECT count(*) FROM permissions) <> 21

@@ -167,7 +167,7 @@ public class ExpenseApplicationService {
         application.updateOrganizationSnapshot(
                 organization.unit().getOrganizationId(), organization.unit(), organization.division());
         workflowEngine.start("EXPENSE_APPROVAL", ExpenseWorkflowContextProvider.SUBJECT_TYPE,
-                applicationId, applicant);
+                applicationId, applicant, now);
         return new ExpenseApplicationDetails(application, items);
     }
 

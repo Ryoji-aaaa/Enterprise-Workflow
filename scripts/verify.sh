@@ -278,7 +278,8 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V017__create_expense_auto_entry_context.sql',
     'V018__enforce_expense_auto_entry_source_attachment_provenance.sql',
     'V019__replace_expense_approval_with_workflow_engine.sql',
-    'V020__seed_expense_workflow_definition.sql'
+    'V020__seed_expense_workflow_definition.sql',
+    'V021__snapshot_workflow_candidate_permission_scope.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -287,9 +288,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "20:20" ]] || {
+  [[ "${migration_summary}" == "21:21" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "20 total migrations:20 successful checksummed migrations" "${migration_summary}"
+      "21 total migrations:21 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(

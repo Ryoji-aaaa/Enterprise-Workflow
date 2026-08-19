@@ -1,6 +1,7 @@
 package jp.co.sdcj.workflow.engine.runtime;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +13,8 @@ public interface WorkflowInstanceCandidateRepository
         extends JpaRepository<WorkflowInstanceCandidate, UUID> {
     List<WorkflowInstanceCandidate> findAllByWorkflowInstanceStepId(UUID stepId);
     boolean existsByWorkflowInstanceStepIdAndCandidateUserId(UUID stepId, UUID userId);
+    Optional<WorkflowInstanceCandidate> findByWorkflowInstanceStepIdAndCandidateUserId(
+            UUID stepId, UUID userId);
     @Query("""
             select case when count(candidate) > 0 then true else false end
             from WorkflowInstanceCandidate candidate, WorkflowInstanceStep step, WorkflowInstance instance

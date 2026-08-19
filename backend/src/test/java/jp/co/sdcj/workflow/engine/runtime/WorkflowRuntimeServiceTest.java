@@ -17,10 +17,12 @@ import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.engine.definition.WorkflowApprovalMode;
+import jp.co.sdcj.workflow.engine.assignee.WorkflowPermissionScopeSnapshot;
 import jp.co.sdcj.workflow.engine.subject.WorkflowSubjectLifecycleHandler;
 import jp.co.sdcj.workflow.engine.subject.WorkflowSubjectLifecycleHandlerRegistry;
 import jp.co.sdcj.workflow.service.AuditLogService;
 import jp.co.sdcj.workflow.service.PermissionService;
+import tools.jackson.databind.ObjectMapper;
 
 class WorkflowRuntimeServiceTest {
     private static final String SUBJECT_TYPE = "TEST_SUBJECT";
@@ -31,6 +33,7 @@ class WorkflowRuntimeServiceTest {
     private final PermissionService permissions = mock(PermissionService.class);
     private final AuditLogService audit = mock(AuditLogService.class);
     private final WorkflowSubjectLifecycleHandler lifecycle = mock(WorkflowSubjectLifecycleHandler.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private WorkflowRuntimeService service;
     private AppUser requester;
     private AppUser actor;
@@ -42,7 +45,7 @@ class WorkflowRuntimeServiceTest {
     void setUp() {
         when(lifecycle.subjectType()).thenReturn(SUBJECT_TYPE);
         service = new WorkflowRuntimeService(instances, steps, candidates, actions, permissions, audit,
-                new WorkflowSubjectLifecycleHandlerRegistry(List.of(lifecycle)));
+                new WorkflowSubjectLifecycleHandlerRegistry(List.of(lifecycle)), objectMapper);
         UUID auditUser = UUID.randomUUID();
         requester = user("requester", auditUser);
         actor = user("approver", auditUser);
@@ -55,7 +58,9 @@ class WorkflowRuntimeServiceTest {
         when(instances.findById(instance.getId())).thenReturn(Optional.of(instance));
         when(steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId()))
                 .thenReturn(List.of(first, second));
-        when(candidates.existsByWorkflowInstanceStepIdAndCandidateUserId(any(), any())).thenReturn(true);
+        when(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(any(), any()))
+                .thenAnswer(invocation -> Optional.of(candidate(
+                        invocation.getArgument(0), WorkflowPermissionScopeSnapshot.global())));
         when(permissions.hasPermission(actor.getId(), "APPROVE")).thenReturn(true);
         when(candidates.findAllByWorkflowInstanceStepId(second.getId())).thenReturn(List.of());
     }
@@ -104,6 +109,8 @@ class WorkflowRuntimeServiceTest {
                 WorkflowApprovalMode.ANY_ONE, "REVOKED", "{}", WorkflowStepStatus.PENDING);
         when(steps.findByIdForUpdate(revoked.getId())).thenReturn(Optional.of(revoked));
         when(instances.findById(revokedInstance.getId())).thenReturn(Optional.of(revokedInstance));
+        when(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(revoked.getId(), actor.getId()))
+                .thenReturn(Optional.of(candidate(revoked.getId(), WorkflowPermissionScopeSnapshot.global())));
         when(permissions.hasPermission(actor.getId(), "REVOKED")).thenReturn(false);
         assertThatThrownBy(() -> service.approve(revoked.getId(), null, actor))
                 .isInstanceOf(ApiException.class)
@@ -112,8 +119,8 @@ class WorkflowRuntimeServiceTest {
 
     @Test
     void candidateAndSelfApprovalChecksFailClosed() {
-        when(candidates.existsByWorkflowInstanceStepIdAndCandidateUserId(first.getId(), actor.getId()))
-                .thenReturn(false);
+        when(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(first.getId(), actor.getId()))
+                .thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.approve(first.getId(), null, actor))
                 .isInstanceOf(ApiException.class)
                 .extracting("code").isEqualTo("WORKFLOW_ACTION_NOT_ALLOWED");
@@ -123,8 +130,9 @@ class WorkflowRuntimeServiceTest {
         WorkflowInstanceStep selfStep = new WorkflowInstanceStep(selfInstance.getId(), 1, "SELF", "承認",
                 WorkflowApprovalMode.ANY_ONE, "APPROVE", "{}", WorkflowStepStatus.PENDING);
         when(steps.findByIdForUpdate(selfStep.getId())).thenReturn(Optional.of(selfStep));
-        when(candidates.existsByWorkflowInstanceStepIdAndCandidateUserId(selfStep.getId(), actor.getId()))
-                .thenReturn(true);
+        when(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(selfStep.getId(), actor.getId()))
+                .thenReturn(Optional.of(candidate(
+                        selfStep.getId(), WorkflowPermissionScopeSnapshot.global())));
         when(instances.findById(selfInstance.getId())).thenReturn(Optional.of(selfInstance));
         assertThatThrownBy(() -> service.approve(selfStep.getId(), null, actor))
                 .isInstanceOf(ApiException.class)
@@ -144,9 +152,28 @@ class WorkflowRuntimeServiceTest {
         verify(lifecycle).cancelled(any(), any(), any());
     }
 
+    @Test
+    void organizationScopedSnapshotIsUsedForCurrentPermissionCheck() {
+        UUID organizationUnitId = UUID.randomUUID();
+        when(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(first.getId(), actor.getId()))
+                .thenReturn(Optional.of(candidate(first.getId(),
+                        WorkflowPermissionScopeSnapshot.organizationUnit(organizationUnitId))));
+        when(permissions.hasPermission(actor.getId(), "APPROVE", organizationUnitId))
+                .thenReturn(true);
+
+        service.approve(first.getId(), null, actor);
+
+        verify(permissions).hasPermission(actor.getId(), "APPROVE", organizationUnitId);
+    }
+
     private WorkflowInstanceStep step(int order, WorkflowStepStatus status) {
         return new WorkflowInstanceStep(instance.getId(), order, "STEP_" + order, "承認" + order,
                 WorkflowApprovalMode.ANY_ONE, "APPROVE", "{}", status);
+    }
+    private WorkflowInstanceCandidate candidate(
+            UUID stepId, WorkflowPermissionScopeSnapshot permissionScope) {
+        return new WorkflowInstanceCandidate(
+                stepId, actor, "{}", objectMapper.writeValueAsString(permissionScope));
     }
     private static AppUser user(String prefix, UUID auditUser) {
         return new AppUser(UUID.randomUUID(), prefix, prefix + "@sdcj.co.jp", prefix,

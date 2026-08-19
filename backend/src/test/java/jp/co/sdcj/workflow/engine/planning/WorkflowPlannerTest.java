@@ -17,6 +17,7 @@ import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.engine.assignee.ResolvedWorkflowCandidate;
 import jp.co.sdcj.workflow.engine.assignee.WorkflowAssigneeResolver;
 import jp.co.sdcj.workflow.engine.assignee.WorkflowAssigneeResolverRegistry;
+import jp.co.sdcj.workflow.engine.assignee.WorkflowPermissionScopeSnapshot;
 import jp.co.sdcj.workflow.engine.condition.WorkflowConditionEvaluator;
 import jp.co.sdcj.workflow.engine.condition.WorkflowContext;
 import jp.co.sdcj.workflow.engine.condition.WorkflowContextSchema;
@@ -60,6 +61,7 @@ class WorkflowPlannerTest {
                 .containsExactly("MANAGER", "ACCOUNTING");
         assertThat(small.selectedTransitionKeys())
                 .containsExactly("LOW", "MANAGER_ACCOUNTING", "ACCOUNTING_END");
+        assertThat(resolver.lastEvaluationTime).isEqualTo(NOW);
         assertThat(large.steps()).extracting(step -> step.node().getNodeKey())
                 .containsExactly("MANAGER", "HIGHER_MANAGER", "ACCOUNTING");
         assertThat(large.selectedTransitionKeys())
@@ -142,12 +144,16 @@ class WorkflowPlannerTest {
 
     private final class FixtureResolver implements WorkflowAssigneeResolver {
         private boolean returnCandidates = true;
+        private Instant lastEvaluationTime;
         @Override public String resolverType() { return "FIXTURE"; }
         @Override public void validateParameters(String parametersJson) { }
         @Override public List<ResolvedWorkflowCandidate> resolve(WorkflowAssigneeRule rule,
                 WorkflowContext context, UUID requesterId, Instant at) {
+            lastEvaluationTime = at;
             return returnCandidates
-                    ? List.of(new ResolvedWorkflowCandidate(candidate, Map.of("fixture", rule.getWorkflowNodeId())))
+                    ? List.of(new ResolvedWorkflowCandidate(candidate,
+                            Map.of("fixture", rule.getWorkflowNodeId()),
+                            WorkflowPermissionScopeSnapshot.global()))
                     : List.of();
         }
     }

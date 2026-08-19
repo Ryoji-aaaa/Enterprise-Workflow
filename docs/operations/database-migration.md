@@ -87,6 +87,11 @@ V020は`EXPENSE_APPROVAL` version 1とnode、transition、assignee ruleをFlyway
 通ることを確認する。V019適用後は旧binaryへ戻せないため、切戻しは承認済みbackup restoreまたは
 新migrationによる前進修正とする。`flyway repair`や旧テーブルの手作業再作成は行わない。
 
+V021は`workflow_instance_candidates.permission_scope_snapshot`を追加する。V019/V020適用済みの
+開発DBに既存Candidateがある場合は、既存の組織resolver snapshotからOrganization Unit scopeをbackfillし、
+新規CandidateはBackendがglobalまたはOrganization Unit scopeを明示保存する。適用後はFlyway V021成功、
+列のNOT NULLと`ck_workflow_instance_candidates_permission_scope`を確認する。
+
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ
 `SPRING_FLYWAY_TARGET=006`を渡す。V006の移行内容、旧revision停止、write drainを確認してから

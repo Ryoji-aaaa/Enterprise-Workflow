@@ -34,6 +34,8 @@ AUTO_ENTRY contextの`(source_attachment_id, expense_application_id)`から複�
 V019はV009で作成した経費専用の承認Run、Step、Candidateを削除し、版管理された汎用
 `workflow_instances`、`workflow_instance_steps`、`workflow_instance_candidates`、
 `workflow_instance_actions`へ置き換える。V020は経費承認定義`EXPENSE_APPROVAL` version 1を公開する。
+V021はCandidate選定時のglobalまたはOrganization Unit Permission scopeを、候補者の選定元とは別の
+runtime snapshotとして追加する。
 申請・再申請ごとに新しいInstanceを作り、旧Instanceとその履歴は更新しない。ApplicationとStepはversionを
 持ち、承認時にはStepを悲観lockしてCandidateの最初の1名だけが確定できる。詳細は
 [汎用ワークフローエンジン](workflow-engine.md)を参照する。
@@ -67,16 +69,21 @@ DRAFT -> PENDING_APPROVAL -> APPROVED
 `EXPENSE_APPLICATION_APPROVE`を持たないユーザーと申請者本人を候補から除外する。
 候補が0人、主所属・事業部・経理課がない
 場合は422で申請全体をロールバックする。
+`parent_unit_id`がnullの場合だけ親なしの最上位組織として扱う。設定済みの親が不存在、別法人、無効、
+期間外なら`PARENT_ORGANIZATION_UNIT_INVALID`の422とし、経理だけの経路へfallbackしない。
 
 ## スナップショットと認可
 
 申請時に申請者の所属・役職・事業部をInstanceのJSONへ、組織名をApplication/Stepへ、候補者ID・
 表示名・email・所属ID・役職名をCandidateへ保存する。承認時の正本は現在組織ではなくCandidate
 であるため、その後の異動で進行中・完了済み経路は変わらない。
+申請開始時に1つのevaluation timestampを作り、Applicationの所属snapshot、Workflow context、経路、
+担当者、Permission解決へ同じ時刻を使用する。
 
 `EXPENSE_APPLICATION_CREATE`と`EXPENSE_APPLICATION_READ_OWN`は`APPLICATION_USER`、
-`EXPENSE_APPLICATION_APPROVE`は`WORKFLOW_APPROVER`へ割り当てる。承認にはDB Permissionと
-Candidate登録の両方を要求し、自己承認を拒否する。Keycloak Roleは使用しない。
+`EXPENSE_APPLICATION_APPROVE`は`WORKFLOW_APPROVER`へ割り当てる。承認にはCandidate登録、
+snapshotされた必須Permission、Candidate選定時に保存したglobalまたはOrganization Unit scopeでの
+現在Permissionを要求し、自己承認を拒否する。現在組織からCandidateを再解決せず、Keycloak Roleは使用しない。
 
 AUTO_ENTRYの認可境界は次のとおりである。新しいAUTO_ENTRY専用Permissionは設けない。
 

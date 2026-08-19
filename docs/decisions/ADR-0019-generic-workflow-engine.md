@@ -19,7 +19,10 @@
 
 業務固有処理はcontext、lifecycle、summary、accessのhandlerとしてエンジン境界へ接続する。認証は
 Keycloak、業務認可はPostgreSQL Permissionを正本とし、Candidate snapshotだけで操作を許可せず、操作時の
-現在Permissionも再確認する。経費精算をversion 1の最初の定義として移行し、旧経費専用実行テーブルとAPIを
+現在PermissionもCandidate選定時にsnapshotしたglobalまたはOrganization Unit scopeで再確認する。
+Candidateの選定元と認可scopeは別snapshotとし、操作時に現在組織からCandidateを再計算しない。
+Workflow開始中のcontext、経路、担当者、Permission解決には単一のevaluation timestampを使用する。
+経費精算をversion 1の最初の定義として移行し、旧経費専用実行テーブルとAPIを
 削除する。
 
 ## Rationale

@@ -53,7 +53,15 @@ abstract class AbstractOrganizationAssigneeResolver {
                     : positionMap.get(assignment.getPositionId());
             if (position != null && !position.isEnabled()) position = null;
             if (managersOnly && (position == null || position.getApprovalLevel() <= 0)) continue;
-            if (!permissions.existsEffectivePermission(user.getId(), permissionCode, unit.getId(), at)) continue;
+            WorkflowPermissionScopeSnapshot permissionScope;
+            if (permissions.existsEffectivePermission(user.getId(), permissionCode, at)) {
+                permissionScope = WorkflowPermissionScopeSnapshot.global();
+            } else if (permissions.existsEffectivePermission(
+                    user.getId(), permissionCode, unit.getId(), at)) {
+                permissionScope = WorkflowPermissionScopeSnapshot.organizationUnit(unit.getId());
+            } else {
+                continue;
+            }
             Map<String, Object> source = new LinkedHashMap<>();
             source.put("resolverType", managersOnly ? "ORGANIZATION_MANAGER" : "ORGANIZATION_UNIT_CODE");
             source.put("organizationUnitId", unit.getId());
@@ -62,7 +70,8 @@ abstract class AbstractOrganizationAssigneeResolver {
             source.put("assignmentId", assignment.getId());
             source.put("positionCode", position == null ? null : position.getPositionCode());
             source.put("positionName", position == null ? null : position.getPositionName());
-            result.putIfAbsent(user.getId(), new ResolvedWorkflowCandidate(user, source));
+            result.putIfAbsent(user.getId(),
+                    new ResolvedWorkflowCandidate(user, source, permissionScope));
         }
         return List.copyOf(result.values());
     }

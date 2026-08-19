@@ -23,6 +23,8 @@ V019は旧経費専用のRun、Step、Candidateを削除し、次の汎用テー
 公開済みの定義版は実行時に更新せず、新しい要件は新しい版として追加する。Instanceは使用した
 definition version IDを保持するため、定義の新版公開後も進行中・完了済み経路を再現できる。
 V020は`EXPENSE_APPROVAL` version 1を`PUBLISHED`として投入する。
+V021はCandidate選定時に使用したPermission scopeを`permission_scope_snapshot`へ保存し、
+候補者の選定根拠である`candidate_source_snapshot`と操作時認可のscopeを分離する。
 
 ## 条件DSL
 
@@ -30,6 +32,8 @@ V020は`EXPENSE_APPROVAL` version 1を`PUBLISHED`として投入する。
 参照できる。比較は`EQ`、`NE`、`GT`、`GTE`、`LT`、`LTE`、`IN`、`NOT_IN`、`IS_NULL`、
 `IS_NOT_NULL`、論理演算は`all`、`any`、`not`を使用する。型不一致、未宣言field、未知の演算子、
 不正なJSONは定義検証または計画生成を失敗させる。
+`GT`、`GTE`、`LT`、`LTE`はcontextの実値がnullなら常にfalseとし、定義側の比較値nullは
+検証で拒否する。null判定には`IS_NULL`または`IS_NOT_NULL`だけを使用する。
 
 経費精算では申請者の主所属、役職、所属長該当、親組織、事業部、法人をcontextとしてsnapshotする。
 実行時の遷移は優先順に評価し、各nodeから一致する遷移がちょうど1本でなければ申請を422で拒否する。
@@ -41,6 +45,11 @@ parameter、条件schema、cycle、STARTからの到達可能性、ENDへの到�
 計画生成は対象業務の`WorkflowContextProvider`、担当者の`WorkflowAssigneeResolver`をregistryから選び、
 通過するAPPROVAL nodeと候補者をすべて解決する。候補者0人、主所属不足、必要組織不足はInstanceを
 一部作成せずtransaction全体をロールバックする。
+
+Workflow開始ごとに1つのevaluation timestampを確定し、公開版、context、経路、担当者、Permissionの
+解決へ同じ時刻を渡す。経費申請の所属snapshotも同じ時刻で作る。申請者所属の`parent_unit_id`がnullの
+場合だけ最上位組織として扱い、設定済みの親が不存在、別法人、無効、期間外なら
+`PARENT_ORGANIZATION_UNIT_INVALID`の422で計画生成前に拒否する。
 
 組織担当者resolverは有効期間内の所属、有効ユーザー、役職、申請時点のDB Permissionを確認し、
 申請者本人を除外する。組織長resolverはさらに`positions.approval_level > 0`を要求する。
@@ -55,7 +64,8 @@ Instanceは`PENDING`、`APPROVED`、`RETURNED`、`CANCELLED`、Stepは`WAITING`�
 同じ対象へrun numberを増やした新Instanceを作る。
 
 承認・差戻しはStepを悲観lockし、`PENDING`、Candidate、自己承認禁止、snapshotされた必須Permission、
-現在のDB Permissionを同一transaction内で再確認する。二重送信や別Candidateの競合では最初の1件だけを
+CandidateごとにsnapshotされたglobalまたはOrganization Unit scopeでの現在DB Permissionを
+同一transaction内で再確認する。現在組織からCandidateを再計算しない。二重送信や別Candidateの競合では最初の1件だけを
 確定し、後続は409で拒否する。Step、Instance、対象業務の状態変更、action、監査、次候補通知を同じ
 transaction境界で扱う。Actionは最低限`APPROVE`、`RETURN`、`CANCEL`を記録する。
 

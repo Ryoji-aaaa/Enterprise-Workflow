@@ -71,6 +71,8 @@ class OrganizationManagerAssigneeResolverTest {
                 .containsEntry("resolverType", "ORGANIZATION_MANAGER")
                 .containsEntry("organizationUnitCode", "SALES")
                 .containsEntry("positionCode", "MANAGER");
+        assertThat(result.getFirst().permissionScopeSnapshot())
+                .isEqualTo(WorkflowPermissionScopeSnapshot.organizationUnit(unit.getId()));
     }
 
     @Test

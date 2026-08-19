@@ -47,10 +47,10 @@ public class WorkflowConditionEvaluator {
             case "IS_NOT_NULL" -> actual != null;
             case "EQ" -> equal(actual, node.get("value"), type);
             case "NE" -> !equal(actual, node.get("value"), type);
-            case "GT" -> compare(actual, node.get("value"), type) > 0;
-            case "GTE" -> compare(actual, node.get("value"), type) >= 0;
-            case "LT" -> compare(actual, node.get("value"), type) < 0;
-            case "LTE" -> compare(actual, node.get("value"), type) <= 0;
+            case "GT" -> actual != null && compare(actual, node.get("value"), type) > 0;
+            case "GTE" -> actual != null && compare(actual, node.get("value"), type) >= 0;
+            case "LT" -> actual != null && compare(actual, node.get("value"), type) < 0;
+            case "LTE" -> actual != null && compare(actual, node.get("value"), type) <= 0;
             case "IN" -> contains(actual, node.get("value"), type);
             case "NOT_IN" -> !contains(actual, node.get("value"), type);
             default -> throw new WorkflowDefinitionException("Unknown operator: " + operator);
@@ -76,6 +76,11 @@ public class WorkflowConditionEvaluator {
         if ((operator.equals("GT") || operator.equals("GTE") || operator.equals("LT")
                 || operator.equals("LTE")) && type != WorkflowFieldType.NUMBER) {
             invalid("Ordering operator requires NUMBER field");
+        }
+        if ((operator.equals("GT") || operator.equals("GTE") || operator.equals("LT")
+                || operator.equals("LTE"))
+                && node.has("value") && node.get("value").isNull()) {
+            invalid("Ordering operator requires non-null value");
         }
         boolean noValue = operator.equals("IS_NULL") || operator.equals("IS_NOT_NULL");
         if (noValue && node.has("value")) invalid(operator + " must not have value");
@@ -112,7 +117,6 @@ public class WorkflowConditionEvaluator {
     }
 
     private static int compare(Object actual, JsonNode expected, WorkflowFieldType type) {
-        if (actual == null) return -1;
         if (type != WorkflowFieldType.NUMBER) invalid("Ordering comparison requires NUMBER");
         return number(actual).compareTo(expected.decimalValue());
     }

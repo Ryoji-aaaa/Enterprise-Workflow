@@ -69,6 +69,8 @@ class OrganizationUnitCodeAssigneeResolverTest {
         assertThat(result).singleElement().satisfies(candidate -> {
             assertThat(candidate.user()).isSameAs(approver);
             assertThat(candidate.sourceSnapshot()).containsEntry("organizationUnitCode", "ACCOUNTING_SECTION");
+            assertThat(candidate.permissionScopeSnapshot())
+                    .isEqualTo(WorkflowPermissionScopeSnapshot.organizationUnit(accounting.getId()));
         });
     }
 
