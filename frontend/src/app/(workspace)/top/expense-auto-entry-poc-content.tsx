@@ -26,7 +26,8 @@ const operationSteps = [
   },
   {
     title: "AIで文書を分析",
-    description: "Azure AI Content UnderstandingのAUTO_ENTRY分析が自動で始まります。",
+    description:
+      "Azure AI Content UnderstandingのAUTO_ENTRY分析が自動で始まります。",
   },
   {
     title: "抽出結果を確認",
@@ -34,7 +35,8 @@ const operationSteps = [
   },
   {
     title: "必要な値を修正・確認",
-    description: "要確認項目を中心に、原文と照合しながら利用者がレビューします。",
+    description:
+      "要確認項目を中心に、原文と照合しながら利用者がレビューします。",
   },
   {
     title: "「決定」で下書きを作成",
@@ -89,7 +91,13 @@ const pocPoints = [
 const technologyGroups = [
   {
     title: "Frontend",
-    technologies: ["Next.js", "TypeScript", "App Router", "Tailwind CSS", "shadcn/ui"],
+    technologies: [
+      "Next.js",
+      "TypeScript",
+      "App Router",
+      "Tailwind CSS",
+      "shadcn/ui",
+    ],
   },
   {
     title: "Backend",
@@ -112,27 +120,29 @@ const technologyGroups = [
 export function ExpenseAutoEntryPocContent() {
   return (
     <main className="p-4 md:p-6 lg:p-8">
-      <div className="mx-auto max-w-6xl space-y-8">
+      <div className="mx-auto max-w-7xl">
         <section
           aria-labelledby="expense-auto-entry-poc-title"
-          className="rounded-xl border bg-card p-6 shadow-sm md:p-8"
+          className=""
         >
-          <Badge variant="secondary">Proof of Concept</Badge>
-          <h1
-            className="mt-4 max-w-4xl text-2xl font-semibold tracking-tight md:text-3xl"
-            id="expense-auto-entry-poc-title"
-          >
-            AIを利用した請求書・注文書からの経費申請自動入力 PoC
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground md:text-base">
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="h-6 w-1 rounded-full bg-primary" />
+                <h1 className="text-xl font-semibold tracking-tight">
+                  AI+OCRを利用した請求書・注文書からの経費申請自動入力 PoC
+                </h1>
+              </div>
+              <p className="mt-1 pl-3 text-sm text-muted-foreground">
+              Azure AI Content Understandingの活用
+            </p>
+            </div>
+          </div>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground md:text-base">
             請求書・注文書などを読み込み、AIで解析した内容を利用者が確認・修正して、
             経費申請下書きへ引き継ぐための検証画面です。
           </p>
-          <p className="mt-3 max-w-3xl rounded-md border bg-muted/40 p-3 text-sm leading-6">
-            AIが経費申請を完全自動で完了するものではありません。抽出結果と原文を利用者が確認し、
-            必要な修正と最終的な申請操作を行います。
-          </p>
-          <div className="mt-6">
+          <div className="mt-6 mb-6">
             <LinkButton href="/expenses/auto-entry" size="lg">
               自動入力を試す
               <ArrowRight data-icon="inline-end" />
@@ -141,10 +151,12 @@ export function ExpenseAutoEntryPocContent() {
         </section>
 
         <section aria-labelledby="sample-invoices-title">
-          <Card className="shadow-sm">
+          <Card className="shadow-sm mb-6">
             <CardHeader>
               <CardTitle>
-                <h2 className="text-base" id="sample-invoices-title">動作確認用データ（請求書サンプル）</h2>
+                <h2 className="text-base" id="sample-invoices-title">
+                  動作確認用データ（請求書サンプル）
+                </h2>
               </CardTitle>
               <CardDescription>
                 PoCをすぐに試せるよう、分析用のサンプル請求書を用意しています。
@@ -170,19 +182,26 @@ export function ExpenseAutoEntryPocContent() {
 
         <section aria-labelledby="operation-guide-title">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold" id="operation-guide-title">操作方法</h2>
+            <h2 className="text-xl font-semibold" id="operation-guide-title">
+              操作方法
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               文書の選択から経費申請下書きの最終確認まで、次の流れで操作します。
             </p>
           </div>
           <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {operationSteps.map((step, index) => (
-              <li className="rounded-lg border bg-card p-4 shadow-sm" key={step.title}>
+              <li
+                className="rounded-lg border bg-card p-4 shadow-sm"
+                key={step.title}
+              >
                 <span className="grid size-7 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                   {index + 1}
                 </span>
                 <h3 className="mt-3 text-sm font-semibold">{step.title}</h3>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {step.description}
+                </p>
               </li>
             ))}
           </ol>
@@ -190,7 +209,9 @@ export function ExpenseAutoEntryPocContent() {
 
         <section aria-labelledby="poc-points-title">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold" id="poc-points-title">PoCのポイント</h2>
+            <h2 className="text-xl font-semibold" id="poc-points-title">
+              PoCのポイント
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               AIによる抽出と人による確認を組み合わせ、下書き作成を支援します。
             </p>
@@ -204,7 +225,9 @@ export function ExpenseAutoEntryPocContent() {
                     <div className="mb-2 grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
                       <Icon className="size-4.5" />
                     </div>
-                    <CardTitle><h3>{point.title}</h3></CardTitle>
+                    <CardTitle>
+                      <h3>{point.title}</h3>
+                    </CardTitle>
                     <CardDescription>{point.description}</CardDescription>
                   </CardHeader>
                 </Card>
@@ -215,16 +238,21 @@ export function ExpenseAutoEntryPocContent() {
 
         <section aria-labelledby="technology-title">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold" id="technology-title">利用技術</h2>
+            <h2 className="text-xl font-semibold" id="technology-title">
+              利用技術
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              ブラウザからの業務通信はNext.js BFFを経由し、Spring Bootがデータと外部サービスを扱います。
+              ブラウザからの業務通信はNext.js BFFを経由し、Spring
+              Bootがデータと外部サービスを扱います。
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {technologyGroups.map((group) => (
               <Card className="shadow-sm" key={group.title}>
                 <CardHeader>
-                  <CardTitle><h3>{group.title}</h3></CardTitle>
+                  <CardTitle>
+                    <h3>{group.title}</h3>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-1.5 text-xs text-muted-foreground">
@@ -238,13 +266,19 @@ export function ExpenseAutoEntryPocContent() {
           </div>
           <Card className="mt-3 shadow-sm">
             <CardHeader>
-              <CardTitle><h3>アーキテクチャ境界</h3></CardTitle>
+              <CardTitle>
+                <h3>アーキテクチャ境界</h3>
+              </CardTitle>
               <CardDescription>
-                ブラウザはBackend、データベース、ストレージ、Document AIへ直接接続しません。
+                ブラウザはBackend、データベース、ストレージ、Document
+                AIへ直接接続しません。
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <pre className="overflow-x-auto rounded-md bg-muted p-4 text-xs leading-6" aria-label="システム構成">
+              <pre
+                className="overflow-x-auto rounded-md bg-muted p-4 text-xs leading-6"
+                aria-label="システム構成"
+              >
                 {`Browser
   ↓
 Next.js BFF

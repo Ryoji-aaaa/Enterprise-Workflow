@@ -1,6 +1,6 @@
 import {
   ClipboardList,
-  FileChartColumn,
+  House,
   FileSearch,
   FileText,
   LayoutDashboard,
@@ -35,7 +35,7 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
   {
     href: "/top",
     label: "トップ",
-    icon: LayoutDashboard,
+    icon: House,
     isVisible: () => true,
   },
   {
@@ -46,7 +46,7 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
   },
   {
     href: "/expenses/auto-entry",
-    label: "請求/注文書申請（自動入力）",
+    label: "請求書申請(自動入力)",
     icon: FileSearch,
     isVisible: canUseExpenseAutoEntry,
   },
@@ -89,7 +89,7 @@ export const workspaceNavigationItems: readonly WorkspaceNavigationItem[] = [
   {
     href: "/ui-samples",
     label: "UIサンプル",
-    icon: FileChartColumn,
+    icon: LayoutDashboard,
     isVisible: () => true,
   },
 ];

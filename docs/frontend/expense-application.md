@@ -22,7 +22,7 @@ Backendも各APIでDB PermissionとCandidateを検証する。
 通常申請と推測せず安全にエラー表示する。これにより`DRAFT`と`RETURNED`のAUTO_ENTRY申請は専用PUTだけで
 編集し、通常の経費PUTを使わない。
 
-## 請求/注文書申請（自動入力）
+## 請求書申請(自動入力)
 
 `/expenses/auto-entry`は、請求書または注文書の値を確認しながら経費下書きを作成する業務画面である。
 この画面はContent-orientedワークスペースrouteとして常設サイドメニュー列を予約せず、ヘッダーの
