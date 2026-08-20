@@ -17,6 +17,7 @@ workflow:
     issuer: http://localhost:8180/realms/workflow
     client-id: workflow-web
     allowed-email-domain: sdcj.co.jp
+    allowed-external-emails: guest00@example.com,guest01@example.com,guest02@example.com,guest03@example.com
     identity-provider: keycloak
   notification:
     delivery-mode: local-mailpit

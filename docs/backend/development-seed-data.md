@@ -1,8 +1,8 @@
 # 開発用組織・ユーザーデータ
 
-開発用データはFlywayへ入れず、`development` profileかつ`workflow.seed.enabled=true`の
-場合だけInitializerで作成する。Docker ComposeのBackendだけがこのprofileを有効にし、
-staging・productionでは実行しない。
+開発用データはFlywayへ入れず、`development`または`manual-seed` profileかつ
+`workflow.seed.enabled=true`の場合だけInitializerで作成する。Docker Composeの通常Backendは
+`development`だけを有効にし、stagingの通常Backendとproductionでは実行しない。
 
 `DevelopmentSeedData`にSDCJ配下37組織単位の固定コードと階層を定義する。統治組織3件を
 除く34組織に責任者・一般ユーザーを1名ずつ作成し、会社直下に社長を1名作成するため、
@@ -10,6 +10,14 @@ staging・productionでは実行しない。
 必要なDBロールを付与する。さらに雇用区分の境界確認専用として、所属を持たないパート・嘱託
 ユーザーを各1名作成する。この2名は`ORGANIZATION_CHART_VIEWER`を持つがBackendで閲覧を
 拒否される。
+
+外部PoC確認用の`guest00@example.com`から`guest03@example.com`までは、69名の組織図生成
+ユーザーへ混ぜず、4名の独立した`AppUser`として別枠で作成する。全員を
+`SYSTEM_SOLUTION_PROJECT_1`の`MEMBER`へPRIMARY所属させ、直属上司を同Projectの責任者とする。
+業務ロールは通常一般ユーザーと同じ`APPLICATION_USER`と`ORGANIZATION_CHART_VIEWER`だけで、
+Guest専用Role・Permissionや`WORKFLOW_APPROVER`は付与しない。
+`MEMBER`の`approvalLevel=0`をそのまま使うため、経費申請は既存Workflow定義により
+`SAME_UNIT_MANAGER`から`ACCOUNTING`へ進み、Guest本人は承認Candidateにならない。
 
 各有人組織の責任者と経理課の一般ユーザーには`WORKFLOW_APPROVER`を付与する。経理課の有効な
 所属ユーザーは全員が経費承認Candidateになるため、一般ユーザーにも承認Permissionを明示する。
@@ -23,6 +31,10 @@ Keycloak側は最初に`DEV_ADMIN_EMAIL`と`DEV_USER_EMAIL`を作成または同
 作成または同期する。同じemailが複数経路にあっても既存ユーザーを同期するだけで重複作成しない。
 これにより、DB seedの一般ユーザー（既定`example.user1@sdcj.co.jp`）とKeycloak seedのログイン
 ユーザーが一致する。Keycloak Roleは業務認可に使わない。
+
+Local Keycloakの外部PoC Guestは`keycloak/guest-users.tsv`を別catalogとして読み、通常ユーザーの
+`DEV_SEED_PASSWORD`とは独立した`GUEST_SEED_PASSWORD`で同期する。外部メール許可は
+`example.com`ドメイン全体ではなく、`ALLOWED_EXTERNAL_EMAILS`に列挙した4アドレスの完全一致である。
 
 ## Canonical staging test fixture
 
@@ -101,8 +113,8 @@ manual_seed_result target=keycloak created=... existing=... updated=... failed=.
 行い、返されたexecution名とログの集計を保存する。
 
 DB seedはFlyway migrationを実行しない。seed imageは起動時に
-`--spring.flyway.enabled=false`を指定するため、通常Backend revisionでV017までの適用が
-完了していることが必須である。`employment_type does not exist`が発生した状態でseedを
+`--spring.flyway.enabled=false`を指定するため、対象revisionに必要な通常Backend Flyway migrationが
+すべて成功済みであることが必須である。`employment_type does not exist`が発生した状態でseedを
 再試行せず、先に通常Backendのmigration設定と履歴を直す。
 
 ```bash
@@ -122,7 +134,7 @@ Keycloakを個別に実行する。stagingで確認済みの運用順は次の�
    Identityに参照権限があることを確認する。secret値は画面共有やログへ表示しない。
 2. `Deploy staging`を実行し、対象SHAのBackend、Frontend、Keycloak、seed imageと3つのJobを
    Terraformで反映する。
-3. 通常BackendのConsole logと`flyway_schema_history`でV017の成功を確認する。
+3. 通常BackendのConsole logと`flyway_schema_history`で対象revisionに必要な全migrationの成功を確認する。
 4. `job-ewf-stg-seed-db`を開始し、`manual_seed_result target=db ... failed=0`を確認する。
 5. `job-ewf-stg-seed-kc`を開始し、
    `manual_seed_result target=keycloak ... failed=0`を確認する。
@@ -138,3 +150,8 @@ Log Analytics workspaceで対象Job名、execution名、時刻を絞り込む。
 同じJobは冪等に再実行できる。実行履歴、execution名、対象image SHA、2種類の
 `manual_seed_result`を運用記録へ残す。productionにはJobも
 `development-seed-password`も作成せず、staging用imageをproductionで実行しない。
+
+Phase 1ではGuest DB fixtureが`manual-seed` profileからも利用できるが、Azure/Terraform、staging
+Backendの`ALLOWED_EXTERNAL_EMAILS`、staging KeycloakのGuest user・password、seed Jobへの
+`GUEST_SEED_PASSWORD`配線は行わない。更新imageでstaging DB seedだけを実行するとGuestのDB rowは
+作成され得るため、完全なstaging Guestログイン環境はPhase 2の配線完了後に検証する。

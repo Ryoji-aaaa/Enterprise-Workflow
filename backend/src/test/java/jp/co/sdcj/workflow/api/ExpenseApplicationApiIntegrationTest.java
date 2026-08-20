@@ -68,6 +68,7 @@ import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceRepository;
 import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStatus;
 import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStepRepository;
 import jp.co.sdcj.workflow.engine.runtime.WorkflowStepStatus;
+import jp.co.sdcj.workflow.engine.condition.WorkflowContext;
 import jp.co.sdcj.workflow.engine.definition.WorkflowApprovalMode;
 import jp.co.sdcj.workflow.engine.definition.WorkflowAssigneeRule;
 import jp.co.sdcj.workflow.engine.definition.WorkflowAssigneeRuleRepository;
@@ -80,6 +81,7 @@ import jp.co.sdcj.workflow.engine.definition.WorkflowNodeRepository;
 import jp.co.sdcj.workflow.engine.definition.WorkflowNodeType;
 import jp.co.sdcj.workflow.engine.definition.WorkflowTransition;
 import jp.co.sdcj.workflow.engine.definition.WorkflowTransitionRepository;
+import jp.co.sdcj.workflow.engine.subject.ExpenseWorkflowContextProvider;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.AuditLogRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationAttachmentRepository;
@@ -125,6 +127,7 @@ class ExpenseApplicationApiIntegrationTest {
     @Autowired WorkflowNodeRepository workflowNodes;
     @Autowired WorkflowTransitionRepository workflowTransitions;
     @Autowired WorkflowAssigneeRuleRepository workflowRules;
+    @Autowired ExpenseWorkflowContextProvider workflowContextProvider;
     @Autowired AuditLogRepository auditLogs;
     @MockitoSpyBean NotificationOutboxRepository notificationOutbox;
     @MockitoBean AttachmentStorage attachmentStorage;
@@ -139,6 +142,7 @@ class ExpenseApplicationApiIntegrationTest {
     private Position memberPosition;
     private Position managerPosition;
     private AppUser member;
+    private AppUser guest;
     private AppUser sectionManager;
     private AppUser departmentManager;
     private AppUser accountingUser;
@@ -162,11 +166,13 @@ class ExpenseApplicationApiIntegrationTest {
         memberPosition = positions.save(new Position("MEMBER", "一般", 10, 0, SYSTEM));
         managerPosition = positions.save(new Position("MANAGER", "部門長", 50, 50, SYSTEM));
         member = user("member@sdcj.co.jp", "一般社員", "member", now);
+        guest = user("guest00@example.com", "guest00 仮プロジェクト1一般", "guest00", now);
         sectionManager = user("section.manager@sdcj.co.jp", "課長", "section-manager", now);
         departmentManager = user("department.manager@sdcj.co.jp", "部長", "department-manager", now);
         accountingUser = user("accounting@sdcj.co.jp", "経理", "accounting", now);
         assign(member, section, memberPosition, AssignmentType.PRIMARY);
         assign(sectionManager, section, managerPosition, AssignmentType.PRIMARY);
+        assign(guest, section, memberPosition, sectionManager, AssignmentType.PRIMARY);
         assign(departmentManager, department, managerPosition, AssignmentType.PRIMARY);
         assign(accountingUser, accounting, memberPosition, AssignmentType.PRIMARY);
         applicantRole = roles.save(new Role("APPLICANT", "Applicant", null, RoleType.BUSINESS, true, SYSTEM));
@@ -177,7 +183,8 @@ class ExpenseApplicationApiIntegrationTest {
         rolePermissions.save(new RolePermission(applicantRole.getId(), create.getId(), SYSTEM));
         rolePermissions.save(new RolePermission(applicantRole.getId(), read.getId(), SYSTEM));
         rolePermissions.save(new RolePermission(approverRole.getId(), approve.getId(), SYSTEM));
-        grant(member, applicantRole, now); grant(sectionManager, approverRole, now);
+        grant(member, applicantRole, now); grant(guest, applicantRole, now);
+        grant(sectionManager, approverRole, now);
         grant(departmentManager, approverRole, now); grant(accountingUser, approverRole, now);
     }
 
@@ -207,6 +214,55 @@ class ExpenseApplicationApiIntegrationTest {
                 """, UUID.class, applicationId);
         assertThat(applicationUnitSnapshot).isEqualTo(section.getId());
         assertThat(instance.getContextSnapshot()).contains(section.getId().toString());
+    }
+
+    @Test
+    void 外部PoCGuestのContextは一般社員と同じ所属契約で本人IDだけが異なる() throws Exception {
+        UUID guestDraftId = UUID.fromString(createDraft(guest, "guest00"));
+        UUID memberDraftId = UUID.fromString(createDraft(member, "member"));
+        Instant at = Instant.now();
+
+        WorkflowContext guestContext = workflowContextProvider.provide(guestDraftId, guest, at);
+        WorkflowContext memberContext = workflowContextProvider.provide(memberDraftId, member, at);
+
+        assertThat(guestContext.value("applicant.userId")).isEqualTo(guest.getId());
+        assertThat(guestContext.value("applicant.userId"))
+                .isNotEqualTo(memberContext.value("applicant.userId"));
+        assertThat(guestContext.values())
+                .containsEntry("applicant.organizationId", organization.getId())
+                .containsEntry("applicant.organizationUnitId", section.getId())
+                .containsEntry("applicant.parentOrganizationUnitId", department.getId())
+                .containsEntry("applicant.positionCode", "MEMBER")
+                .containsEntry("applicant.approvalLevel", 0)
+                .containsEntry("applicant.isManager", false);
+        for (String field : List.of(
+                "applicant.organizationId",
+                "applicant.organizationUnitId",
+                "applicant.parentOrganizationUnitId",
+                "applicant.positionCode",
+                "applicant.approvalLevel",
+                "applicant.isManager")) {
+            assertThat(guestContext.value(field)).isEqualTo(memberContext.value(field));
+        }
+    }
+
+    @Test
+    void 外部PoCGuestの申請は既存所属長から経理へ進みGuest本人を候補にしない() throws Exception {
+        UUID applicationId = submit(guest, "guest00");
+        var workflowSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(
+                latest(applicationId).getId());
+
+        assertThat(workflowSteps)
+                .extracting("nodeKeySnapshot", "status")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                "SAME_UNIT_MANAGER", WorkflowStepStatus.PENDING),
+                        org.assertj.core.groups.Tuple.tuple(
+                                "ACCOUNTING", WorkflowStepStatus.WAITING));
+        assertThat(candidates.findAllByWorkflowInstanceStepId(workflowSteps.getFirst().getId()))
+                .extracting("candidateUserId")
+                .containsExactly(sectionManager.getId())
+                .doesNotContain(guest.getId());
     }
 
     @Test
@@ -762,8 +818,13 @@ class ExpenseApplicationApiIntegrationTest {
                 now.minus(1, ChronoUnit.DAYS), SYSTEM)); return user;
     }
     private void assign(AppUser user, OrganizationUnit unit, Position position, AssignmentType type) {
+        assign(user, unit, position, null, type);
+    }
+    private void assign(AppUser user, OrganizationUnit unit, Position position,
+            AppUser manager, AssignmentType type) {
         assignments.save(new UserOrganizationAssignment(user.getId(), unit.getId(), position.getId(), type,
-                type == AssignmentType.PRIMARY, null, LocalDate.now().minusDays(1), null, SYSTEM));
+                type == AssignmentType.PRIMARY, manager == null ? null : manager.getId(),
+                LocalDate.now().minusDays(1), null, SYSTEM));
     }
     private Permission permission(String code, String action) {
         return permissions.save(new Permission(code, code, "EXPENSE_APPLICATION", action, null, SYSTEM));

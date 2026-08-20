@@ -8,7 +8,7 @@ readonly REALM_URL="${KEYCLOAK_INTERNAL_URL}/admin/realms/${KEYCLOAK_REALM}"
 readonly USER_PROFILE_URL="${REALM_URL}/users/profile"
 readonly OAUTH_CALLBACK_URL="${BETTER_AUTH_URL}/api/auth/oauth2/callback/keycloak"
 readonly DEVELOPMENT_USERS_FILE="${DEVELOPMENT_USERS_FILE:-/opt/workflow/development-users.tsv}"
-readonly DEVELOPMENT_USER_PASSWORD="${DEV_SEED_PASSWORD:-password}"
+readonly GUEST_USERS_FILE="${GUEST_USERS_FILE:-/opt/workflow/guest-users.tsv}"
 
 for variable_name in \
   KEYCLOAK_ADMIN \
@@ -17,9 +17,12 @@ for variable_name in \
   KEYCLOAK_CLIENT_ID \
   BETTER_AUTH_URL \
   ALLOWED_EMAIL_DOMAIN \
+  ALLOWED_EXTERNAL_EMAILS \
   DEV_ADMIN_EMAIL \
   DEV_USER_EMAIL \
-  DEV_PENDING_EMAIL; do
+  DEV_PENDING_EMAIL \
+  DEV_SEED_PASSWORD \
+  GUEST_SEED_PASSWORD; do
   eval "variable_value=\${${variable_name}:-}"
   if [ -z "${variable_value}" ]; then
     echo "Required variable ${variable_name} is not set." >&2
@@ -248,9 +251,10 @@ configure_user_name() {
     ' "${user_result}" >/dev/null
 }
 
-ensure_development_user() {
+ensure_seed_user() {
   email="$1"
   display_name="$2"
+  password="$3"
 
   admin_get "${REALM_URL}/users" "${user_list}" \
     --data-urlencode "username=${email}" \
@@ -306,7 +310,7 @@ ensure_development_user() {
     ' "${user_list}" >"${user_payload}"
   admin_put "${REALM_URL}/users/${user_uuid}" "${user_payload}"
 
-  jq -n --arg password "${DEVELOPMENT_USER_PASSWORD}" \
+  jq -n --arg password "${password}" \
     '{type: "password", value: $password, temporary: false}' >"${user_payload}"
   admin_put "${REALM_URL}/users/${user_uuid}/reset-password" "${user_payload}"
 }
@@ -319,7 +323,7 @@ while IFS="$(printf '\t')" read -r seed_email seed_display_name; do
   case "${seed_email}" in
     ''|'#'*) continue ;;
   esac
-  ensure_development_user "${seed_email}" "${seed_display_name}"
+  ensure_seed_user "${seed_email}" "${seed_display_name}" "${DEV_SEED_PASSWORD}"
 done <"${DEVELOPMENT_USERS_FILE}"
 
 configure_user_name "${DEV_ADMIN_EMAIL}" "開発" "管理者"
@@ -343,7 +347,38 @@ jq --exit-status '
 ' "${profile_required_result}" >/dev/null
 
 escaped_domain="$(printf '%s' "${ALLOWED_EMAIL_DOMAIN}" | sed 's/\./\\./g')"
-email_regex="^[A-Za-z0-9.!#%&'*+/=?^_\`{|}~-]+@${escaped_domain}$"
+company_email_regex="[A-Za-z0-9.!#%&'*+/=?^_\`{|}~-]+@${escaped_domain}"
+external_email_regex=""
+seen_external_emails="
+"
+remaining_external_emails="${ALLOWED_EXTERNAL_EMAILS},"
+while [ -n "${remaining_external_emails}" ]; do
+  external_email="${remaining_external_emails%%,*}"
+  remaining_external_emails="${remaining_external_emails#*,}"
+  external_email="$(printf '%s' "${external_email}" \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | tr '[:upper:]' '[:lower:]')"
+  [ -n "${external_email}" ] || continue
+  case "${seen_external_emails}" in
+    *"
+${external_email}
+"*) continue ;;
+  esac
+  seen_external_emails="${seen_external_emails}${external_email}
+"
+  escaped_external_email="$(printf '%s' "${external_email}" \
+    | sed 's/[^[:alnum:]]/\\&/g')"
+  if [ -z "${external_email_regex}" ]; then
+    external_email_regex="${escaped_external_email}"
+  else
+    external_email_regex="${external_email_regex}|${escaped_external_email}"
+  fi
+done
+email_regex="^(${company_email_regex}"
+if [ -n "${external_email_regex}" ]; then
+  email_regex="${email_regex}|${external_email_regex}"
+fi
+email_regex="${email_regex})$"
 jq --arg pattern "${email_regex}" '
   if ([.attributes[] | select(.name == "email")] | length) != 1 then
     error("User Profile must contain exactly one email attribute")
@@ -377,6 +412,17 @@ jq --exit-status --slurp '
     true
   end)
 ' "${profile_initial}" "${profile_final_result}" >/dev/null
+
+if [ ! -r "${GUEST_USERS_FILE}" ]; then
+  echo "Guest user definition is not readable: ${GUEST_USERS_FILE}" >&2
+  exit 1
+fi
+while IFS="$(printf '\t')" read -r seed_email seed_display_name; do
+  case "${seed_email}" in
+    ''|'#'*) continue ;;
+  esac
+  ensure_seed_user "${seed_email}" "${seed_display_name}" "${GUEST_SEED_PASSWORD}"
+done <"${GUEST_USERS_FILE}"
 
 cat "${profile_final_result}"
 echo "Configured Keycloak through the internal Admin REST API." >&2

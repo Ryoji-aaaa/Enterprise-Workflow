@@ -38,15 +38,21 @@ Self RegistrationはRealm設定で無効化する。KeycloakのRealm RoleやClie
 共通パスワードは`DEV_SEED_PASSWORD`（既定`password`）であり、
 この初期化コンテナはローカルdevelopmentでのみ使用する。
 
+外部PoC確認用の4ユーザーは`keycloak/guest-users.tsv`で別管理し、
+`guest00@example.com`から`guest03@example.com`までを冪等に同期する。passwordは通常ユーザーとは
+独立した`GUEST_SEED_PASSWORD`を必須とし、`DEV_SEED_PASSWORD`へfallbackしない。実passwordは
+Git、ログ、文書へ記録しない。Azure stagingへのpassword・allowlist・Guest seed配線はPhase 2で扱う。
+
 ## User Profile
 
 Realm import対象ではないため、User Profile JSONをimportディレクトリへ配置しない。
 Realm起動後、内部ネットワーク上のAdmin REST APIで現在値をGETし、次の順に最小更新する。
 
 1. email属性を常時必須の`required={}`にする
-2. email属性へ許可ドメイン正規表現を設定する
+2. email属性へ会社ドメインまたは外部メール完全一致allowlistの正規表現を設定する
 
-正規表現は`ALLOWED_EMAIL_DOMAIN`のドットをエスケープし、`jq --arg`でJSONへ設定する。
+正規表現は`ALLOWED_EMAIL_DOMAIN`のドットと`ALLOWED_EXTERNAL_EMAILS`の各文字列を正規表現用に
+エスケープし、`jq --arg`でJSONへ設定する。外部許可は`example.com`全体ではなく4 Guestの完全一致である。
 
 Keycloak 26.7.0では、GET結果に存在しない`unmanagedAttributePolicy`へ`DISABLED`を
 追加してPUTするとHTTP 400になる。そのため、この項目は追加せず、既存値がある場合も
@@ -68,7 +74,8 @@ Keycloak 26.7.0では、GET結果に存在しない`unmanagedAttributePolicy`へ
 - Realmが存在しSelf Registrationが無効
 - `workflow-web`が1件だけ存在し、要求したFlow設定を持つ
 - 管理者、一般、未登録テストユーザーが存在
+- 外部PoC Guest 4名が存在し、通常ユーザーと別のpassword sourceでログインできる
 - emailが必須
-- 許可ドメイン正規表現が設定済み
+- 会社ドメインと外部メール完全一致allowlistの正規表現が設定済み
 - `unmanagedAttributePolicy`が未設定
 - Discovery endpointがHTTP 200で、有効なissuerを返す

@@ -7,6 +7,7 @@ public record SecurityProperties(
         String issuer,
         String clientId,
         String allowedEmailDomain,
+        String allowedExternalEmails,
         String identityProvider
 ) {
 }

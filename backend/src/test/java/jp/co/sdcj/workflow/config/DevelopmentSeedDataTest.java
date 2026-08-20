@@ -41,6 +41,26 @@ class DevelopmentSeedDataTest {
     }
 
     @Test
+    void 外部PoCGuestは既存69組織図ユーザーとは別枠で4名を一意に定義する() {
+        assertThat(DevelopmentSeedData.GUEST_USERS)
+                .hasSize(4)
+                .extracting(DevelopmentSeedData.GuestUserDefinition::email)
+                .containsExactly(
+                        "guest00@example.com",
+                        "guest01@example.com",
+                        "guest02@example.com",
+                        "guest03@example.com")
+                .doesNotHaveDuplicates();
+        assertThat(DevelopmentSeedData.GUEST_USERS)
+                .extracting(DevelopmentSeedData.GuestUserDefinition::displayName)
+                .containsExactly(
+                        "guest00 仮プロジェクト1一般",
+                        "guest01 仮プロジェクト1一般",
+                        "guest02 仮プロジェクト1一般",
+                        "guest03 仮プロジェクト1一般");
+    }
+
+    @Test
     void productionProfileでは開発initializerを登録しない() {
         new ApplicationContextRunner()
                 .withInitializer(context ->

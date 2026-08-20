@@ -341,6 +341,13 @@ SELECT
     WHERE email = 'president@sdcj.co.jp'
        OR email LIKE '%.head@sdcj.co.jp'
        OR email LIKE '%.user@sdcj.co.jp') || ':' ||
+  (SELECT count(*)
+     FROM app_users
+    WHERE email IN (
+      'guest00@example.com',
+      'guest01@example.com',
+      'guest02@example.com',
+      'guest03@example.com')) || ':' ||
   (SELECT count(*) FROM organization_units) || ':' ||
   (SELECT count(*) FROM positions) || ':' ||
   (SELECT count(*) FROM user_organization_assignments) || ':' ||
@@ -350,9 +357,9 @@ SELECT
       AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP));
 SQL
   )"
-  [[ "${development_organization_summary}" == "69:39:7:71:184" ]] || {
+  [[ "${development_organization_summary}" == "69:4:39:7:75:192" ]] || {
     fail_check "Development organization seed data does not match." \
-      "users:units:positions:assignments:roles = 69:39:7:71:184" \
+      "organization_users:guests:units:positions:assignments:roles = 69:4:39:7:75:192" \
       "${development_organization_summary}"
   }
 

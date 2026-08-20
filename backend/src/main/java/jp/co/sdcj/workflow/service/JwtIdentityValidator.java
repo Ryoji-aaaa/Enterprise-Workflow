@@ -2,6 +2,9 @@ package jp.co.sdcj.workflow.service;
 
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.regex.Pattern;
 
 import org.springframework.http.HttpStatus;
@@ -16,6 +19,7 @@ public class JwtIdentityValidator {
 
     private final SecurityProperties properties;
     private final Pattern allowedEmailPattern;
+    private final Set<String> allowedExternalEmails;
 
     public JwtIdentityValidator(SecurityProperties properties) {
         this.properties = properties;
@@ -24,6 +28,12 @@ public class JwtIdentityValidator {
                         + Pattern.quote(properties.allowedEmailDomain())
                         + "$",
                 Pattern.CASE_INSENSITIVE);
+        this.allowedExternalEmails = Stream.of(
+                        Objects.requireNonNullElse(properties.allowedExternalEmails(), "").split(",", -1))
+                .map(String::trim)
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public AuthenticatedIdentity validate(Jwt jwt) {
@@ -50,7 +60,8 @@ public class JwtIdentityValidator {
         if (!Boolean.TRUE.equals(jwt.getClaimAsBoolean("email_verified"))) {
             throw forbidden("EMAIL_NOT_VERIFIED");
         }
-        if (!allowedEmailPattern.matcher(email).matches()) {
+        if (!allowedEmailPattern.matcher(email).matches()
+                && !allowedExternalEmails.contains(email)) {
             throw new ApiException(
                     HttpStatus.FORBIDDEN,
                     "EMAIL_DOMAIN_NOT_ALLOWED",

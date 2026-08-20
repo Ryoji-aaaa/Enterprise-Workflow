@@ -56,7 +56,7 @@ class ExternalIdentityServiceTest {
                 appUserRepository,
                 externalIdentityRepository,
                 statusHistoryRepository,
-                new SecurityProperties(ISSUER, "workflow-web", "sdcj.co.jp", "keycloak"),
+                new SecurityProperties(ISSUER, "workflow-web", "sdcj.co.jp", "", "keycloak"),
                 metadataProvider,
                 auditLogService);
     }

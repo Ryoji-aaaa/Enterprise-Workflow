@@ -21,7 +21,8 @@ sessionStorage、画面レスポンスへ公開しません。
 ## 利用拒否
 
 - JWTがない、またはissuerが不正な場合、Spring BootはHTTP 401を返す。
-- email未検証、許可ドメイン外、Client不一致の場合はHTTP 403を返す。
+- email未検証、会社ドメインにも外部メール完全一致allowlistにも該当しない場合、またはClient不一致の
+  場合はHTTP 403を返す。外部PoC Guestは4アドレスだけを許可し、`example.com`全体は許可しない。
 - Keycloakには存在しても業務DBへ未登録の場合、利用申請を冪等記録してHTTP 403を返す。
 - 業務ユーザーが`SUSPENDED`、`DISABLED`、`RETIRED`または有効期間外の場合、
   Keycloakで認証済みでもHTTP 403を返す。
