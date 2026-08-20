@@ -1018,7 +1018,7 @@ test("通常経費の申請再試行は最初に保存したDRAFTを再利用す
   await page.unroute(expenseApiPath);
 });
 
-test("請求/注文書申請（自動入力）は保存・申請・差戻し・再編集・再申請できる", async ({ browser, page }) => {
+test("請求書申請(自動入力)は保存・申請・差戻し・再編集・再申請できる", async ({ browser, page }) => {
   test.setTimeout(90_000);
 
   const [applicant, managerPersona] = await Promise.all([
@@ -1026,9 +1026,9 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     loadStagingPersona("DEPARTMENT_MANAGER"),
   ]);
   await login(page, applicant.email, seedUserPassword);
-  await page.getByRole("link", { name: "請求/注文書申請（自動入力）", exact: true }).click();
+  await page.getByRole("link", { name: "請求書申請(自動入力)", exact: true }).click();
   await expect(page).toHaveURL(/\/expenses\/auto-entry$/);
-  await expect(page.getByRole("heading", { name: "請求/注文書申請（自動入力）", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "請求書申請(自動入力)", exact: true })).toBeVisible();
   await expect(page.locator('[data-workspace-layout="content-oriented"]')).toHaveCSS("display", "block");
   await expect(page.getByRole("complementary", { name: "サイドメニュー" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "モバイルナビゲーション" })).toHaveCount(0);
@@ -1037,7 +1037,7 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   await menuTrigger.click();
   const drawer = page.getByRole("dialog", { name: "ワークスペースメニュー" });
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole("link", { name: "請求/注文書申請（自動入力）", exact: true }))
+  await expect(drawer.getByRole("link", { name: "請求書申請(自動入力)", exact: true }))
     .toHaveAttribute("aria-current", "page");
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();

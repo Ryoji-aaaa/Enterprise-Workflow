@@ -234,7 +234,7 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
     await expect(page).toHaveURL(/\/expenses\/auto-entry$/);
     await expect(
       page.getByRole("heading", {
-        name: "請求/注文書申請（自動入力）",
+        name: "請求書申請(自動入力)",
         exact: true,
       }),
     ).toBeVisible();

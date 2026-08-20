@@ -272,7 +272,7 @@ test("一般ユーザーがログインしてPoC案内とUIサンプルを表示
   await expect(userMenu).toBeHidden();
   await expect(
     page.getByRole("heading", {
-      name: "AIを利用した請求書・注文書からの経費申請自動入力 PoC",
+      name: "AI+OCRを利用した請求書・注文書からの経費申請自動入力 PoC",
       exact: true,
     }),
   ).toBeVisible();
