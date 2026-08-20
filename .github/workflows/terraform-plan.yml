@@ -16,6 +16,7 @@ on:
       - "scripts/test-check-terraform-plan-safety.sh"
       - "scripts/fixtures/terraform-plan-safety-*.json"
       - "scripts/check-manual-seed-job-names.sh"
+      - "scripts/check-staging-guest-identity.sh"
       - "scripts/lib/log.sh"
       - "scripts/verify-document-analysis-azure.sh"
       - "scripts/verify-infra.sh"

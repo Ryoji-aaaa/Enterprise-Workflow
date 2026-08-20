@@ -26,8 +26,14 @@ module "environment" {
   document_intelligence_enabled          = var.document_intelligence_enabled
   content_understanding_enabled          = var.content_understanding_enabled
   allowed_email_domain                   = var.allowed_email_domain
-  vnet_address_space                     = var.vnet_address_space
-  container_apps_subnet_prefixes         = var.container_apps_subnet_prefixes
-  postgres_subnet_prefixes               = var.postgres_subnet_prefixes
-  private_endpoint_subnet_prefixes       = var.private_endpoint_subnet_prefixes
+  allowed_external_emails = [
+    "guest00@example.com",
+    "guest01@example.com",
+    "guest02@example.com",
+    "guest03@example.com",
+  ]
+  vnet_address_space               = var.vnet_address_space
+  container_apps_subnet_prefixes   = var.container_apps_subnet_prefixes
+  postgres_subnet_prefixes         = var.postgres_subnet_prefixes
+  private_endpoint_subnet_prefixes = var.private_endpoint_subnet_prefixes
 }

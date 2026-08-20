@@ -39,18 +39,34 @@ fi
 : "${KEYCLOAK_ADMIN_USERNAME:?KEYCLOAK_ADMIN_USERNAME is required}"
 : "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}"
 : "${KEYCLOAK_REALM:?KEYCLOAK_REALM is required}"
+: "${ALLOWED_EMAIL_DOMAIN:?ALLOWED_EMAIL_DOMAIN is required}"
+: "${ALLOWED_EXTERNAL_EMAILS:?ALLOWED_EXTERNAL_EMAILS is required}"
 : "${DEV_SEED_PASSWORD:?DEV_SEED_PASSWORD is required}"
+: "${GUEST_SEED_PASSWORD:?GUEST_SEED_PASSWORD is required}"
 : "${DEV_ADMIN_EMAIL:?DEV_ADMIN_EMAIL is required}"
 : "${DEV_USER_EMAIL:?DEV_USER_EMAIL is required}"
 
 readonly users_file="${DEVELOPMENT_USERS_FILE:-/app/development-users.tsv}"
+readonly guest_users_file="${GUEST_USERS_FILE:-/app/guest-users.tsv}"
 [[ -r "${users_file}" ]] || {
   echo "Development user definition is not readable: ${users_file}" >&2
   exit 1
 }
+[[ -r "${guest_users_file}" ]] || {
+  echo "Guest user definition is not readable: ${guest_users_file}" >&2
+  exit 1
+}
+
+case "${ALLOWED_EMAIL_DOMAIN}" in
+  *[!A-Za-z0-9.-]*|.*|*.|*..*)
+    echo "ALLOWED_EMAIL_DOMAIN is not a valid DNS domain." >&2
+    exit 1
+    ;;
+esac
 
 readonly keycloak_url="${KEYCLOAK_URL%/}"
 readonly realm_url="${keycloak_url}/admin/realms/${KEYCLOAK_REALM}"
+readonly user_profile_url="${realm_url}/users/profile"
 token=""
 token_obtained_at=0
 
@@ -77,9 +93,90 @@ api() {
     "$@"
 }
 
+configure_user_profile() {
+  local profile_initial profile_updated profile_final
+  local escaped_domain company_email_regex external_email_regex
+  local seen_external_emails remaining_external_emails external_email
+  local escaped_external_email email_regex
+
+  profile_initial="$(api "${user_profile_url}")"
+  jq --exit-status 'type == "object"' <<<"${profile_initial}" >/dev/null
+
+  escaped_domain="$(printf '%s' "${ALLOWED_EMAIL_DOMAIN}" | sed 's/\./\\./g')"
+  company_email_regex="[A-Za-z0-9.!#%&'*+/=?^_\`{|}~-]+@${escaped_domain}"
+  external_email_regex=""
+  seen_external_emails=$'\n'
+  remaining_external_emails="${ALLOWED_EXTERNAL_EMAILS},"
+  while [[ -n "${remaining_external_emails}" ]]; do
+    external_email="${remaining_external_emails%%,*}"
+    remaining_external_emails="${remaining_external_emails#*,}"
+    external_email="$(
+      printf '%s' "${external_email}" \
+        | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+        | tr '[:upper:]' '[:lower:]'
+    )"
+    [[ -n "${external_email}" ]] || continue
+    if [[ "${seen_external_emails}" == *$'\n'"${external_email}"$'\n'* ]]; then
+      continue
+    fi
+    seen_external_emails+="${external_email}"$'\n'
+    escaped_external_email="$(
+      printf '%s' "${external_email}" | sed 's/[^[:alnum:]]/\\&/g'
+    )"
+    if [[ -z "${external_email_regex}" ]]; then
+      external_email_regex="${escaped_external_email}"
+    else
+      external_email_regex+="|${escaped_external_email}"
+    fi
+  done
+
+  email_regex="^(${company_email_regex}"
+  if [[ -n "${external_email_regex}" ]]; then
+    email_regex+="|${external_email_regex}"
+  fi
+  email_regex+=')$'
+
+  profile_updated="$(
+    jq --arg pattern "${email_regex}" '
+      if ([.attributes[] | select(.name == "email")] | length) != 1 then
+        error("User Profile must contain exactly one email attribute")
+      else
+        (.attributes[] | select(.name == "email").required) = {}
+        | (.attributes[] | select(.name == "email").validations.pattern) = {
+            "pattern": $pattern,
+            "error-message": "Email must use the approved company domain."
+          }
+      end
+    ' <<<"${profile_initial}"
+  )"
+  printf '%s' "${profile_updated}" \
+    | api --request PUT "${user_profile_url}" --data-binary @-
+
+  profile_final="$(api "${user_profile_url}")"
+  jq --exit-status --arg pattern "${email_regex}" '
+    any(
+      .attributes[];
+      .name == "email" and
+      .required == {} and
+      .validations.pattern.pattern == $pattern
+    )
+  ' <<<"${profile_final}" >/dev/null
+  jq --exit-status --slurp '
+    (.[0] | has("unmanagedAttributePolicy")) as $before_has |
+    (.[1] | has("unmanagedAttributePolicy")) as $after_has |
+    ($before_has == $after_has) and
+    (if $before_has then
+      .[0].unmanagedAttributePolicy == .[1].unmanagedAttributePolicy
+    else
+      true
+    end)
+  ' <(printf '%s' "${profile_initial}") <(printf '%s' "${profile_final}") >/dev/null
+}
+
 ensure_user() {
   local email="$1"
   local display_name="$2"
+  local password="$3"
   local users_json user_count user_uuid desired_json
 
   if ((SECONDS - token_obtained_at >= 30)); then
@@ -123,7 +220,7 @@ ensure_user() {
     user_uuid="$(jq --exit-status --raw-output '
       if length == 1 then .[0].id else error("created user lookup was not unique") end
     ' <<<"${users_json}")"
-    jq --null-input --arg password "${DEV_SEED_PASSWORD}" \
+    jq --null-input --arg password "${password}" \
       '{type: "password", value: $password, temporary: false}' \
       | api --request PUT "${realm_url}/users/${user_uuid}/reset-password" --data-binary @-
     created=$((created + 1))
@@ -163,21 +260,30 @@ ensure_user() {
     api --request PUT "${realm_url}/users/${user_uuid}" --data-binary "${desired_json}"
   fi
 
-  jq --null-input --arg password "${DEV_SEED_PASSWORD}" \
+  jq --null-input --arg password "${password}" \
     '{type: "password", value: $password, temporary: false}' \
     | api --request PUT "${realm_url}/users/${user_uuid}/reset-password" --data-binary @-
   updated=$((updated + 1))
 }
 
-ensure_user "${DEV_ADMIN_EMAIL}" "開発管理者"
-ensure_user "${DEV_USER_EMAIL}" "開発一般ユーザー"
+configure_user_profile
+
+ensure_user "${DEV_ADMIN_EMAIL}" "開発管理者" "${DEV_SEED_PASSWORD}"
+ensure_user "${DEV_USER_EMAIL}" "開発一般ユーザー" "${DEV_SEED_PASSWORD}"
 
 while IFS=$'\t' read -r seed_email seed_display_name; do
   case "${seed_email}" in
     ''|'#'*) continue ;;
   esac
-  ensure_user "${seed_email}" "${seed_display_name}"
+  ensure_user "${seed_email}" "${seed_display_name}" "${DEV_SEED_PASSWORD}"
 done <"${users_file}"
+
+while IFS=$'\t' read -r seed_email seed_display_name; do
+  case "${seed_email}" in
+    ''|'#'*) continue ;;
+  esac
+  ensure_user "${seed_email}" "${seed_display_name}" "${GUEST_SEED_PASSWORD}"
+done <"${guest_users_file}"
 
 completed=true
 log_result

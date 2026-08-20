@@ -6,6 +6,19 @@ run_backend_suite() {
       <(tail -n +2 "${PROJECT_DIRECTORY}/keycloak/development-users.tsv") \
       <(tail -n +3 "${PROJECT_DIRECTORY}/backend/seed/development-users.tsv")
 
+  run_phase backend check guest-users CHECK \
+    "Backend / Guest user definitions" failed \
+    "logs/backend/guest-users.log" \
+    diff --unified \
+      "${PROJECT_DIRECTORY}/keycloak/guest-users.tsv" \
+      <(tail -n +2 "${PROJECT_DIRECTORY}/backend/seed/guest-users.tsv")
+
+  run_phase backend check seed-image-contract BUILD \
+    "Backend / seed runtime image contract" failed \
+    "logs/backend/seed-image-contract.log" \
+    env RUN_ID="${RUN_ID}" \
+      bash "${TEST_TOOL_DIRECTORY}/checks/seed-image-contract.sh"
+
   run_phase backend check staging-test-personas CHECK \
     "Backend / staging test persona contract" failed \
     "logs/backend/staging-test-personas.log" \

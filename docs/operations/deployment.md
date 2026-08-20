@@ -5,7 +5,8 @@
 1. bootstrap resourceとOIDC/RBACを作る。
 2. 環境を`provision_workloads=false`でapplyし、経費証憑Storage Account、非公開container、
    Backend Blob専用Managed Identityを含むfoundationを作る。
-3. Key Vaultへ6個の通常秘密値と、stagingだけに開発seed passwordを登録する。
+3. Key Vaultへ6個の通常秘密値と、stagingだけに通常開発ユーザー用・Guest用の
+   2つのseed passwordを別々登録する。
 4. GitHub Environmentの`PROVISION_WORKLOADS`を`true`にする。
 5. staging workflowを手動実行するか、実装をmainへmergeする。
 6. SHA image push、Terraform apply、Keycloak設定、smoke testの成功を確認する。
@@ -23,6 +24,9 @@ external URLを持たないため、Container Apps revisionのprobeとLog Analyt
 staging開発データはdeployから投入しない。必要な期間だけ、
 [`development-seed-data.md`](../backend/development-seed-data.md)の手動Container Apps Jobを
 対象別に開始する。productionにはseed Jobを作成せず、seed入口もproductionを拒否する。
+Guestを利用する場合は、staging Key Vaultの`guest-seed-password`をJobから
+`GUEST_SEED_PASSWORD`として参照し、`ALLOWED_EXTERNAL_EMAILS`に4アドレスだけを設定する。
+secret値はTerraform、GitHub Actions、ログ、運用記録へ出力しない。
 
 Azureにはメールサービスを配置せず、通知delivery modeは`disabled`固定とする。SMTP、メール配送、
 通知Outbox行、メール履歴API・画面は存在しない。Backendのliveness/readinessはmailを評価せず、
@@ -327,6 +331,20 @@ Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。dep
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
 
+Guest identity統合のdeploy後は、secret値を表示せずに次も確認する。
+
+1. Backend revisionの`ALLOWED_EXTERNAL_EMAILS`が`guest00@example.com`から
+   `guest03@example.com`の4件だけである。
+2. `job-ewf-stg-seed-all`に`guest-seed-password`のKey Vault参照と
+   `GUEST_SEED_PASSWORD`、`ALLOWED_EMAIL_DOMAIN`、`ALLOWED_EXTERNAL_EMAILS`がある。
+3. `job-ewf-stg-seed-all`を2回実行し、両回ともDBとKeycloakの
+   `manual_seed_result ... failed=0`をexecution名、対象image SHAと共に記録する。
+4. `guest00@example.com`と`guest01@example.com`のログイン、業務identityを確認し、
+   `guest00@example.com`でAUTO_ENTRYから申請・submit・
+   `SAME_UNIT_MANAGER`→`ACCOUNTING`をsmokeする。
+5. `guest01@example.com`から`guest00@example.com`のowner dataを参照・更新できないことと、
+   Keycloak User Profileが`example.com`全体ではなく4 Guestの完全一致であることを確認する。
+
 Jobの`Execution history`は開始・終了時刻、状態、execution名を確認する入口である。各executionの
 `Console`にはSpring Bootまたはseed scriptの標準出力・例外、`System`にはimage pull、replica、
 Managed Identity、secret参照などContainer Apps基盤のイベントが出る。アプリケーション例外は
@@ -341,6 +359,7 @@ System log、Log Analytics、依存先の順に調べる。代表例は次のと
 | 症状 | 確認・対応 |
 | --- | --- |
 | `development-seed-password`を参照できない | staging Key Vaultに有効なsecret versionがあることと、JobのUser Assigned Managed Identityに`Key Vault Secrets User`があることを確認する。値はログへ出さない。 |
+| `guest-seed-password`を参照できない、または`GUEST_SEED_PASSWORD is required` | staging Key Vaultに有効なsecret versionがあること、Jobが既存runtime identityでversionless secret URIを参照することを確認する。`DEV_SEED_PASSWORD`へfallbackさせず、Guest専用IdentityやRBACを追加しない。 |
 | `employment_type does not exist` | 通常Backendが`SPRING_FLYWAY_TARGET=006`で止まっていないか、`CONTRACT_LEGACY_USER_COLUMNS=true`か、`flyway_schema_history`がV008まで成功しているかを確認する。DB seed Job自身はFlywayを無効化している。 |
 | Docker build中のDocker Hub `i/o timeout` | base image取得時だけの一時通信障害ならworkflowを再実行する。コード、migration、Terraformの失敗と混同しない。 |
 | Container Apps Jobが`Failed` | System logだけで判断せず、対象executionのConsole logでSpring例外と`manual_seed_result ... failed=...`を確認する。部分成功後は原因を直し、冪等な対象Jobを再実行する。 |
