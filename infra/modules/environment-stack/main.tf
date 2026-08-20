@@ -392,6 +392,7 @@ module "backend" {
       DOCUMENT_ANALYSIS_STORAGE_CREATE_CONTAINERS          = "false"
     },
     var.environment == "staging" ? {
+      ALLOWED_EXTERNAL_EMAILS                      = join(",", var.allowed_external_emails)
       CONTENT_UNDERSTANDING_AUTO_ENTRY_ANALYZER_ID = "enterprise_workflow_auto_entry_v2.1.1"
       CONTENT_UNDERSTANDING_AUTO_ENTRY_COMPLETION_DEPLOYMENT_NAME = (
         azurerm_cognitive_deployment.content_understanding_auto_entry_completion[0].name
@@ -618,6 +619,16 @@ resource "azurerm_container_app_job" "manual_seed" {
     key_vault_secret_id = "${module.key_vault.vault_uri}secrets/development-seed-password"
   }
 
+  dynamic "secret" {
+    for_each = contains(["keycloak", "all"], each.key) ? [true] : []
+
+    content {
+      name                = "guest-seed-password"
+      identity            = module.runtime_identity.id
+      key_vault_secret_id = "${module.key_vault.vault_uri}secrets/guest-seed-password"
+    }
+  }
+
   manual_trigger_config {
     parallelism              = 1
     replica_completion_count = 1
@@ -672,8 +683,24 @@ resource "azurerm_container_app_job" "manual_seed" {
         value = var.keycloak_realm
       }
       env {
+        name  = "ALLOWED_EMAIL_DOMAIN"
+        value = var.allowed_email_domain
+      }
+      env {
+        name  = "ALLOWED_EXTERNAL_EMAILS"
+        value = join(",", var.allowed_external_emails)
+      }
+      env {
         name        = "DEV_SEED_PASSWORD"
         secret_name = "development-seed-password"
+      }
+      dynamic "env" {
+        for_each = contains(["keycloak", "all"], each.key) ? [true] : []
+
+        content {
+          name        = "GUEST_SEED_PASSWORD"
+          secret_name = "guest-seed-password"
+        }
       }
       env {
         name  = "DEV_ADMIN_EMAIL"

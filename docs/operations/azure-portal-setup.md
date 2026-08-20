@@ -129,4 +129,10 @@ stagingで手動seed Jobを利用する場合だけ、staging Vaultへ次も登�
 
 ```text
 development-seed-password
+guest-seed-password
 ```
+
+2つのseed passwordは別credentialとし、同じ値へ統合しない。
+`guest-seed-password`はTerraform variable、GitHub Secret、tfvars、文書へ複製しない。
+Container Apps Jobは既存runtime identityの`Key Vault Secrets User`でこのsecretを参照するため、
+Guest用のManaged Identity、Role Assignment、Access Policyは追加しない。

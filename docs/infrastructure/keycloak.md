@@ -41,7 +41,9 @@ Self RegistrationはRealm設定で無効化する。KeycloakのRealm RoleやClie
 外部PoC確認用の4ユーザーは`keycloak/guest-users.tsv`で別管理し、
 `guest00@example.com`から`guest03@example.com`までを冪等に同期する。passwordは通常ユーザーとは
 独立した`GUEST_SEED_PASSWORD`を必須とし、`DEV_SEED_PASSWORD`へfallbackしない。実passwordは
-Git、ログ、文書へ記録しない。Azure stagingへのpassword・allowlist・Guest seed配線はPhase 2で扱う。
+Git、ログ、文書へ記録しない。Azure stagingはseed image内の
+`backend/seed/guest-users.tsv`を同じcatalogとして使い、Key Vaultの`guest-seed-password`を
+manual seed Jobの`GUEST_SEED_PASSWORD`へ参照する。
 
 ## User Profile
 
@@ -64,6 +66,7 @@ Keycloak 26.7.0では、GET結果に存在しない`unmanagedAttributePolicy`へ
 一時コンテナ内に限定し、アプリケーション認証には使用しない。
 
 - `configure-keycloak.sh`: User ProfileのGETとPUT
+- `backend/scripts/seed-keycloak-users.sh`: staging manual seedのUser Profile更新とuser同期
 - `check-keycloak.sh`: Realm、Client、ユーザー、User Profile、Discoveryのhuman/NDJSON検証
 
 トークン、管理者パスワード、レスポンス中の資格情報はログへ出力しない。

@@ -96,8 +96,10 @@ zone冗長化、メールサービス、custom domain/WAFは今回の対象外�
 stagingでは通常のFrontend、Backend、Keycloak Container Appsに加え、開発用データを手動で
 投入する`job-ewf-stg-seed-db`、`job-ewf-stg-seed-kc`、`job-ewf-stg-seed-all`を同じ
 Container Apps Environmentに置く。Jobはscheduleを持たず、通常deployから自動開始しない。
-seed passwordはstaging Key Vaultの`development-seed-password`をManaged Identityで参照する。
-productionではこれらのJobとsecretを作成しない。詳細は
+seed passwordはstaging Key Vaultの`development-seed-password`と`guest-seed-password`を
+同じ既存runtime Managed Identityでそれぞれ参照する。staging BackendとKeycloakは会社ドメインに加え、
+Guest 4アドレスだけを完全一致で許可する。productionではこれらのJob、
+Guest secret参照、Guest allowlistを作成しない。詳細は
 [開発・staging用seedデータ](../backend/development-seed-data.md)を参照する。
 
 Container Appsを含むTerraform管理リソースをAzure Portalから直接変更しない。Portalは

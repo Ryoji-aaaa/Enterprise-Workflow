@@ -35,6 +35,8 @@ Keycloak側は最初に`DEV_ADMIN_EMAIL`と`DEV_USER_EMAIL`を作成または同
 Local Keycloakの外部PoC Guestは`keycloak/guest-users.tsv`を別catalogとして読み、通常ユーザーの
 `DEV_SEED_PASSWORD`とは独立した`GUEST_SEED_PASSWORD`で同期する。外部メール許可は
 `example.com`ドメイン全体ではなく、`ALLOWED_EXTERNAL_EMAILS`に列挙した4アドレスの完全一致である。
+staging seed imageは同じGuest catalogを`/app/guest-users.tsv`に含み、manual Keycloak seedでも
+同じアドレス4件とcredential分離を使う。
 
 ## Canonical staging test fixture
 
@@ -94,6 +96,12 @@ Job定義は`WORKFLOW_MANUAL_SEED_ENABLED=true`、
 値の欠落、不正値、`production`を終了コード非0で拒否する。Terraformはproductionに
 これらのJobを作成しない。
 
+Keycloak targetは、管理者認証後にUser Profileのemail制約を会社ドメインと
+`guest00@example.com`から`guest03@example.com`の完全一致へ先に更新し、再GETで
+検証してから通常development user、Guestの順に同期する。これにより、既存Realmが
+会社ドメインだけを許可する状態でも、Guest作成前に非破壊でupgradeできる。
+`unmanagedAttributePolicy`、他attribute、Guestと無関係のvalidationは保持する。
+
 各処理はemail、組織コード、役職コードと期間重複を自然キーとして冪等に動作する。
 Keycloakの既存ユーザーは毎回passwordを指定値へ同期するため、既存ユーザーは`existing`と
 `updated`の両方へ計上される。終了時には次の形式で集計をログ出力し、成功時は終了コード0、
@@ -109,8 +117,12 @@ manual_seed_result target=db created=... existing=... updated=... failed=...
 manual_seed_result target=keycloak created=... existing=... updated=... failed=...
 ```
 
-実行前にstaging Key Vaultへ`development-seed-password`を登録する。実行は対象Jobを明示して
-行い、返されたexecution名とログの集計を保存する。
+実行前にstaging Key Vaultへ`development-seed-password`と`guest-seed-password`を別の
+secretとして登録する。Terraformはsecret valueを作成・取得・保持せず、既存secretの
+versionless URIだけをJobから参照する。`GUEST_SEED_PASSWORD`はKeycloakを対象とする
+`keycloak`または`all` targetで必須であり、`DEV_SEED_PASSWORD`へfallbackしない。
+`db` targetはKeycloak seed scriptを呼ばないため、Guest passwordを処理上は必要としない。
+実行時は対象Jobを明示し、返されたexecution名とログの集計を保存する。
 
 DB seedはFlyway migrationを実行しない。seed imageは起動時に
 `--spring.flyway.enabled=false`を指定するため、対象revisionに必要な通常Backend Flyway migrationが
@@ -125,21 +137,31 @@ az containerapp job start \
 az containerapp job start \
   --resource-group rg-enterprise-workflow-staging \
   --name job-ewf-stg-seed-kc
+
+az containerapp job start \
+  --resource-group rg-enterprise-workflow-staging \
+  --name job-ewf-stg-seed-all
 ```
 
-`all` Jobも利用できるが、初回確認と障害復旧では部分成功の境界を明確にするため、DB、
-Keycloakを個別に実行する。stagingで確認済みの運用順は次のとおり。
+Guest統合rolloutの受入では`all` Jobを使い、DB→Keycloakの順序と両方の集計を
+1 executionで確認する。障害復旧で部分成功の境界を切り分ける場合は、`db`と
+`keycloak`を個別に実行できる。stagingのGuest受入順は次のとおり。
 
-1. staging Key Vaultに`development-seed-password`の有効なversionがあり、JobのManaged
-   Identityに参照権限があることを確認する。secret値は画面共有やログへ表示しない。
+1. staging Key Vaultに`development-seed-password`と`guest-seed-password`の有効なversionがあり、
+   Jobの既存runtime Managed Identityに`Key Vault Secrets User`があることを確認する。
+   secret値は画面共有やログへ表示しない。
 2. `Deploy staging`を実行し、対象SHAのBackend、Frontend、Keycloak、seed imageと3つのJobを
    Terraformで反映する。
 3. 通常BackendのConsole logと`flyway_schema_history`で対象revisionに必要な全migrationの成功を確認する。
-4. `job-ewf-stg-seed-db`を開始し、`manual_seed_result target=db ... failed=0`を確認する。
-5. `job-ewf-stg-seed-kc`を開始し、
+4. `job-ewf-stg-seed-all`を開始し、`manual_seed_result target=db ... failed=0`と
    `manual_seed_result target=keycloak ... failed=0`を確認する。
-6. `president@sdcj.co.jp`でログインし、組織図とユーザー管理を表示できることを確認する。
-7. 一般ユーザーの編集不可と、パート・嘱託の組織図閲覧不可を確認する。
+5. 同じ`all` Jobをもう1回開始し、両集計が再度`failed=0`となることを確認する。
+6. `guest00@example.com`と`guest01@example.com`でログインし、業務identity、所属、
+   `APPLICATION_USER`、`ORGANIZATION_CHART_VIEWER`を確認する。
+7. `guest00@example.com`でAUTO_ENTRYから経費申請をsubmitし、
+   `SAME_UNIT_MANAGER`→`ACCOUNTING`の既存経路になることを確認する。
+8. `guest01@example.com`から`guest00@example.com`の申請、AUTO_ENTRY context、
+   Document Analysis結果、添付をownerとして参照・更新できないことを確認する。
 
 Portalでは対象Jobの`Execution history`からexecutionを選び、`Console`で
 `manual_seed_result`とSpring例外を確認する。`System`はimage pull、replica作成、Managed
@@ -148,10 +170,5 @@ System logだけを見て原因を判断しない。長期検索はContainer App
 Log Analytics workspaceで対象Job名、execution名、時刻を絞り込む。
 
 同じJobは冪等に再実行できる。実行履歴、execution名、対象image SHA、2種類の
-`manual_seed_result`を運用記録へ残す。productionにはJobも
-`development-seed-password`も作成せず、staging用imageをproductionで実行しない。
-
-Phase 1ではGuest DB fixtureが`manual-seed` profileからも利用できるが、Azure/Terraform、staging
-Backendの`ALLOWED_EXTERNAL_EMAILS`、staging KeycloakのGuest user・password、seed Jobへの
-`GUEST_SEED_PASSWORD`配線は行わない。更新imageでstaging DB seedだけを実行するとGuestのDB rowは
-作成され得るため、完全なstaging Guestログイン環境はPhase 2の配線完了後に検証する。
+`manual_seed_result`を運用記録へ残す。productionにはJob、両seed password、Guest allowlist、
+`GUEST_SEED_PASSWORD`を作成・設定せず、staging用imageをproductionで実行しない。

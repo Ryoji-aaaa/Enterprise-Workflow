@@ -68,6 +68,10 @@ variable "keycloak_client_id" {
   default = "workflow-web"
 }
 variable "allowed_email_domain" { type = string }
+variable "allowed_external_emails" {
+  type    = list(string)
+  default = []
+}
 variable "vnet_address_space" {
   type    = list(string)
   default = ["10.40.0.0/16"]

@@ -47,6 +47,7 @@ COPY --from=build /workspace/target/workflow-backend-*.jar app.jar
 COPY scripts/manual-seed.sh /app/manual-seed.sh
 COPY scripts/seed-keycloak-users.sh /app/seed-keycloak-users.sh
 COPY seed/development-users.tsv /app/development-users.tsv
+COPY seed/guest-users.tsv /app/guest-users.tsv
 RUN chmod 0555 /app/manual-seed.sh /app/seed-keycloak-users.sh
 USER 10001
 ENTRYPOINT ["/app/manual-seed.sh"]

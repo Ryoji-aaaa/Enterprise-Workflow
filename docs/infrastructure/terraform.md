@@ -20,6 +20,20 @@ soft deleteを必須とする。
 手動Container Apps Jobを作る。Jobにschedule/event triggerはなく、通常deployからも開始しない。
 productionでは`for_each`が空になり、seed Jobを作成しない。
 
+`allowed_external_emails`のmodule既定値は空listである。staging rootだけが
+`guest00@example.com`から`guest03@example.com`の4件を固定値で渡し、Backendの
+`ALLOWED_EXTERNAL_EMAILS`とmanual seed Jobの同名environment variableへCSVで設定する。
+manual seed Jobは`ALLOWED_EMAIL_DOMAIN`も受け取り、Keycloak User Profileの完全一致patternを
+構築する。production rootはmodule既定値のままで、Backendに
+`ALLOWED_EXTERNAL_EMAILS`を設定しない。
+
+stagingの3つのmanual seed Jobは、既存Key Vault secretの
+`development-seed-password`を既存runtime identityで参照する。Keycloakを対象とする
+`job-ewf-stg-seed-kc`と`job-ewf-stg-seed-all`だけが`guest-seed-password`も参照し、
+DBだけを対象とする`job-ewf-stg-seed-db`にはGuest secretとenvironment variableを設定しない。
+Terraformはどちらのsecret valueも作成・読取・state保持せず、Key Vault全体の既存
+`Key Vault Secrets User`付与を使う。Guest専用Job、Managed Identity、Role Assignmentは作成しない。
+
 Document Analysis Azure mode用のresourceはworkloadではなくfoundationとして作成する。
 `environment-stack`は環境ごとに次を作成する。
 
@@ -85,7 +99,8 @@ make verify-infra
 
 このターゲットは`terraform fmt -check`、bootstrap・staging・production各rootの
 `terraform init -backend=false`と`validate`に加え、Backend probe、内部Backend URL、
-staging限定の手動seed Job名とproduction guard、経費証憑container・identity・RBAC境界、
+staging限定の手動seed Job名、Guest exact allowlist、Key Vault参照とproduction guard、
+経費証憑container・identity・RBAC境界、
 Document Analysis Azure resource・UAMI・RBAC・Private Endpoint・Private DNS・Backend環境変数境界と、
 staging限定model deploymentの固定model/version/SKU/capacityを検証する。
 各rootへ`.terraform/`を生成するが、

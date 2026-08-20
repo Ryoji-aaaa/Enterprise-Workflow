@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "infra/**"
+      - "backend/seed/guest-users.tsv"
+      - "keycloak/guest-users.tsv"
       - "Makefile"
       - ".github/workflows/terraform-plan.yml"
       - "scripts/check-attachment-storage.sh"
@@ -16,6 +18,7 @@ on:
       - "scripts/test-check-terraform-plan-safety.sh"
       - "scripts/fixtures/terraform-plan-safety-*.json"
       - "scripts/check-manual-seed-job-names.sh"
+      - "scripts/check-staging-guest-identity.sh"
       - "scripts/lib/log.sh"
       - "scripts/verify-document-analysis-azure.sh"
       - "scripts/verify-infra.sh"
