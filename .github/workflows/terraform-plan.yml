@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "infra/**"
+      - "backend/seed/guest-users.tsv"
+      - "keycloak/guest-users.tsv"
       - "Makefile"
       - ".github/workflows/terraform-plan.yml"
       - "scripts/check-attachment-storage.sh"

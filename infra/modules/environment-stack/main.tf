@@ -619,10 +619,14 @@ resource "azurerm_container_app_job" "manual_seed" {
     key_vault_secret_id = "${module.key_vault.vault_uri}secrets/development-seed-password"
   }
 
-  secret {
-    name                = "guest-seed-password"
-    identity            = module.runtime_identity.id
-    key_vault_secret_id = "${module.key_vault.vault_uri}secrets/guest-seed-password"
+  dynamic "secret" {
+    for_each = contains(["keycloak", "all"], each.key) ? [true] : []
+
+    content {
+      name                = "guest-seed-password"
+      identity            = module.runtime_identity.id
+      key_vault_secret_id = "${module.key_vault.vault_uri}secrets/guest-seed-password"
+    }
   }
 
   manual_trigger_config {
@@ -690,9 +694,13 @@ resource "azurerm_container_app_job" "manual_seed" {
         name        = "DEV_SEED_PASSWORD"
         secret_name = "development-seed-password"
       }
-      env {
-        name        = "GUEST_SEED_PASSWORD"
-        secret_name = "guest-seed-password"
+      dynamic "env" {
+        for_each = contains(["keycloak", "all"], each.key) ? [true] : []
+
+        content {
+          name        = "GUEST_SEED_PASSWORD"
+          secret_name = "guest-seed-password"
+        }
       }
       env {
         name  = "DEV_ADMIN_EMAIL"

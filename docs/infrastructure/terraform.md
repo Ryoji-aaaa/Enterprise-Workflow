@@ -28,7 +28,9 @@ manual seed Jobは`ALLOWED_EMAIL_DOMAIN`も受け取り、Keycloak User Profile�
 `ALLOWED_EXTERNAL_EMAILS`を設定しない。
 
 stagingの3つのmanual seed Jobは、既存Key Vault secretの
-`development-seed-password`と`guest-seed-password`を既存runtime identityで参照する。
+`development-seed-password`を既存runtime identityで参照する。Keycloakを対象とする
+`job-ewf-stg-seed-kc`と`job-ewf-stg-seed-all`だけが`guest-seed-password`も参照し、
+DBだけを対象とする`job-ewf-stg-seed-db`にはGuest secretとenvironment variableを設定しない。
 Terraformはどちらのsecret valueも作成・読取・state保持せず、Key Vault全体の既存
 `Key Vault Secrets User`付与を使う。Guest専用Job、Managed Identity、Role Assignmentは作成しない。
 

@@ -9,10 +9,31 @@ readonly STACK_VARIABLES_FILE="${PROJECT_DIRECTORY}/infra/modules/environment-st
 readonly STAGING_MAIN_FILE="${PROJECT_DIRECTORY}/infra/environments/staging/main.tf"
 readonly PRODUCTION_DIRECTORY="${PROJECT_DIRECTORY}/infra/environments/production"
 readonly PRODUCTION_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/deploy-production.yml"
+readonly TERRAFORM_PLAN_WORKFLOW="${PROJECT_DIRECTORY}/.github/workflows/terraform-plan.yml"
 readonly BACKEND_GUEST_CATALOG="${PROJECT_DIRECTORY}/backend/seed/guest-users.tsv"
 readonly KEYCLOAK_GUEST_CATALOG="${PROJECT_DIRECTORY}/keycloak/guest-users.tsv"
 readonly SEED_DOCKERFILE="${PROJECT_DIRECTORY}/backend/Dockerfile"
 readonly SEED_SCRIPT="${PROJECT_DIRECTORY}/backend/scripts/seed-keycloak-users.sh"
+
+extract_hcl_block() {
+  local block_start="$1"
+
+  awk -v block_start="${block_start}" '
+    !in_block && index($0, block_start) { in_block = 1 }
+    in_block {
+      print
+      opening_braces = gsub(/{/, "{")
+      closing_braces = gsub(/}/, "}")
+      depth += opening_braces - closing_braces
+      if (has_opening_brace && depth == 0) {
+        exit
+      }
+      if (opening_braces > 0) {
+        has_opening_brace = 1
+      }
+    }
+  '
+}
 
 diff --unified \
   "${KEYCLOAK_GUEST_CATALOG}" \
@@ -64,16 +85,38 @@ staging_backend_block="$(sed -n '/var.environment == "staging" ? {/,/} : {},/p' 
 grep -Eq 'ALLOWED_EXTERNAL_EMAILS[[:space:]]*=[[:space:]]*join\(",", var.allowed_external_emails\)' \
   <<<"${staging_backend_block}"
 
-manual_seed_block="$(sed -n '/resource "azurerm_container_app_job" "manual_seed"/,$p' \
-  "${STACK_FILE}")"
+manual_seed_block="$(
+  extract_hcl_block 'resource "azurerm_container_app_job" "manual_seed" {' <"${STACK_FILE}"
+)"
 for required_value in \
-  'name                = "guest-seed-password"' \
-  'key_vault_secret_id = "${module.key_vault.vault_uri}secrets/guest-seed-password"' \
-  'name        = "GUEST_SEED_PASSWORD"' \
-  'secret_name = "guest-seed-password"' \
   'name  = "ALLOWED_EMAIL_DOMAIN"' \
   'name  = "ALLOWED_EXTERNAL_EMAILS"'; do
   grep -Fq "${required_value}" <<<"${manual_seed_block}"
+done
+
+guest_secret_block="$(extract_hcl_block 'dynamic "secret" {' <<<"${manual_seed_block}")"
+for required_value in \
+  'for_each = contains(["keycloak", "all"], each.key) ? [true] : []' \
+  'name                = "guest-seed-password"' \
+  'key_vault_secret_id = "${module.key_vault.vault_uri}secrets/guest-seed-password"'; do
+  grep -Fq "${required_value}" <<<"${guest_secret_block}"
+done
+
+guest_password_env_block="$(extract_hcl_block 'dynamic "env" {' <<<"${manual_seed_block}")"
+for required_value in \
+  'for_each = contains(["keycloak", "all"], each.key) ? [true] : []' \
+  'name        = "GUEST_SEED_PASSWORD"' \
+  'secret_name = "guest-seed-password"'; do
+  grep -Fq "${required_value}" <<<"${guest_password_env_block}"
+done
+
+[[ "$(grep -Fc 'name                = "guest-seed-password"' <<<"${manual_seed_block}")" == '1' ]]
+[[ "$(grep -Fc 'name        = "GUEST_SEED_PASSWORD"' <<<"${manual_seed_block}")" == '1' ]]
+
+for guest_catalog_path in \
+  'backend/seed/guest-users.tsv' \
+  'keycloak/guest-users.tsv'; do
+  grep -Fq -- "- \"${guest_catalog_path}\"" "${TERRAFORM_PLAN_WORKFLOW}"
 done
 
 grep -Fq 'manual_seed_jobs = var.provision_workloads && var.environment == "staging"' \
