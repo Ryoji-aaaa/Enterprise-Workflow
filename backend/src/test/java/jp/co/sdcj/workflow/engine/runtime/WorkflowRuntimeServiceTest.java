@@ -141,8 +141,10 @@ class WorkflowRuntimeServiceTest {
 
     @Test
     void cancellationCancelsAllUnprocessedSteps() {
-        when(instances.findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(
-                SUBJECT_TYPE, instance.getSubjectId())).thenReturn(Optional.of(instance));
+        when(instances.findLatestIdBySubject(SUBJECT_TYPE, instance.getSubjectId()))
+                .thenReturn(Optional.of(instance.getId()));
+        when(steps.findFirstByWorkflowInstanceIdAndStatusOrderByStepOrder(
+                instance.getId(), WorkflowStepStatus.PENDING)).thenReturn(Optional.of(first));
 
         WorkflowInstanceDetails details = service.cancelLatest(SUBJECT_TYPE, instance.getSubjectId(), requester);
 

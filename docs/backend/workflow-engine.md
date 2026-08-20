@@ -41,7 +41,8 @@ V021はCandidate選定時に使用したPermission scopeを`permission_scope_sna
 ## 定義検証と実行計画
 
 公開定義の読込み時に、STARTとENDが各1つ、参照nodeの存在、APPROVAL nodeの担当者rule、resolver名と
-parameter、条件schema、cycle、STARTからの到達可能性、ENDへの到達可能性を検証する。
+parameter、条件schema、cycle、全nodeがSTARTから到達可能であること、全nodeからENDへ到達可能であること、
+ENDがoutgoing transitionを持たないterminal nodeであることを検証する。
 計画生成は対象業務の`WorkflowContextProvider`、担当者の`WorkflowAssigneeResolver`をregistryから選び、
 通過するAPPROVAL nodeと候補者をすべて解決する。候補者0人、主所属不足、必要組織不足はInstanceを
 一部作成せずtransaction全体をロールバックする。
@@ -63,7 +64,9 @@ Instanceは`PENDING`、`APPROVED`、`RETURNED`、`CANCELLED`、Stepは`WAITING`�
 `RETURNED`、後続を`CANCELLED`にし、対象業務を`RETURNED`にする。再申請は古いInstanceを変更せず、
 同じ対象へrun numberを増やした新Instanceを作る。
 
-承認・差戻しはStepを悲観lockし、`PENDING`、Candidate、自己承認禁止、snapshotされた必須Permission、
+承認・差戻し・取下げのWorkflow mutationは、現在のStepを悲観lockしてから状態を再検証し、その後に
+対象業務をlockする。競合時は先にlockを取得した操作だけをcommitし、後続操作を409で拒否する。
+承認・差戻しはStep lock後に`PENDING`、Candidate、自己承認禁止、snapshotされた必須Permission、
 CandidateごとにsnapshotされたglobalまたはOrganization Unit scopeでの現在DB Permissionを
 同一transaction内で再確認する。現在組織からCandidateを再計算しない。二重送信や別Candidateの競合では最初の1件だけを
 確定し、後続は409で拒否する。Step、Instance、対象業務の状態変更、action、監査、次候補通知を同じ

@@ -51,6 +51,7 @@ public class WorkflowDefinitionValidator {
             }
         }
         Map<UUID, List<UUID>> edges = new HashMap<>();
+        Map<UUID, List<UUID>> reverseEdges = new HashMap<>();
         model.transitions().forEach(transition -> {
             if (!nodes.containsKey(transition.getFromNodeId()) || !nodes.containsKey(transition.getToNodeId()))
                 invalid("Transition references a node from another definition");
@@ -59,14 +60,21 @@ public class WorkflowDefinitionValidator {
             conditions.validate(transition.getConditionJson(), schema);
             edges.computeIfAbsent(transition.getFromNodeId(), ignored -> new java.util.ArrayList<>())
                     .add(transition.getToNodeId());
+            reverseEdges.computeIfAbsent(transition.getToNodeId(), ignored -> new java.util.ArrayList<>())
+                    .add(transition.getFromNodeId());
         });
+        UUID endId = ends.getFirst().getId();
+        if (!edges.getOrDefault(endId, List.of()).isEmpty())
+            invalid("END node must not have outgoing transitions");
         Set<UUID> cycleVisited = new HashSet<>();
         for (UUID nodeId : nodes.keySet()) {
             detectCycles(nodeId, edges, new HashSet<>(), cycleVisited);
         }
         Set<UUID> reachable = reachableFrom(starts.getFirst().getId(), edges);
-        if (!reachable.contains(ends.getFirst().getId())) invalid("END is not reachable from START");
+        if (!reachable.contains(endId)) invalid("END is not reachable from START");
         if (!reachable.containsAll(nodes.keySet())) invalid("All nodes must be reachable from START");
+        Set<UUID> canReachEnd = reachableFrom(endId, reverseEdges);
+        if (!canReachEnd.containsAll(nodes.keySet())) invalid("All nodes must be able to reach END");
     }
     private static void detectCycles(UUID node, Map<UUID, List<UUID>> edges,
             Set<UUID> visiting, Set<UUID> visited) {

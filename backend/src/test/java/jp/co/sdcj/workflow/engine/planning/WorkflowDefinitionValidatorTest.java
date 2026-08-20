@@ -110,6 +110,41 @@ class WorkflowDefinitionValidatorTest {
     }
 
     @Test
+    void endNodeWithOutgoingTransitionIsRejected() {
+        WorkflowNode afterEnd = approval("AFTER_END");
+        WorkflowDefinitionModel endWithOutgoing = new WorkflowDefinitionModel(
+                definition, version,
+                List.of(start, approval, end, afterEnd),
+                List.of(
+                        transition("START_APPROVAL", start, approval, null),
+                        transition("APPROVAL_END", approval, end, null),
+                        transition("END_AFTER_END", end, afterEnd, null)),
+                List.of(rule(approval), rule(afterEnd)));
+
+        assertThatThrownBy(() -> validator.validate(endWithOutgoing, schema))
+                .isInstanceOf(WorkflowDefinitionException.class)
+                .hasMessageContaining("END node must not have outgoing transitions");
+    }
+
+    @Test
+    void reachableDeadEndIsRejected() {
+        WorkflowNode branchA = approval("BRANCH_A");
+        WorkflowNode deadEnd = approval("DEAD_END");
+        WorkflowDefinitionModel graphWithDeadEnd = new WorkflowDefinitionModel(
+                definition, version,
+                List.of(start, branchA, deadEnd, end),
+                List.of(
+                        transition("START_A", start, branchA, null),
+                        transition("START_DEAD_END", start, deadEnd, null),
+                        transition("A_END", branchA, end, null)),
+                List.of(rule(branchA), rule(deadEnd)));
+
+        assertThatThrownBy(() -> validator.validate(graphWithDeadEnd, schema))
+                .isInstanceOf(WorkflowDefinitionException.class)
+                .hasMessageContaining("reach END");
+    }
+
+    @Test
     void cycleMultipleStartUnknownFieldAndUnknownResolverAreRejected() {
         assertThatThrownBy(() -> validator.validate(model(List.of(start, approval, end), List.of(
                 transition("A", start, approval, null), transition("B", approval, start, null))), schema))

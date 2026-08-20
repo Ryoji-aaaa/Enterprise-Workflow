@@ -3,9 +3,11 @@ package jp.co.sdcj.workflow.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -36,12 +38,38 @@ import static org.mockito.Mockito.when;
 
 import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.config.DocumentAnalysisProperties;
+import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.AuditLog;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisJob;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisProviderType;
 import jp.co.sdcj.workflow.domain.DocumentAnalysisStatus;
+import jp.co.sdcj.workflow.domain.ExpenseApplication;
+import jp.co.sdcj.workflow.domain.ExpenseApplicationStatus;
+import jp.co.sdcj.workflow.domain.ExpenseCategory;
 import jp.co.sdcj.workflow.domain.NotificationOutbox;
+import jp.co.sdcj.workflow.domain.Organization;
+import jp.co.sdcj.workflow.domain.OrganizationUnit;
+import jp.co.sdcj.workflow.domain.OrganizationUnitType;
+import jp.co.sdcj.workflow.engine.WorkflowEngine;
+import jp.co.sdcj.workflow.engine.assignee.WorkflowPermissionScopeSnapshot;
+import jp.co.sdcj.workflow.engine.definition.WorkflowApprovalMode;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowActionType;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstance;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceActionRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceCandidate;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceCandidateRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStatus;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStep;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStepRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowRuntimeService;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowStepStatus;
+import jp.co.sdcj.workflow.engine.subject.ApplicantOrganizationResolver;
+import jp.co.sdcj.workflow.engine.subject.WorkflowSubjectLifecycleHandler;
+import jp.co.sdcj.workflow.engine.subject.WorkflowSubjectLifecycleHandlerRegistry;
+import jp.co.sdcj.workflow.service.ExpenseApplicationAccessService;
+import jp.co.sdcj.workflow.service.ExpenseApplicationService;
 import jp.co.sdcj.workflow.service.AuditLogService;
 import jp.co.sdcj.workflow.service.PermissionCodes;
 import jp.co.sdcj.workflow.service.PermissionService;
@@ -50,10 +78,11 @@ import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProvider;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisProviderRegistry;
 import jp.co.sdcj.workflow.service.documentanalysis.DocumentAnalysisService;
 import jp.co.sdcj.workflow.storage.DocumentAnalysisStorage;
+import tools.jackson.databind.ObjectMapper;
 
 /**
- * PostgreSQL-only repository checks for parameter types that H2 cannot model
- * faithfully. This class intentionally uses the {@code *IT} suffix so the
+ * PostgreSQL-only repository and transaction checks for behavior that H2 cannot
+ * model faithfully. This class intentionally uses the {@code *IT} suffix so the
  * default Surefire run does not execute it without an external database.
  */
 @SpringBootTest(
@@ -91,6 +120,36 @@ class PostgreSqlRepositoryIT {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private ExpenseApplicationRepository expenseApplicationRepository;
+
+    @Autowired
+    private ExpenseApplicationItemRepository expenseApplicationItemRepository;
+
+    @Autowired
+    private ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository;
+
+    @Autowired
+    private OrganizationRepository organizationRepository;
+
+    @Autowired
+    private OrganizationUnitRepository organizationUnitRepository;
+
+    @Autowired
+    private WorkflowInstanceRepository workflowInstanceRepository;
+
+    @Autowired
+    private WorkflowInstanceStepRepository workflowInstanceStepRepository;
+
+    @Autowired
+    private WorkflowInstanceCandidateRepository workflowInstanceCandidateRepository;
+
+    @Autowired
+    private WorkflowInstanceActionRepository workflowInstanceActionRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @DynamicPropertySource
     static void configurePostgreSql(DynamicPropertyRegistry registry) {
@@ -327,6 +386,16 @@ class PostgreSqlRepositoryIT {
                 .isEqualTo(1);
     }
 
+    @Test
+    void expenseCancellationAndApprovalSerializeWithoutDeadlock() throws Exception {
+        assertExpenseCancellationRace(WorkflowActionType.APPROVE);
+    }
+
+    @Test
+    void expenseCancellationAndReturnSerializeWithoutDeadlock() throws Exception {
+        assertExpenseCancellationRace(WorkflowActionType.RETURN);
+    }
+
     @AfterEach
     void removeNotificationFixtures() {
         jdbcTemplate.update("delete from notification_outbox");
@@ -371,6 +440,177 @@ class PostgreSqlRepositoryIT {
                 expiresAt == null ? null : Timestamp.from(expiresAt),
                 LEGACY_ADMIN_ID, LEGACY_ADMIN_ID);
     }
+
+    private void assertExpenseCancellationRace(WorkflowActionType competingAction) throws Exception {
+        WorkflowRaceFixture fixture = new TransactionTemplate(transactionManager).execute(
+                status -> createWorkflowRaceFixture());
+        WorkflowRuntimeService runtime = workflowRuntimeForPostgreSqlRace();
+        ExpenseApplicationService expenses = expenseServiceForPostgreSqlRace(runtime);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var cancellation = executor.submit(() -> inTransaction(ready, start,
+                    () -> expenses.cancel(fixture.applicationId(), fixture.requester())));
+            var workflowMutation = executor.submit(() -> inTransaction(ready, start, () -> {
+                if (competingAction == WorkflowActionType.APPROVE) {
+                    runtime.approve(fixture.currentStepId(), null, fixture.approver());
+                } else {
+                    runtime.returnSubject(
+                            fixture.currentStepId(), "PostgreSQL concurrent return", fixture.approver());
+                }
+            }));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(
+                    cancellation.get(10, TimeUnit.SECONDS).status(),
+                    workflowMutation.get(10, TimeUnit.SECONDS).status()))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+
+        WorkflowInstance instance = workflowInstanceRepository.findById(fixture.instanceId()).orElseThrow();
+        ExpenseApplication application = expenseApplicationRepository
+                .findById(fixture.applicationId()).orElseThrow();
+        List<WorkflowInstanceStep> steps = workflowInstanceStepRepository
+                .findAllByWorkflowInstanceIdOrderByStepOrder(fixture.instanceId());
+        var actions = workflowInstanceActionRepository
+                .findAllByWorkflowInstanceIdOrderByCreatedAt(fixture.instanceId());
+
+        if (instance.getStatus() == WorkflowInstanceStatus.CANCELLED) {
+            assertThat(application.getStatus()).isEqualTo(ExpenseApplicationStatus.CANCELLED);
+            assertThat(steps).extracting(WorkflowInstanceStep::getStatus)
+                    .containsOnly(WorkflowStepStatus.CANCELLED);
+            assertThat(actions).extracting("actionType")
+                    .containsExactly(WorkflowActionType.CANCEL);
+        } else if (competingAction == WorkflowActionType.APPROVE) {
+            assertThat(instance.getStatus()).isEqualTo(WorkflowInstanceStatus.PENDING);
+            assertThat(application.getStatus()).isEqualTo(ExpenseApplicationStatus.PENDING_APPROVAL);
+            assertThat(steps).extracting(WorkflowInstanceStep::getStatus)
+                    .containsExactly(WorkflowStepStatus.APPROVED, WorkflowStepStatus.PENDING);
+            assertThat(actions).extracting("actionType")
+                    .containsExactly(WorkflowActionType.APPROVE);
+        } else {
+            assertThat(instance.getStatus()).isEqualTo(WorkflowInstanceStatus.RETURNED);
+            assertThat(application.getStatus()).isEqualTo(ExpenseApplicationStatus.RETURNED);
+            assertThat(steps).extracting(WorkflowInstanceStep::getStatus)
+                    .containsExactly(WorkflowStepStatus.RETURNED, WorkflowStepStatus.CANCELLED);
+            assertThat(actions).extracting("actionType")
+                    .containsExactly(WorkflowActionType.RETURN);
+        }
+    }
+
+    private WorkflowRaceFixture createWorkflowRaceFixture() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        Instant now = Instant.now();
+        AppUser requester = appUserRepository.save(new AppUser(
+                "pg-requester-" + suffix, "pg-requester-" + suffix + "@sdcj.co.jp",
+                "PostgreSQL requester", AccountStatus.ACTIVE, now.minusSeconds(60), null,
+                LEGACY_ADMIN_ID));
+        AppUser approver = appUserRepository.save(new AppUser(
+                "pg-approver-" + suffix, "pg-approver-" + suffix + "@sdcj.co.jp",
+                "PostgreSQL approver", AccountStatus.ACTIVE, now.minusSeconds(60), null,
+                LEGACY_ADMIN_ID));
+        Organization organization = organizationRepository.save(new Organization(
+                "PG_RACE_" + suffix, "PostgreSQL workflow race", LocalDate.now().minusDays(1),
+                null, LEGACY_ADMIN_ID));
+        OrganizationUnit unit = organizationUnitRepository.save(new OrganizationUnit(
+                organization.getId(), null, "PG_UNIT_" + suffix, "PostgreSQL unit",
+                OrganizationUnitType.DIVISION, 1, LocalDate.now().minusDays(1), null,
+                LEGACY_ADMIN_ID));
+        ExpenseApplication application = new ExpenseApplication(
+                "PG-RACE-" + suffix, requester, organization.getId(), unit, unit,
+                ExpenseCategory.OTHER, "PostgreSQL race", "Lock ordering verification",
+                LocalDate.now(), BigDecimal.ONE, null, LEGACY_ADMIN_ID);
+        application.submit(now, requester.getId());
+        expenseApplicationRepository.saveAndFlush(application);
+
+        UUID definitionVersionId = jdbcTemplate.queryForObject(
+                "select id from workflow_definition_versions order by version_number desc limit 1",
+                UUID.class);
+        WorkflowInstance instance = workflowInstanceRepository.saveAndFlush(new WorkflowInstance(
+                definitionVersionId, "EXPENSE_APPLICATION", application.getId(), 1,
+                requester.getId(), "{}", "{}", now));
+        WorkflowInstanceStep current = new WorkflowInstanceStep(
+                instance.getId(), 1, "CURRENT", "Current approval", WorkflowApprovalMode.ANY_ONE,
+                "TEST_APPROVE", "{}", WorkflowStepStatus.PENDING);
+        WorkflowInstanceStep next = new WorkflowInstanceStep(
+                instance.getId(), 2, "NEXT", "Next approval", WorkflowApprovalMode.ANY_ONE,
+                "TEST_APPROVE", "{}", WorkflowStepStatus.WAITING);
+        workflowInstanceStepRepository.saveAllAndFlush(List.of(current, next));
+        workflowInstanceCandidateRepository.saveAndFlush(new WorkflowInstanceCandidate(
+                current.getId(), approver, "{}",
+                objectMapper.writeValueAsString(WorkflowPermissionScopeSnapshot.global())));
+        return new WorkflowRaceFixture(
+                application.getId(), instance.getId(), current.getId(), requester, approver);
+    }
+
+    private WorkflowRuntimeService workflowRuntimeForPostgreSqlRace() {
+        PermissionService permissions = mock(PermissionService.class);
+        when(permissions.hasPermission(any(), anyString())).thenReturn(true);
+        WorkflowSubjectLifecycleHandler lifecycle = new WorkflowSubjectLifecycleHandler() {
+            @Override public String subjectType() { return "EXPENSE_APPLICATION"; }
+            @Override public void started(WorkflowInstance instance, WorkflowInstanceStep firstStep,
+                    List<WorkflowInstanceCandidate> candidates, AppUser requester, Instant at) {}
+            @Override public void stepActivated(WorkflowInstance instance, WorkflowInstanceStep step,
+                    List<WorkflowInstanceCandidate> candidates, Instant at) {
+                applicationForUpdate(instance);
+            }
+            @Override public void approved(WorkflowInstance instance, WorkflowInstanceStep finalStep,
+                    AppUser actor, Instant at) {
+                applicationForUpdate(instance).approve(at, actor.getId());
+            }
+            @Override public void returned(WorkflowInstance instance, WorkflowInstanceStep step,
+                    AppUser actor, String reason, Instant at) {
+                applicationForUpdate(instance).returnToApplicant(at, reason, actor.getId());
+            }
+            @Override public void cancelled(WorkflowInstance instance, AppUser actor, Instant at) {
+                applicationForUpdate(instance).cancel(at, actor.getId());
+            }
+            private ExpenseApplication applicationForUpdate(WorkflowInstance instance) {
+                return expenseApplicationRepository.findByIdForUpdate(instance.getSubjectId()).orElseThrow();
+            }
+        };
+        return new WorkflowRuntimeService(
+                workflowInstanceRepository, workflowInstanceStepRepository,
+                workflowInstanceCandidateRepository, workflowInstanceActionRepository,
+                permissions, mock(AuditLogService.class),
+                new WorkflowSubjectLifecycleHandlerRegistry(List.of(lifecycle)), objectMapper);
+    }
+
+    private ExpenseApplicationService expenseServiceForPostgreSqlRace(WorkflowRuntimeService runtime) {
+        AuditLogService audit = mock(AuditLogService.class);
+        ExpenseApplicationAccessService access = new ExpenseApplicationAccessService(
+                expenseApplicationRepository, mock(jp.co.sdcj.workflow.engine.runtime.WorkflowAccessService.class),
+                audit);
+        return new ExpenseApplicationService(
+                expenseApplicationRepository, autoEntryContextRepository, access,
+                expenseApplicationItemRepository, mock(ApplicantOrganizationResolver.class),
+                mock(WorkflowEngine.class), runtime, audit, jdbcTemplate);
+    }
+
+    private OperationResult inTransaction(
+            CountDownLatch ready, CountDownLatch start, ThrowingMutation mutation) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Timed out waiting for concurrent workflow mutation");
+        }
+        return new TransactionTemplate(transactionManager).execute(status -> {
+            try {
+                mutation.run();
+                return new OperationResult(200);
+            } catch (ApiException exception) {
+                status.setRollbackOnly();
+                return new OperationResult(exception.getStatus().value());
+            }
+        });
+    }
+
+    private record WorkflowRaceFixture(
+            UUID applicationId, UUID instanceId, UUID currentStepId,
+            AppUser requester, AppUser approver) {}
+    private record OperationResult(int status) {}
+    @FunctionalInterface
+    private interface ThrowingMutation { void run(); }
 
     private static String requiredEnvironment(String name) {
         String value = System.getenv(name);

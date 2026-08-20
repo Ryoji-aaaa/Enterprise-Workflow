@@ -387,6 +387,16 @@ class ExpenseApplicationApiIntegrationTest {
     }
 
     @Test
+    void 取下げと承認の実並行競合は一方だけ成功して状態を整合させる() throws Exception {
+        assertConcurrentCancellationRace("approve");
+    }
+
+    @Test
+    void 取下げと差戻しの実並行競合は一方だけ成功して状態を整合させる() throws Exception {
+        assertConcurrentCancellationRace("return");
+    }
+
+    @Test
     void 組織ScopeのCandidateはSnapshotした対象組織で承認できる() throws Exception {
         userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
         grant(sectionManager, approverRole, section, Instant.now());
@@ -784,6 +794,84 @@ class ExpenseApplicationApiIntegrationTest {
                         .with(jwt(approver, subject))
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andReturn().getResponse().getStatus();
+    }
+    private void assertConcurrentCancellationRace(String workflowAction) throws Exception {
+        UUID applicationId = submit(member, "member");
+        var instance = latest(applicationId);
+        var workflowSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        UUID currentStepId = workflowSteps.getFirst().getId();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var cancellation = executor.submit(() -> concurrentCancel(applicationId, ready, start));
+            var workflowMutation = executor.submit(() -> concurrentWorkflowMutation(
+                    workflowAction, currentStepId, ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(
+                    cancellation.get(10, TimeUnit.SECONDS),
+                    workflowMutation.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+
+        var persistedInstance = instances.findById(instance.getId()).orElseThrow();
+        var persistedSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        String applicationStatus = jdbc.queryForObject(
+                "select status from expense_applications where id = ?",
+                String.class, applicationId);
+        int cancelActions = actionCount(instance.getId(), "CANCEL");
+        int competingActions = actionCount(instance.getId(), workflowAction.toUpperCase());
+
+        if (persistedInstance.getStatus() == WorkflowInstanceStatus.CANCELLED) {
+            assertThat(applicationStatus).isEqualTo("CANCELLED");
+            assertThat(persistedSteps).extracting("status")
+                    .containsOnly(WorkflowStepStatus.CANCELLED);
+            assertThat(cancelActions).isEqualTo(1);
+            assertThat(competingActions).isZero();
+        } else if (workflowAction.equals("approve")) {
+            assertThat(persistedInstance.getStatus()).isEqualTo(WorkflowInstanceStatus.PENDING);
+            assertThat(applicationStatus).isEqualTo("PENDING_APPROVAL");
+            assertThat(persistedSteps).extracting("status")
+                    .containsExactly(WorkflowStepStatus.APPROVED, WorkflowStepStatus.PENDING);
+            assertThat(cancelActions).isZero();
+            assertThat(competingActions).isEqualTo(1);
+        } else {
+            assertThat(persistedInstance.getStatus()).isEqualTo(WorkflowInstanceStatus.RETURNED);
+            assertThat(applicationStatus).isEqualTo("RETURNED");
+            assertThat(persistedSteps).extracting("status")
+                    .containsExactly(WorkflowStepStatus.RETURNED, WorkflowStepStatus.CANCELLED);
+            assertThat(cancelActions).isZero();
+            assertThat(competingActions).isEqualTo(1);
+        }
+    }
+    private int concurrentCancel(
+            UUID applicationId, CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent cancellation start timed out");
+        }
+        return mockMvc.perform(post("/api/expense-applications/{id}/cancel", applicationId)
+                        .with(jwt(member, "member")))
+                .andReturn().getResponse().getStatus();
+    }
+    private int concurrentWorkflowMutation(
+            String action, UUID stepId, CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent workflow mutation start timed out");
+        }
+        String content = action.equals("return") ? "{\"comment\":\"修正してください\"}" : "{}";
+        return mockMvc.perform(post("/api/workflow/tasks/{id}/{action}", stepId, action)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content(content))
+                .andReturn().getResponse().getStatus();
+    }
+    private int actionCount(UUID instanceId, String actionType) {
+        return jdbc.queryForObject("""
+                select count(*) from workflow_instance_actions
+                where workflow_instance_id = ? and action_type = ?
+                """, Integer.class, instanceId, actionType);
     }
     private String upload(
             String applicationId, AppUser user, String subject, String fileName) throws Exception {

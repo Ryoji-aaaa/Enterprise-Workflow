@@ -173,7 +173,8 @@ public class ExpenseApplicationService {
 
     @Transactional
     public ExpenseApplicationDetails cancel(UUID applicationId, AppUser applicant) {
-        ExpenseApplication application = ownedForUpdate(applicationId, applicant);
+        ExpenseApplication application = accessService.owned(
+                applicationId, applicant, "EXPENSE_APPLICATION_UPDATE_DENIED");
         if (application.getStatus() != ExpenseApplicationStatus.PENDING_APPROVAL) {
             throw conflict("EXPENSE_APPLICATION_INVALID_STATUS", "現在の状態では取り下げできません。");
         }

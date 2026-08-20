@@ -84,12 +84,20 @@ public class WorkflowRuntimeService {
 
     @Transactional
     public WorkflowInstanceDetails cancelLatest(String subjectType, UUID subjectId, AppUser actor) {
-        WorkflowInstance instance = instances.findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(subjectType, subjectId)
+        UUID instanceId = instances.findLatestIdBySubject(subjectType, subjectId)
                 .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "WORKFLOW_INSTANCE_NOT_FOUND",
                         "進行中のワークフローがありません。"));
+        WorkflowInstanceStep currentStep = steps
+                .findFirstByWorkflowInstanceIdAndStatusOrderByStepOrder(
+                        instanceId, WorkflowStepStatus.PENDING)
+                .orElse(null);
+        WorkflowInstance instance = instances.findById(instanceId)
+                .orElseThrow(() -> new IllegalStateException("Workflow step has no instance"));
         if (instance.getStatus() != WorkflowInstanceStatus.PENDING)
             throw conflict("WORKFLOW_INSTANCE_NOT_PENDING");
-        List<WorkflowInstanceStep> allSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        if (currentStep == null || currentStep.getStatus() != WorkflowStepStatus.PENDING)
+            throw conflict("WORKFLOW_ALREADY_PROCESSED");
+        List<WorkflowInstanceStep> allSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instanceId);
         if (allSteps.stream().anyMatch(step -> step.getStatus() == WorkflowStepStatus.APPROVED))
             throw conflict("WORKFLOW_ALREADY_PROCESSED");
         allSteps.forEach(WorkflowInstanceStep::cancel); Instant now = Instant.now(); instance.cancel(now);
