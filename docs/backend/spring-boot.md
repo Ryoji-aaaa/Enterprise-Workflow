@@ -30,7 +30,8 @@ Resource Serverの署名・有効期限検証後、業務層で次を再検証�
 - `sub`が存在する
 - `email`が存在する
 - `email_verified`が`true`
-- emailが`ALLOWED_EMAIL_DOMAIN`と完全一致する
+- emailが`ALLOWED_EMAIL_DOMAIN`の会社ドメインに属する、または`ALLOWED_EXTERNAL_EMAILS`に
+  正規化後の完全一致で含まれる
 - `aud`または`azp`が`workflow-web`と一致する
 
 JWT、Client Secret、パスワードはログへ出力しない。業務ユーザーは

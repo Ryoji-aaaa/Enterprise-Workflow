@@ -49,6 +49,7 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
     private static final LocalDate SEED_DATE = LocalDate.of(2026, 1, 1);
     private static final Instant SEED_INSTANT = SEED_DATE.atStartOfDay(ZoneOffset.UTC).toInstant();
     private static final String ACCOUNTING_UNIT_CODE = "ACCOUNTING_SECTION";
+    private static final String GUEST_UNIT_CODE = "SYSTEM_SOLUTION_PROJECT_1";
 
     private static final Map<String, PositionSeed> POSITION_SEEDS = Map.of(
             "PRESIDENT", new PositionSeed("社長", 100, 100),
@@ -165,6 +166,17 @@ public class DevelopmentOrganizationInitializer implements ApplicationRunner {
             if (definition.code().equals(ACCOUNTING_UNIT_CODE)) {
                 assignRoles(member, actor, report, RoleCodes.WORKFLOW_APPROVER);
             }
+        }
+
+        OrganizationUnit guestUnit = units.get(GUEST_UNIT_CODE);
+        AppUser guestManager = heads.get(GUEST_UNIT_CODE);
+        for (DevelopmentSeedData.GuestUserDefinition definition : DevelopmentSeedData.GUEST_USERS) {
+            AppUser guest = createUser(definition.email(), definition.displayName(), actor, report);
+            assignOrganization(
+                    guest, guestUnit, positions.get("MEMBER"), guestManager, actor, report);
+            assignRoles(guest, actor, report,
+                    RoleCodes.APPLICATION_USER,
+                    RoleCodes.ORGANIZATION_CHART_VIEWER);
         }
     }
 

@@ -3,6 +3,11 @@ run_keycloak_suite() {
     "Keycloak / manual seed contract" failed \
     "logs/keycloak/manual-seed-contract.log" \
     bash "${PROJECT_DIRECTORY}/backend/scripts/test-seed-keycloak-users.sh"
+  run_phase keycloak test local-seed-idempotency TEST \
+    "Keycloak / local seed idempotency" failed \
+    "logs/keycloak/local-seed-idempotency.log" \
+    compose run --rm --no-deps keycloak-init \
+      /opt/workflow/configure-keycloak.sh
   run_phase keycloak test contracts TEST \
     "Keycloak / contract tests" failed \
     "logs/keycloak/contracts.log" \

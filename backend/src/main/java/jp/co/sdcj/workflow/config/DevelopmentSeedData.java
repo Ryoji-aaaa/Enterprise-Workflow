@@ -12,6 +12,15 @@ public final class DevelopmentSeedData {
     public static final String PART_TIME_EMAIL = "example.parttime1@sdcj.co.jp";
     public static final String CONTRACT_EMAIL = "example.contract1@sdcj.co.jp";
 
+    public record GuestUserDefinition(String email, String displayName) {
+    }
+
+    public static final List<GuestUserDefinition> GUEST_USERS = List.of(
+            new GuestUserDefinition("guest00@example.com", "guest00 仮プロジェクト1一般"),
+            new GuestUserDefinition("guest01@example.com", "guest01 仮プロジェクト1一般"),
+            new GuestUserDefinition("guest02@example.com", "guest02 仮プロジェクト1一般"),
+            new GuestUserDefinition("guest03@example.com", "guest03 仮プロジェクト1一般"));
+
     public record UnitDefinition(
             String code,
             String name,

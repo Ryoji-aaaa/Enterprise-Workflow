@@ -7,6 +7,7 @@ readonly TOKEN_URL="${KEYCLOAK_INTERNAL_URL}/realms/master/protocol/openid-conne
 readonly REALM_URL="${KEYCLOAK_INTERNAL_URL}/admin/realms/${KEYCLOAK_REALM}"
 readonly USER_PROFILE_URL="${REALM_URL}/users/profile"
 readonly DISCOVERY_URL="${KEYCLOAK_INTERNAL_URL}/realms/${KEYCLOAK_REALM}/.well-known/openid-configuration"
+readonly GUEST_USERS_FILE="${GUEST_USERS_FILE:-/opt/workflow/guest-users.tsv}"
 
 format="human"
 output=""
@@ -39,6 +40,7 @@ client_body="$(mktemp)"
 admin_user_body="$(mktemp)"
 user_body="$(mktemp)"
 pending_user_body="$(mktemp)"
+guest_user_body="$(mktemp)"
 user_count_body="$(mktemp)"
 profile_body="$(mktemp)"
 discovery_body="$(mktemp)"
@@ -46,7 +48,8 @@ discovery_body="$(mktemp)"
 cleanup() {
   rm -f -- "${token_body}" "${response_headers}" "${response_body}" \
     "${realm_body}" "${client_body}" "${admin_user_body}" "${user_body}" \
-    "${pending_user_body}" "${user_count_body}" "${profile_body}" "${discovery_body}"
+    "${pending_user_body}" "${guest_user_body}" "${user_count_body}" \
+    "${profile_body}" "${discovery_body}"
 }
 trap cleanup EXIT
 
@@ -139,7 +142,38 @@ assert_case() {
 }
 
 escaped_domain="$(printf '%s' "${ALLOWED_EMAIL_DOMAIN}" | sed 's/\./\\./g')"
-email_regex="^[A-Za-z0-9.!#%&'*+/=?^_\`{|}~-]+@${escaped_domain}$"
+company_email_regex="[A-Za-z0-9.!#%&'*+/=?^_\`{|}~-]+@${escaped_domain}"
+external_email_regex=""
+seen_external_emails="
+"
+remaining_external_emails="${ALLOWED_EXTERNAL_EMAILS},"
+while [ -n "${remaining_external_emails}" ]; do
+  external_email="${remaining_external_emails%%,*}"
+  remaining_external_emails="${remaining_external_emails#*,}"
+  external_email="$(printf '%s' "${external_email}" \
+    | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    | tr '[:upper:]' '[:lower:]')"
+  [ -n "${external_email}" ] || continue
+  case "${seen_external_emails}" in
+    *"
+${external_email}
+"*) continue ;;
+  esac
+  seen_external_emails="${seen_external_emails}${external_email}
+"
+  escaped_external_email="$(printf '%s' "${external_email}" \
+    | sed 's/[^[:alnum:]]/\\&/g')"
+  if [ -z "${external_email_regex}" ]; then
+    external_email_regex="${escaped_external_email}"
+  else
+    external_email_regex="${external_email_regex}|${escaped_external_email}"
+  fi
+done
+email_regex="^(${company_email_regex}"
+if [ -n "${external_email_regex}" ]; then
+  email_regex="${email_regex}|${external_email_regex}"
+fi
+email_regex="${email_regex})$"
 callback_url="${BETTER_AUTH_URL}/api/auth/oauth2/callback/keycloak"
 expected_issuer="${KEYCLOAK_ISSUER:-${KEYCLOAK_INTERNAL_URL}/realms/${KEYCLOAK_REALM}}"
 
@@ -168,11 +202,59 @@ assert_user() {
 assert_case "Administrator user attributes are valid" assert_user "${DEV_ADMIN_EMAIL}" "開発" "管理者" "${admin_user_body}"
 assert_case "General user attributes are valid" assert_user "${DEV_USER_EMAIL}" "開発" "一般ユーザー" "${user_body}"
 assert_case "Pending user attributes are valid" assert_user "${DEV_PENDING_EMAIL}" "未登録" "テストユーザー" "${pending_user_body}"
-assert_case "Realm user count meets the development minimum" jq -e '. >= 74' "${user_count_body}"
+if [ ! -r "${GUEST_USERS_FILE}" ]; then
+  setup_failure "Guest user definition is not readable: ${GUEST_USERS_FILE}"
+fi
+while IFS="$(printf '\t')" read -r guest_email guest_display_name; do
+  case "${guest_email}" in
+    ''|'#'*) continue ;;
+  esac
+  admin_get "${REALM_URL}/users" "${guest_user_body}" \
+    --data-urlencode "username=${guest_email}" --data-urlencode 'exact=true'
+  assert_case "Guest user ${guest_email} attributes are valid" \
+    assert_user "${guest_email}" "仮" "${guest_display_name}" "${guest_user_body}"
+done <"${GUEST_USERS_FILE}"
+assert_case "Realm user count meets the development minimum" jq -e '. >= 78' "${user_count_body}"
 assert_case "Email domain constraint is configured" jq -e --arg pattern "${email_regex}" '
   (has("unmanagedAttributePolicy") | not) and
   any(.attributes[]; .name == "email" and .required == {} and .validations.pattern.pattern == $pattern)
 ' "${profile_body}"
+email_matches_pattern() {
+  printf '%s\n' "$1" | grep -Eq "${email_regex}"
+}
+email_does_not_match_pattern() {
+  ! email_matches_pattern "$1"
+}
+for allowed_email in \
+  "valid.user@${ALLOWED_EMAIL_DOMAIN}" \
+  guest00@example.com \
+  guest01@example.com \
+  guest02@example.com \
+  guest03@example.com; do
+  assert_case "Email pattern allows ${allowed_email}" email_matches_pattern "${allowed_email}"
+done
+for denied_email in guest04@example.com arbitrary@example.com; do
+  assert_case "Email pattern denies ${denied_email}" email_does_not_match_pattern "${denied_email}"
+done
+
+password_grant_succeeds() {
+  login_email="$1"
+  login_password="$2"
+  status="$(
+    curl --silent --show-error --output "${response_body}" --write-out '%{http_code}' \
+      --request POST "${KEYCLOAK_INTERNAL_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token" \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data-urlencode 'grant_type=password' \
+      --data-urlencode 'client_id=admin-cli' \
+      --data-urlencode "username=${login_email}" \
+      --data-urlencode "password=${login_password}"
+  )"
+  [ "${status}" = "200" ]
+}
+assert_case "Development catalog password uses DEV_SEED_PASSWORD" \
+  password_grant_succeeds "president@sdcj.co.jp" "${DEV_SEED_PASSWORD}"
+assert_case "Guest catalog password uses GUEST_SEED_PASSWORD" \
+  password_grant_succeeds "guest00@example.com" "${GUEST_SEED_PASSWORD}"
 assert_case "Discovery issuer matches" jq -e --arg issuer "${expected_issuer}" '.issuer == $issuer' "${discovery_body}"
 
 [ "${failed}" -eq 0 ] || exit 1

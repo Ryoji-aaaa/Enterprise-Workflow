@@ -146,6 +146,33 @@ class CanonicalStagingFixtureIntegrationTest {
     }
 
     @Test
+    void 外部PoCGuestは通常一般ユーザーと同じ所属契約を持ち承認者Roleを持たない() {
+        var manager = userRepository.findByEmailIgnoreCase(
+                DevelopmentSeedData.email("SYSTEM_SOLUTION_PROJECT_1", true)).orElseThrow();
+
+        for (DevelopmentSeedData.GuestUserDefinition definition : DevelopmentSeedData.GUEST_USERS) {
+            var guest = userRepository.findByEmailIgnoreCase(definition.email()).orElseThrow();
+            assertThat(guest.getDisplayName()).isEqualTo(definition.displayName());
+            assertThat(guest.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+            assertThat(guest.isAvailableAt(CONTRACT_AT)).isTrue();
+
+            UserOrganizationAssignment assignment = assignmentRepository
+                    .findCurrentPrimaryByUserId(guest.getId(), CONTRACT_DATE)
+                    .orElseThrow();
+            assertThat(assignment.getAssignmentType()).isEqualTo(AssignmentType.PRIMARY);
+            assertThat(assignment.getManagerUserId()).isEqualTo(manager.getId());
+            assertThat(unitRepository.findById(assignment.getOrganizationUnitId()).orElseThrow()
+                    .getUnitCode()).isEqualTo("SYSTEM_SOLUTION_PROJECT_1");
+            assertThat(positionRepository.findById(assignment.getPositionId()).orElseThrow()
+                    .getPositionCode()).isEqualTo("MEMBER");
+
+            assertThat(hasActiveRole(guest.getId(), RoleCodes.APPLICATION_USER)).isTrue();
+            assertThat(hasActiveRole(guest.getId(), RoleCodes.ORGANIZATION_CHART_VIEWER)).isTrue();
+            assertThat(hasActiveRole(guest.getId(), RoleCodes.WORKFLOW_APPROVER)).isFalse();
+        }
+    }
+
+    @Test
     void canonicalFixtureSeedはpersonaMasterを重複作成しない() {
         Map<String, Integer> before = fixtureCounts();
 

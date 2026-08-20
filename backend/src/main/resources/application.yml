@@ -42,6 +42,7 @@ workflow:
     issuer: ${KEYCLOAK_ISSUER:http://localhost:8180/realms/workflow}
     client-id: ${KEYCLOAK_CLIENT_ID:workflow-web}
     allowed-email-domain: ${ALLOWED_EMAIL_DOMAIN:sdcj.co.jp}
+    allowed-external-emails: ${ALLOWED_EXTERNAL_EMAILS:}
     identity-provider: keycloak
   notification:
     delivery-mode: ${WORKFLOW_NOTIFICATION_DELIVERY_MODE:disabled}

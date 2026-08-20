@@ -58,6 +58,7 @@ services:
       KEYCLOAK_INTERNAL_ISSUER: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}/realms/${KEYCLOAK_REALM:-workflow}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
       ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-sdcj.co.jp}
+      ALLOWED_EXTERNAL_EMAILS: ${ALLOWED_EXTERNAL_EMAILS:-guest00@example.com,guest01@example.com,guest02@example.com,guest03@example.com}
       WORKFLOW_NOTIFICATION_DELIVERY_MODE: local-mailpit
       WORKFLOW_DEPLOYMENT_ENVIRONMENT: development
       MAIL_HOST: ${MAIL_HOST:-mailpit}
@@ -199,6 +200,7 @@ services:
       - init
     environment:
       ALLOWED_EMAIL_DOMAIN: ${ALLOWED_EMAIL_DOMAIN:-sdcj.co.jp}
+      ALLOWED_EXTERNAL_EMAILS: ${ALLOWED_EXTERNAL_EMAILS:-guest00@example.com,guest01@example.com,guest02@example.com,guest03@example.com}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-replace-with-admin-password}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-workflow-web}
@@ -209,10 +211,12 @@ services:
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
       DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
       DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-password}
+      GUEST_SEED_PASSWORD: ${GUEST_SEED_PASSWORD:-guest-password}
     volumes:
       - ./keycloak/scripts/configure-keycloak.sh:/opt/workflow/configure-keycloak.sh:ro
       - ./keycloak/scripts/check-keycloak.sh:/opt/workflow/check-keycloak.sh:ro
       - ./keycloak/development-users.tsv:/opt/workflow/development-users.tsv:ro
+      - ./keycloak/guest-users.tsv:/opt/workflow/guest-users.tsv:ro
     entrypoint: []
     command:
       - /opt/workflow/configure-keycloak.sh
