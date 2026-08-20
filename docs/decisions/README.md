@@ -18,8 +18,9 @@ ADRは現在の設計判断と、その理由・制約を記録します。`Acce
 | [ADR-0011](ADR-0011-separate-business-users-from-external-identities.md) | Accepted | 業務ユーザーと外部認証IDの分離 |
 | [ADR-0012](ADR-0012-separate-organization-position-and-authorization.md) | Accepted | 組織・役職・業務権限の分離 |
 | [ADR-0013](ADR-0013-append-only-audit-and-change-history.md) | Accepted | 監査ログと変更履歴の追記専用化 |
-| [ADR-0014](ADR-0014-expense-approval-route-resolution.md) | Accepted | 経費承認経路を申請時に確定 |
+| [ADR-0014](ADR-0014-expense-approval-route-resolution.md) | Superseded | 経費承認経路を申請時に確定 |
 | [ADR-0015](ADR-0015-expense-attachment-blob-storage.md) | Accepted | 経費証憑をBackend専用Blob Storageへ保存 |
 | [ADR-0016](ADR-0016-local-mailpit-transactional-outbox.md) | Accepted | メール配送をローカルMailpitとTransactional Outboxへ限定 |
 | [ADR-0017](ADR-0017-document-analysis-architecture.md) | Accepted | Document AnalysisをBFF境界と非同期Jobで実装 |
 | [ADR-0018](ADR-0018-auto-entry-expense-draft-handoff.md) | Accepted | AUTO_ENTRYから経費下書きへの正式引継ぎを永続化 |
+| [ADR-0019](ADR-0019-generic-workflow-engine.md) | Accepted | 版管理された汎用ワークフローエンジンを採用 |

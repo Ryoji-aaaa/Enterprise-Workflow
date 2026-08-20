@@ -316,13 +316,13 @@ Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Job
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、
 3つの通常Container Apps、3つの手動seed JobがTerraform
-stateと一致することを確認する。Flywayの最新migrationが適用済みであること（AUTO_ENTRY原本添付
-provenance制約を含む現在はV018）を確認し、GitHub
+stateと一致することを確認する。Flywayの最新migrationが適用済みであること（AUTO_ENTRY原本添付、
+汎用workflow定義、Candidate Permission scope snapshotを含む現在はV021）を確認し、GitHub
 Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV018）まで成功し、
+3. BackendのConsole logで対象revisionの最新Flyway（現在はV021）まで成功し、
    readinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。

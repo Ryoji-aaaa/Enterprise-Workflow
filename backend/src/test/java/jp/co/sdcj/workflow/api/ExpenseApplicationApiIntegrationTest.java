@@ -1,7 +1,6 @@
 package jp.co.sdcj.workflow.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -15,7 +14,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,9 +29,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,29 +38,23 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.mock.web.MockMultipartFile;
-
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import jp.co.sdcj.workflow.domain.AccountStatus;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.AssignmentType;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalStepType;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalCandidate;
-import jp.co.sdcj.workflow.domain.NotificationType;
-import jp.co.sdcj.workflow.domain.NotificationOutbox;
 import jp.co.sdcj.workflow.domain.Organization;
 import jp.co.sdcj.workflow.domain.OrganizationUnit;
 import jp.co.sdcj.workflow.domain.OrganizationUnitType;
 import jp.co.sdcj.workflow.domain.Permission;
+import jp.co.sdcj.workflow.domain.NotificationOutbox;
 import jp.co.sdcj.workflow.domain.Position;
 import jp.co.sdcj.workflow.domain.Role;
 import jp.co.sdcj.workflow.domain.RolePermission;
@@ -72,15 +63,28 @@ import jp.co.sdcj.workflow.domain.SystemUser;
 import jp.co.sdcj.workflow.domain.UserExternalIdentity;
 import jp.co.sdcj.workflow.domain.UserOrganizationAssignment;
 import jp.co.sdcj.workflow.domain.UserRoleAssignment;
-import jp.co.sdcj.workflow.api.ApiException;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceCandidateRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStatus;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStepRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowStepStatus;
+import jp.co.sdcj.workflow.engine.definition.WorkflowApprovalMode;
+import jp.co.sdcj.workflow.engine.definition.WorkflowAssigneeRule;
+import jp.co.sdcj.workflow.engine.definition.WorkflowAssigneeRuleRepository;
+import jp.co.sdcj.workflow.engine.definition.WorkflowDefinitionRepository;
+import jp.co.sdcj.workflow.engine.definition.WorkflowDefinitionStatus;
+import jp.co.sdcj.workflow.engine.definition.WorkflowDefinitionVersion;
+import jp.co.sdcj.workflow.engine.definition.WorkflowDefinitionVersionRepository;
+import jp.co.sdcj.workflow.engine.definition.WorkflowNode;
+import jp.co.sdcj.workflow.engine.definition.WorkflowNodeRepository;
+import jp.co.sdcj.workflow.engine.definition.WorkflowNodeType;
+import jp.co.sdcj.workflow.engine.definition.WorkflowTransition;
+import jp.co.sdcj.workflow.engine.definition.WorkflowTransitionRepository;
 import jp.co.sdcj.workflow.repository.AppUserRepository;
 import jp.co.sdcj.workflow.repository.AuditLogRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationAttachmentRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
-import jp.co.sdcj.workflow.repository.OrganizationRepository;
 import jp.co.sdcj.workflow.repository.NotificationOutboxRepository;
+import jp.co.sdcj.workflow.repository.OrganizationRepository;
 import jp.co.sdcj.workflow.repository.OrganizationUnitRepository;
 import jp.co.sdcj.workflow.repository.PermissionRepository;
 import jp.co.sdcj.workflow.repository.PositionRepository;
@@ -89,9 +93,7 @@ import jp.co.sdcj.workflow.repository.RoleRepository;
 import jp.co.sdcj.workflow.repository.UserExternalIdentityRepository;
 import jp.co.sdcj.workflow.repository.UserOrganizationAssignmentRepository;
 import jp.co.sdcj.workflow.repository.UserRoleAssignmentRepository;
-import jp.co.sdcj.workflow.service.ExpenseApprovalRouteResolver;
 import jp.co.sdcj.workflow.service.PermissionCodes;
-import jp.co.sdcj.workflow.service.ResolvedApprovalRoute;
 import jp.co.sdcj.workflow.storage.AttachmentStorage;
 import jp.co.sdcj.workflow.storage.AttachmentStorageException;
 import jp.co.sdcj.workflow.storage.StoredAttachmentContent;
@@ -101,387 +103,455 @@ import jp.co.sdcj.workflow.storage.StoredAttachmentContent;
 @ActiveProfiles("test")
 @ExtendWith(OutputCaptureExtension.class)
 class ExpenseApplicationApiIntegrationTest {
-    private static final String ISSUER = "http://localhost:8180/realms/workflow";
-    private static final String CLIENT_ID = "workflow-web";
     private static final UUID SYSTEM = SystemUser.ID;
-
+    private static final String ISSUER = "http://localhost:8180/realms/workflow";
     @Autowired MockMvc mockMvc;
-    @Autowired JdbcTemplate jdbcTemplate;
-    @Autowired AppUserRepository userRepository;
-    @Autowired UserExternalIdentityRepository identityRepository;
-    @Autowired OrganizationRepository organizationRepository;
-    @Autowired OrganizationUnitRepository unitRepository;
-    @Autowired PositionRepository positionRepository;
-    @Autowired UserOrganizationAssignmentRepository assignmentRepository;
-    @Autowired RoleRepository roleRepository;
-    @Autowired PermissionRepository permissionRepository;
-    @Autowired RolePermissionRepository rolePermissionRepository;
-    @Autowired UserRoleAssignmentRepository roleAssignmentRepository;
-    @Autowired ExpenseApprovalRunRepository runRepository;
-    @Autowired ExpenseApprovalStepRepository stepRepository;
-    @Autowired ExpenseApprovalCandidateRepository candidateRepository;
-    @MockitoSpyBean NotificationOutboxRepository notificationOutboxRepository;
-    @Autowired AuditLogRepository auditLogRepository;
-    @Autowired ExpenseApprovalRouteResolver routeResolver;
-    @MockitoBean JavaMailSender mailSender;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired AppUserRepository users;
+    @Autowired UserExternalIdentityRepository identities;
+    @Autowired OrganizationRepository organizations;
+    @Autowired OrganizationUnitRepository units;
+    @Autowired PositionRepository positions;
+    @Autowired UserOrganizationAssignmentRepository assignments;
+    @Autowired RoleRepository roles;
+    @Autowired PermissionRepository permissions;
+    @Autowired RolePermissionRepository rolePermissions;
+    @Autowired UserRoleAssignmentRepository userRoles;
+    @Autowired WorkflowInstanceRepository instances;
+    @Autowired WorkflowInstanceStepRepository steps;
+    @Autowired WorkflowInstanceCandidateRepository candidates;
+    @Autowired WorkflowDefinitionRepository workflowDefinitions;
+    @Autowired WorkflowDefinitionVersionRepository workflowVersions;
+    @Autowired WorkflowNodeRepository workflowNodes;
+    @Autowired WorkflowTransitionRepository workflowTransitions;
+    @Autowired WorkflowAssigneeRuleRepository workflowRules;
+    @Autowired AuditLogRepository auditLogs;
+    @MockitoSpyBean NotificationOutboxRepository notificationOutbox;
     @MockitoBean AttachmentStorage attachmentStorage;
     @MockitoSpyBean ExpenseApplicationAttachmentRepository attachmentRepository;
 
     private final Map<String, byte[]> storedAttachments = new ConcurrentHashMap<>();
 
-    private AppUser member;
-    private AppUser sectionHead;
-    private AppUser departmentHead;
-    private AppUser divisionHead;
-    private AppUser accountingHead;
-    private AppUser accountingMember;
-    private AppUser outsider;
     private Organization organization;
-    private OrganizationUnit root;
-    private OrganizationUnit division;
-    private OrganizationUnit department;
     private OrganizationUnit section;
-    private OrganizationUnit management;
+    private OrganizationUnit department;
     private OrganizationUnit accounting;
     private Position memberPosition;
-    private Position sectionPosition;
-    private Position departmentPosition;
-    private Position divisionPosition;
+    private Position managerPosition;
+    private AppUser member;
+    private AppUser sectionManager;
+    private AppUser departmentManager;
+    private AppUser accountingUser;
     private Role applicantRole;
     private Role approverRole;
 
     @BeforeEach
     void setUp() {
+        reset(attachmentRepository, notificationOutbox);
         setUpAttachmentStorage();
-        clearDatabase();
-        jdbcTemplate.execute("drop sequence if exists expense_application_number_seq");
-        jdbcTemplate.execute("create sequence expense_application_number_seq start with 1 increment by 1");
-        Instant now = Instant.now();
-        LocalDate today = LocalDate.now();
-        organization = organizationRepository.save(new Organization(
-                "SDCJ", "SDCJ", today.minusYears(1), null, SYSTEM));
-        root = unit(organization, null, "SDCJ", "SDCJ", OrganizationUnitType.COMPANY);
-        division = unit(organization, root, "TEST_DIVISION", "第一事業部", OrganizationUnitType.DIVISION);
-        department = unit(organization, division, "TEST_DEPARTMENT", "開発部", OrganizationUnitType.DEPARTMENT);
-        section = unit(organization, department, "TEST_SECTION", "開発一課", OrganizationUnitType.SECTION);
-        management = unit(organization, root, "MANAGEMENT", "管理本部", OrganizationUnitType.DIVISION);
-        accounting = unit(organization, management, "ACCOUNTING_SECTION", "経理課", OrganizationUnitType.SECTION);
-
-        memberPosition = positionRepository.save(new Position("MEMBER", "一般", 10, 0, SYSTEM));
-        sectionPosition = positionRepository.save(new Position("SECTION_HEAD", "課長", 40, 40, SYSTEM));
-        departmentPosition = positionRepository.save(new Position("DEPARTMENT_HEAD", "部長", 60, 60, SYSTEM));
-        divisionPosition = positionRepository.save(new Position("DIVISION_HEAD", "事業部長", 80, 80, SYSTEM));
-
+        clearBusinessData();
+        jdbc.execute("drop sequence if exists expense_application_number_seq");
+        jdbc.execute("create sequence expense_application_number_seq start with 1 increment by 1");
+        Instant now = Instant.now(); LocalDate today = LocalDate.now();
+        organization = organizations.save(new Organization("TEST", "テスト法人", today.minusYears(1), null, SYSTEM));
+        OrganizationUnit division = unit(null, "DIVISION", "事業部", OrganizationUnitType.DIVISION);
+        department = unit(division, "DEPARTMENT", "部", OrganizationUnitType.DEPARTMENT);
+        section = unit(department, "SECTION", "課", OrganizationUnitType.SECTION);
+        OrganizationUnit management = unit(division, "MANAGEMENT", "管理部", OrganizationUnitType.DEPARTMENT);
+        accounting = unit(management, "ACCOUNTING_SECTION", "経理課", OrganizationUnitType.SECTION);
+        memberPosition = positions.save(new Position("MEMBER", "一般", 10, 0, SYSTEM));
+        managerPosition = positions.save(new Position("MANAGER", "部門長", 50, 50, SYSTEM));
         member = user("member@sdcj.co.jp", "一般社員", "member", now);
-        sectionHead = user("section.head@sdcj.co.jp", "課長", "section-head", now);
-        departmentHead = user("department.head@sdcj.co.jp", "部長", "department-head", now);
-        divisionHead = user("division.head@sdcj.co.jp", "事業部長", "division-head", now);
-        accountingHead = user("accounting.head@sdcj.co.jp", "経理責任者", "accounting-head", now);
-        accountingMember = user("accounting.member@sdcj.co.jp", "経理担当", "accounting-member", now);
-        outsider = user("outsider@sdcj.co.jp", "候補外承認者", "outsider", now);
-
-        assign(member, section, memberPosition);
-        assign(sectionHead, section, sectionPosition);
-        assign(departmentHead, department, departmentPosition);
-        assign(divisionHead, division, divisionPosition);
-        assign(accountingHead, accounting, sectionPosition);
-        assign(accountingMember, accounting, memberPosition);
-        assign(outsider, root, memberPosition);
-
-        applicantRole = roleRepository.save(new Role(
-                "EXPENSE_APPLICANT", "Expense applicant", null, RoleType.BUSINESS, true, SYSTEM));
-        approverRole = roleRepository.save(new Role(
-                "EXPENSE_APPROVER", "Expense approver", null, RoleType.WORKFLOW, true, SYSTEM));
+        sectionManager = user("section.manager@sdcj.co.jp", "課長", "section-manager", now);
+        departmentManager = user("department.manager@sdcj.co.jp", "部長", "department-manager", now);
+        accountingUser = user("accounting@sdcj.co.jp", "経理", "accounting", now);
+        assign(member, section, memberPosition, AssignmentType.PRIMARY);
+        assign(sectionManager, section, managerPosition, AssignmentType.PRIMARY);
+        assign(departmentManager, department, managerPosition, AssignmentType.PRIMARY);
+        assign(accountingUser, accounting, memberPosition, AssignmentType.PRIMARY);
+        applicantRole = roles.save(new Role("APPLICANT", "Applicant", null, RoleType.BUSINESS, true, SYSTEM));
+        approverRole = roles.save(new Role("APPROVER", "Approver", null, RoleType.WORKFLOW, true, SYSTEM));
         Permission create = permission(PermissionCodes.EXPENSE_APPLICATION_CREATE, "CREATE");
         Permission read = permission(PermissionCodes.EXPENSE_APPLICATION_READ_OWN, "READ_OWN");
         Permission approve = permission(PermissionCodes.EXPENSE_APPLICATION_APPROVE, "APPROVE");
-        rolePermissionRepository.save(new RolePermission(applicantRole.getId(), create.getId(), SYSTEM));
-        rolePermissionRepository.save(new RolePermission(applicantRole.getId(), read.getId(), SYSTEM));
-        rolePermissionRepository.save(new RolePermission(approverRole.getId(), approve.getId(), SYSTEM));
-        assignRole(member, applicantRole, now);
-        assignRole(sectionHead, approverRole, now);
-        assignRole(departmentHead, approverRole, now);
-        assignRole(divisionHead, approverRole, now);
-        assignRole(accountingHead, approverRole, now);
-        assignRole(accountingMember, approverRole, now);
-        assignRole(outsider, approverRole, now);
+        rolePermissions.save(new RolePermission(applicantRole.getId(), create.getId(), SYSTEM));
+        rolePermissions.save(new RolePermission(applicantRole.getId(), read.getId(), SYSTEM));
+        rolePermissions.save(new RolePermission(approverRole.getId(), approve.getId(), SYSTEM));
+        grant(member, applicantRole, now); grant(sectionManager, approverRole, now);
+        grant(departmentManager, approverRole, now); grant(accountingUser, approverRole, now);
     }
 
     @AfterEach
     void tearDown() {
-        clearDatabase();
-        reset(attachmentRepository);
-        reset(notificationOutboxRepository);
+        reset(attachmentRepository, notificationOutbox, attachmentStorage);
     }
 
     @Test
-    void Outbox保存失敗時は申請と承認経路もrollbackする() throws Exception {
-        String applicationId = createDraft(member, "member", "Outbox rollbackテスト");
-        doThrow(new DataIntegrityViolationException("test outbox failure"))
-                .when(notificationOutboxRepository)
-                .save(any(NotificationOutbox.class));
+    void 一般社員は同一所属部門長から経理のSnapshotを生成する() throws Exception {
+        UUID applicationId = submit(member, "member");
+        var instance = latest(applicationId);
+        assertThat(instance.getWorkflowDefinitionVersionId()).isNotNull();
+        assertThat(instance.getStatus()).isEqualTo(WorkflowInstanceStatus.PENDING);
+        assertThat(steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId()))
+                .extracting("nodeKeySnapshot", "status")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("SAME_UNIT_MANAGER", WorkflowStepStatus.PENDING),
+                        org.assertj.core.groups.Tuple.tuple("ACCOUNTING", WorkflowStepStatus.WAITING));
+        UUID firstStepId = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId())
+                .getFirst().getId();
+        assertThat(candidates.findByWorkflowInstanceStepIdAndCandidateUserId(
+                firstStepId, sectionManager.getId()).orElseThrow().getPermissionScopeSnapshot())
+                .contains("GLOBAL");
+        UUID applicationUnitSnapshot = jdbc.queryForObject("""
+                select organization_unit_id_snapshot from expense_applications where id = ?
+                """, UUID.class, applicationId);
+        assertThat(applicationUnitSnapshot).isEqualTo(section.getId());
+        assertThat(instance.getContextSnapshot()).contains(section.getId().toString());
+    }
+
+    @Test
+    void 部門長は直属の一階層上の部門長から経理へ進む() throws Exception {
+        grant(sectionManager, applicantRole, Instant.now());
+        UUID applicationId = submit(sectionManager, "section-manager");
+        var instance = latest(applicationId);
+        var workflowSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        assertThat(workflowSteps).extracting("nodeKeySnapshot")
+                .containsExactly("PARENT_UNIT_MANAGER", "ACCOUNTING");
+        assertThat(candidates.findAllByWorkflowInstanceStepId(workflowSteps.getFirst().getId()))
+                .extracting("candidateUserId").containsExactly(departmentManager.getId());
+    }
+
+    @Test
+    void 親組織がない最上位部門長は経理のみになる() throws Exception {
+        OrganizationUnit top = unit(null, "TOP", "最上位事業部", OrganizationUnitType.DIVISION);
+        AppUser topManager = user("top@sdcj.co.jp", "最上位部門長", "top", Instant.now());
+        assign(topManager, top, managerPosition, AssignmentType.PRIMARY);
+        grant(topManager, applicantRole, Instant.now()); grant(topManager, approverRole, Instant.now());
+        UUID applicationId = submit(topManager, "top");
+        assertThat(steps.findAllByWorkflowInstanceIdOrderByStepOrder(latest(applicationId).getId()))
+                .extracting("nodeKeySnapshot").containsExactly("ACCOUNTING");
+    }
+
+    @Test
+    void 親組織が存在するが直属部門長がいなければ申請をRollbackする() throws Exception {
+        assignments.deleteAll(assignments.findAllByUserIdOrderByValidFromDesc(departmentManager.getId()));
+        grant(sectionManager, applicantRole, Instant.now());
+        String draftId = createDraft(sectionManager, "section-manager");
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", draftId)
+                        .with(jwt(sectionManager, "section-manager")))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_ASSIGNEE_NOT_FOUND"));
+        assertThat(instances.countBySubjectTypeAndSubjectId("EXPENSE_APPLICATION", UUID.fromString(draftId))).isZero();
+        assertThat(jdbc.queryForObject("select status from expense_applications where id = ?",
+                String.class, UUID.fromString(draftId))).isEqualTo("DRAFT");
+    }
+
+    @Test
+    void 設定済み親組織が無効ならAccounting経路へFallbackせず422にする() throws Exception {
+        grant(sectionManager, applicantRole, Instant.now());
+        String draftId = createDraft(sectionManager, "section-manager");
+        department.setEnabled(false, SYSTEM);
+        units.saveAndFlush(department);
+
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", draftId)
+                        .with(jwt(sectionManager, "section-manager")))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("PARENT_ORGANIZATION_UNIT_INVALID"));
+        assertRolledBack(draftId);
+    }
+
+    @Test
+    void 一般社員の同一所属長がいなければ申請をRollbackする() throws Exception {
+        assignments.deleteAll(assignments.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        assertSubmissionHasNoAssignee(member, "member");
+    }
+
+    @Test
+    void 経理組織がなければ申請をRollbackする() throws Exception {
+        assignments.deleteAll(assignments.findAllByUserIdOrderByValidFromDesc(accountingUser.getId()));
+        units.delete(accounting);
+        assertSubmissionDefinitionInvalid(member, "member");
+    }
+
+    @Test
+    void 経理Candidateが現在権限を持たなければ申請をRollbackする() throws Exception {
+        userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(accountingUser.getId()));
+        assertSubmissionHasNoAssignee(member, "member");
+    }
+
+    @Test
+    void 経理Candidateが申請者本人だけなら申請を拒否する() throws Exception {
+        assignments.deleteAll(assignments.findAllByUserIdOrderByValidFromDesc(accountingUser.getId()));
+        OrganizationUnit top = unit(null, "TOP_SELF", "最上位", OrganizationUnitType.DIVISION);
+        AppUser topManager = user("top.self@sdcj.co.jp", "最上位兼経理", "top-self", Instant.now());
+        assign(topManager, top, managerPosition, AssignmentType.PRIMARY);
+        assign(topManager, accounting, memberPosition, AssignmentType.ACTING);
+        grant(topManager, applicantRole, Instant.now());
+        grant(topManager, approverRole, Instant.now());
+        assertSubmissionHasNoAssignee(topManager, "top-self");
+    }
+
+    @Test
+    void 承認はCandidateと現在Permissionを要求し二重処理をConflictにする() throws Exception {
+        AppUser secondManager = user("section.manager.2@sdcj.co.jp", "課長代理", "section-manager-2", Instant.now());
+        assign(secondManager, section, managerPosition, AssignmentType.ACTING);
+        grant(secondManager, approverRole, Instant.now());
+        UUID applicationId = submit(member, "member");
+        var instance = latest(applicationId);
+        UUID managerStep = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId()).getFirst().getId();
+        userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStep)
+                        .with(jwt(sectionManager, "section-manager")).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_PERMISSION_REVOKED"));
+        grant(sectionManager, approverRole, Instant.now());
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStep)
+                        .with(jwt(sectionManager, "section-manager")).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.stepStatus").value("APPROVED"));
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStep)
+                        .with(jwt(secondManager, "section-manager-2")).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("WORKFLOW_STEP_NOT_PENDING"));
+    }
+
+    @Test
+    void 同一ANY_ONE_Stepへの実並行承認は1件だけ成功する() throws Exception {
+        AppUser secondManager = user(
+                "concurrent.manager@sdcj.co.jp", "同時承認候補", "concurrent-manager", Instant.now());
+        assign(secondManager, section, managerPosition, AssignmentType.ACTING);
+        grant(secondManager, approverRole, Instant.now());
+        UUID applicationId = submit(member, "member");
+        var instance = latest(applicationId);
+        var workflowSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        UUID managerStepId = workflowSteps.getFirst().getId();
+        UUID accountingStepId = workflowSteps.get(1).getId();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> concurrentApprove(
+                    managerStepId, sectionManager, "section-manager", ready, start));
+            var second = executor.submit(() -> concurrentApprove(
+                    managerStepId, secondManager, "concurrent-manager", ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+
+        var persistedSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        assertThat(persistedSteps.getFirst().getStatus()).isEqualTo(WorkflowStepStatus.APPROVED);
+        assertThat(persistedSteps.getFirst().getProcessedByUserId())
+                .isIn(sectionManager.getId(), secondManager.getId());
+        assertThat(persistedSteps.get(1).getStatus()).isEqualTo(WorkflowStepStatus.PENDING);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from workflow_instance_actions
+                where workflow_instance_step_id = ? and action_type = 'APPROVE'
+                """, Integer.class, managerStepId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from notification_outbox where workflow_step_id = ?
+                """, Integer.class, accountingStepId)).isEqualTo(1);
+    }
+
+    @Test
+    void 取下げ可否はWorkflow処理状態と一致し成功時は未処理StepをCancelする() throws Exception {
+        UUID processedApplicationId = submit(member, "member");
+        var processedInstance = latest(processedApplicationId);
+        UUID managerStepId = steps.findAllByWorkflowInstanceIdOrderByStepOrder(processedInstance.getId())
+                .getFirst().getId();
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStepId)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/expense-applications/{id}", processedApplicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.cancellable").value(false));
+        mockMvc.perform(post("/api/expense-applications/{id}/cancel", processedApplicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_ALREADY_PROCESSED"));
+
+        UUID cancellableApplicationId = submit(member, "member");
+        var cancellableInstance = latest(cancellableApplicationId);
+        mockMvc.perform(post("/api/expense-applications/{id}/cancel", cancellableApplicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.cancellable").value(false));
+        assertThat(latest(cancellableApplicationId).getStatus())
+                .isEqualTo(WorkflowInstanceStatus.CANCELLED);
+        assertThat(steps.findAllByWorkflowInstanceIdOrderByStepOrder(cancellableInstance.getId()))
+                .extracting("status")
+                .containsOnly(WorkflowStepStatus.CANCELLED);
+    }
+
+    @Test
+    void 取下げと承認の実並行競合は一方だけ成功して状態を整合させる() throws Exception {
+        assertConcurrentCancellationRace("approve");
+    }
+
+    @Test
+    void 取下げと差戻しの実並行競合は一方だけ成功して状態を整合させる() throws Exception {
+        assertConcurrentCancellationRace("return");
+    }
+
+    @Test
+    void 組織ScopeのCandidateはSnapshotした対象組織で承認できる() throws Exception {
+        userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        grant(sectionManager, approverRole, section, Instant.now());
+        UUID applicationId = submit(member, "member");
+        UUID managerStep = steps.findAllByWorkflowInstanceIdOrderByStepOrder(latest(applicationId).getId())
+                .getFirst().getId();
+        var candidate = candidates.findByWorkflowInstanceStepIdAndCandidateUserId(
+                managerStep, sectionManager.getId()).orElseThrow();
+        assertThat(candidate.getPermissionScopeSnapshot())
+                .contains("ORGANIZATION_UNIT", section.getId().toString());
+
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStep)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stepStatus").value("APPROVED"));
+    }
+
+    @Test
+    void 申請後に組織Scope権限を失ったCandidateは承認できない() throws Exception {
+        userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        grant(sectionManager, approverRole, section, Instant.now());
+        UUID applicationId = submit(member, "member");
+        UUID managerStep = steps.findAllByWorkflowInstanceIdOrderByStepOrder(latest(applicationId).getId())
+                .getFirst().getId();
+        userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        userRoles.flush();
+
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStep)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_PERMISSION_REVOKED"));
+    }
+
+    @Test
+    void 別組織Scopeだけの所属長は対象StepのCandidateにも承認者にもならない() throws Exception {
+        userRoles.deleteAll(userRoles.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        grant(sectionManager, approverRole, department, Instant.now());
+        AppUser eligibleManager = user(
+                "eligible.manager@sdcj.co.jp", "有効課長", "eligible-manager", Instant.now());
+        assign(eligibleManager, section, managerPosition, AssignmentType.ACTING);
+        grant(eligibleManager, approverRole, section, Instant.now());
+        UUID applicationId = submit(member, "member");
+        UUID managerStep = steps.findAllByWorkflowInstanceIdOrderByStepOrder(latest(applicationId).getId())
+                .getFirst().getId();
+        assertThat(candidates.findAllByWorkflowInstanceStepId(managerStep))
+                .extracting("candidateUserId")
+                .containsExactly(eligibleManager.getId());
+
+        mockMvc.perform(post("/api/workflow/tasks/{id}/approve", managerStep)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_ACTION_NOT_ALLOWED"));
+    }
+
+    @Test
+    void 申請後の組織変更とDefinition新版は既存Snapshotを変更しない() throws Exception {
+        UUID applicationId = submit(member, "member");
+        var original = latest(applicationId);
+        var originalSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(original.getId());
+        UUID originalVersion = original.getWorkflowDefinitionVersionId();
+        UUID originalCandidate = candidates.findAllByWorkflowInstanceStepId(originalSteps.getFirst().getId())
+                .getFirst().getCandidateUserId();
+
+        assignments.deleteAll(assignments.findAllByUserIdOrderByValidFromDesc(sectionManager.getId()));
+        AppUser replacement = user("replacement@sdcj.co.jp", "新課長", "replacement", Instant.now());
+        assign(replacement, section, managerPosition, AssignmentType.PRIMARY);
+        grant(replacement, approverRole, Instant.now());
+        WorkflowDefinitionVersion version2 = publishAccountingOnlyV2();
+
+        assertThat(latest(applicationId).getWorkflowDefinitionVersionId()).isEqualTo(originalVersion);
+        assertThat(candidates.findAllByWorkflowInstanceStepId(originalSteps.getFirst().getId()))
+                .extracting("candidateUserId").containsExactly(originalCandidate);
+
+        mockMvc.perform(post("/api/workflow/tasks/{id}/return", originalSteps.getFirst().getId())
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"再申請\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
+                        .with(jwt(member, "member"))).andExpect(status().isOk());
+        var rerun = latest(applicationId);
+        assertThat(rerun.getWorkflowDefinitionVersionId()).isEqualTo(version2.getId());
+        assertThat(steps.findAllByWorkflowInstanceIdOrderByStepOrder(rerun.getId()))
+                .extracting("nodeKeySnapshot").containsExactly("ACCOUNTING");
+    }
+
+    @Test
+    void 差戻しは後続をCancelし再申請は新Instanceを作る() throws Exception {
+        UUID applicationId = submit(member, "member");
+        var first = latest(applicationId);
+        var firstSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(first.getId());
+        mockMvc.perform(post("/api/workflow/tasks/{id}/return", firstSteps.getFirst().getId())
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"修正してください\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.instanceStatus").value("RETURNED"));
+        assertThat(steps.findAllByWorkflowInstanceIdOrderByStepOrder(first.getId()).get(1).getStatus())
+                .isEqualTo(WorkflowStepStatus.CANCELLED);
+        mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
+                        .with(jwt(member, "member"))).andExpect(status().isOk());
+        assertThat(instances.findAllBySubjectTypeAndSubjectIdOrderByRunNumberDesc(
+                "EXPENSE_APPLICATION", applicationId)).extracting("runNumber", "status")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(2, WorkflowInstanceStatus.PENDING),
+                        org.assertj.core.groups.Tuple.tuple(1, WorkflowInstanceStatus.RETURNED));
+    }
+
+    @Test
+    void taskInboxとtimelineは経費DTOから独立している() throws Exception {
+        UUID applicationId = submit(member, "member");
+        UUID stepId = steps.findAllByWorkflowInstanceIdOrderByStepOrder(latest(applicationId).getId())
+                .getFirst().getId();
+        mockMvc.perform(get("/api/workflow/tasks").param("page", "0").param("size", "20")
+                        .param("sort", "stepOrder,asc").with(jwt(sectionManager, "section-manager")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].stepId").value(stepId.toString()))
+                .andExpect(jsonPath("$.content[0].subjectType").value("EXPENSE_APPLICATION"));
+        mockMvc.perform(get("/api/expense-applications/{id}", applicationId).with(jwt(member, "member")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.pendingStepId").doesNotExist())
+                .andExpect(jsonPath("$.approvalRun").doesNotExist());
+    }
+
+    @Test
+    void Outbox保存失敗時は申請とWorkflow実行状態をすべてRollbackする() throws Exception {
+        String applicationId = createDraft(member, "member");
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("test outbox failure"))
+                .when(notificationOutbox).save(any(NotificationOutbox.class));
 
         mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isConflict());
 
-        assertThat(jdbcTemplate.queryForObject(
-                "select status from expense_applications where id = ?",
-                String.class,
-                UUID.fromString(applicationId)))
+        UUID id = UUID.fromString(applicationId);
+        assertThat(jdbc.queryForObject(
+                "select status from expense_applications where id = ?", String.class, id))
                 .isEqualTo("DRAFT");
-        assertThat(runRepository.countByExpenseApplicationId(UUID.fromString(applicationId)))
+        assertThat(instances.countBySubjectTypeAndSubjectId("EXPENSE_APPLICATION", id)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from workflow_instance_steps", Integer.class))
                 .isZero();
-        assertThat(notificationOutboxRepository.count()).isZero();
-    }
-
-    @Test
-    void 申請時は現在Stepだけ承認後は次Stepだけ最終承認時は申請者をOutbox登録する() throws Exception {
-        String applicationId = createAndSubmit(member, "member");
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        var steps = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
-
-        assertThat(notificationOutboxRepository.findAll())
-                .singleElement()
-                .satisfies(notification -> {
-                    assertThat(notification.getNotificationType())
-                            .isEqualTo(NotificationType.EXPENSE_APPROVAL_REQUIRED);
-                    assertThat(notification.getApprovalStepId()).isEqualTo(steps.getFirst().getId());
-                    assertThat(notification.getRecipientUserId()).isEqualTo(sectionHead.getId());
-                    assertThat(notification.getRecipientEmailSnapshot()).isEqualTo(sectionHead.getEmail());
-                });
-        assertThat(notificationOutboxRepository.findAll())
-                .noneMatch(notification -> notification.getApprovalStepId().equals(steps.get(1).getId()));
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.getFirst().getId())
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isOk());
-
-        assertThat(notificationOutboxRepository.findAll().stream()
-                .filter(notification -> steps.get(1).getId().equals(notification.getApprovalStepId()))
-                .toList())
-                .hasSize(2)
-                .extracting("recipientUserId")
-                .containsExactlyInAnyOrder(accountingHead.getId(), accountingMember.getId());
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.get(1).getId())
-                        .with(validJwt(accountingMember, "accounting-member"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isOk());
-
-        assertThat(notificationOutboxRepository.findAll())
-                .filteredOn(notification ->
-                        notification.getNotificationType() == NotificationType.EXPENSE_APPROVED)
-                .singleElement()
-                .satisfies(notification -> {
-                    assertThat(notification.getRecipientUserId()).isEqualTo(member.getId());
-                    assertThat(notification.getApprovalRunId()).isEqualTo(run.getId());
-                });
-    }
-
-    @Test
-    void 承認候補者ごとに個別Outboxを作り同じStepの重複を抑止する() throws Exception {
-        Instant now = Instant.now();
-        AppUser secondHead = user("notification.head@sdcj.co.jp", "通知副課長", "notification-head", now);
-        assign(secondHead, section, sectionPosition);
-        assignRole(secondHead, approverRole, now);
-
-        String applicationId = createAndSubmit(member, "member");
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        UUID firstStepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
-                .getFirst().getId();
-
-        assertThat(notificationOutboxRepository.findAll())
-                .hasSize(2)
-                .allMatch(notification -> firstStepId.equals(notification.getApprovalStepId()))
-                .extracting("recipientUserId")
-                .containsExactlyInAnyOrder(sectionHead.getId(), secondHead.getId());
-        assertThat(notificationOutboxRepository.findAll())
-                .extracting("deduplicationKey")
-                .doesNotHaveDuplicates();
-    }
-
-    @Test
-    void 差戻しは同じRunの申請者通知をOutbox登録する() throws Exception {
-        String applicationId = createAndSubmit(member, "member");
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        UUID firstStepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
-                .getFirst().getId();
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", firstStepId)
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"comment\":\"申請内容を修正してください\"}"))
-                .andExpect(status().isOk());
-
-        assertThat(notificationOutboxRepository.findAll())
-                .filteredOn(notification ->
-                        notification.getNotificationType() == NotificationType.EXPENSE_RETURNED)
-                .singleElement()
-                .satisfies(notification -> {
-                    assertThat(notification.getRecipientUserId()).isEqualTo(member.getId());
-                    assertThat(notification.getBodyText()).contains("申請内容を修正してください");
-                    assertThat(notification.getApprovalRunId()).isEqualTo(run.getId());
-                });
-    }
-
-    @Test
-    void 下書き添付を登録一覧表示プレビューDownload論理削除し監査する() throws Exception {
-        String applicationId = createDraft(member, "member", "添付APIテスト");
-        MockMultipartFile file = pdf("領収書.pdf");
-
-        String uploaded = mockMvc.perform(multipart(
-                        "/api/expense-applications/{id}/attachments", applicationId)
-                        .file(file)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.originalFileName").value("領収書.pdf"))
-                .andExpect(jsonPath("$.contentType").value("application/pdf"))
-                .andExpect(jsonPath("$.previewable").value(true))
-                .andExpect(jsonPath("$.deletable").value(true))
-                .andReturn().getResponse().getContentAsString();
-        String attachmentId = JsonTestSupport.stringValue(uploaded, "id");
-
-        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(attachmentId))
-                .andExpect(jsonPath("$[0].uploadedByName").value(member.getDisplayName()))
-                .andExpect(jsonPath("$[0].sha256").doesNotExist());
-
-        mockMvc.perform(get(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(header().string("Content-Type", "application/pdf"))
-                .andExpect(header().string("Content-Length", String.valueOf(file.getSize())))
-                .andExpect(header().string(
-                        "Content-Disposition", org.hamcrest.Matchers.startsWith("inline")))
-                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
-                .andExpect(header().string(
-                        "Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
-        mockMvc.perform(get(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}/content?download=true",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(header().string(
-                        "Content-Disposition", org.hamcrest.Matchers.startsWith("attachment")));
-
-        mockMvc.perform(delete(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isNoContent());
-        assertThat(storedAttachments).isEmpty();
-        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isEmpty());
-        mockMvc.perform(get(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
-        mockMvc.perform(delete(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
-
-        assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
-                .getDeletedAt()).isNotNull();
-        assertThat(auditLogRepository.findAll(
-                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
-                .extracting("actionType")
-                .contains("EXPENSE_ATTACHMENT_UPLOADED",
-                        "EXPENSE_ATTACHMENT_CONTENT_ACCESSED", "EXPENSE_ATTACHMENT_DELETED");
-    }
-
-    @Test
-    void 承認待ちと承認済みは添付変更を拒否し候補者だけが閲覧できる() throws Exception {
-        String applicationId = createDraft(member, "member", "添付状態テスト");
-        String attachmentId = upload(applicationId, member, "member", "before-submit.pdf");
-        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
-                        .file(pdf("pending.pdf"))
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_EDITABLE"));
-        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
-                        .with(validJwt(sectionHead, "section-head")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].deletable").value(false));
-        mockMvc.perform(get(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
-                        applicationId, attachmentId)
-                        .with(validJwt(sectionHead, "section-head")))
-                .andExpect(status().isOk());
-        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
-                        .with(validJwt(outsider, "outsider")))
-                .andExpect(status().isNotFound());
-
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        var steps = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.getFirst().getId())
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.get(1).getId())
-                        .with(validJwt(accountingMember, "accounting-member"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"));
-        mockMvc.perform(delete(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_EDITABLE"));
-    }
-
-    @Test
-    void 差戻し後は添付を追加できる() throws Exception {
-        String applicationId = createAndSubmit(member, "member");
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        UUID stepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
-                .getFirst().getId();
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", stepId)
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"comment\":\"証憑を追加してください\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("RETURNED"));
-
-        mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
-                        .file(pdf("returned.pdf"))
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isCreated());
+        assertThat(jdbc.queryForObject("select count(*) from workflow_instance_candidates", Integer.class))
+                .isZero();
+        assertThat(notificationOutbox.count()).isZero();
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void Blob保存失敗とDB保存失敗で不完全な行またはBlobを残さない(
             CapturedOutput output) throws Exception {
-        String applicationId = createDraft(member, "member", "添付補償テスト");
+        String applicationId = createDraft(member, "member");
         doThrow(new AttachmentStorageException(new IllegalStateException("store failed")))
                 .when(attachmentStorage).store(
                         anyString(), any(byte[].class), anyString(), any(Map.class));
         mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
                         .file(pdf("store-failure.pdf"))
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_STORAGE_UNAVAILABLE"));
         assertThat(attachmentRepository.count()).isZero();
@@ -496,41 +566,40 @@ class ExpenseApplicationApiIntegrationTest {
                 .when(attachmentRepository).save(any());
         mockMvc.perform(multipart("/api/expense-applications/{id}/attachments", applicationId)
                         .file(pdf("db-failure.pdf"))
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isConflict());
         assertThat(attachmentRepository.count()).isZero();
         assertThat(storedAttachments).isEmpty();
     }
 
     @Test
-    void 添付削除のDB更新失敗時はBlobを削除せず論理削除をrollbackする() throws Exception {
-        String applicationId = createDraft(member, "member", "添付削除DB失敗テスト");
+    void 添付削除のDB更新失敗時はBlobを削除せず論理削除と成功監査をRollbackする() throws Exception {
+        String applicationId = createDraft(member, "member");
         String attachmentId = upload(applicationId, member, "member", "delete-db-failure.pdf");
-
+        String objectName = "expense-evidence/%s/%s".formatted(applicationId, attachmentId);
         doThrow(new org.springframework.dao.DataIntegrityViolationException("test DB failure"))
                 .when(attachmentRepository).flush();
 
         mockMvc.perform(delete(
                         "/api/expense-applications/{id}/attachments/{attachmentId}",
                         applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CONFLICT"));
 
         assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
                 .getDeletedAt()).isNull();
-        assertThat(storedAttachments).hasSize(1);
+        assertThat(storedAttachments).containsOnlyKeys(objectName);
         verify(attachmentStorage, never()).delete(anyString());
-        assertThat(auditLogRepository.findAll(
-                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+        assertThat(auditLogs.findAll(org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
                 .extracting("actionType")
                 .doesNotContain("EXPENSE_ATTACHMENT_DELETED");
     }
 
     @Test
-    void Blob削除失敗時もDB論理削除を維持して204を返し再試行ログと監査を残す(
+    void Blob削除失敗時も論理削除を維持しSanitizeした監査とログを残す(
             CapturedOutput output) throws Exception {
-        String applicationId = createDraft(member, "member", "添付削除Blob失敗テスト");
+        String applicationId = createDraft(member, "member");
         String attachmentId = upload(applicationId, member, "member", "delete-blob-failure.pdf");
         String objectName = "expense-evidence/%s/%s".formatted(applicationId, attachmentId);
         doThrow(new AttachmentStorageException(new IllegalStateException("delete failed")))
@@ -539,297 +608,69 @@ class ExpenseApplicationApiIntegrationTest {
         mockMvc.perform(delete(
                         "/api/expense-applications/{id}/attachments/{attachmentId}",
                         applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isEmpty());
-        mockMvc.perform(get(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
-        mockMvc.perform(delete(
-                        "/api/expense-applications/{id}/attachments/{attachmentId}",
-                        applicationId, attachmentId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_NOT_FOUND"));
-
+                        .with(jwt(member, "member")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
         assertThat(attachmentRepository.findById(UUID.fromString(attachmentId)).orElseThrow()
                 .getDeletedAt()).isNotNull();
         assertThat(storedAttachments).containsKey(objectName);
-        assertThat(auditLogRepository.findAll(
-                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
+        assertThat(auditLogs.findAll(org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
                 .extracting("actionType")
                 .contains("EXPENSE_ATTACHMENT_DELETED", "EXPENSE_ATTACHMENT_STORAGE_FAILED");
         assertThat(output)
                 .contains("event=expense_attachment_storage_failed")
                 .contains("operation=DELETE")
-                .contains("applicationId=" + applicationId)
-                .contains("attachmentId=" + attachmentId)
                 .contains("causeType=IllegalStateException")
                 .doesNotContain("storageObjectName=", objectName, "delete failed");
     }
 
     @Test
-    void 添付件数と合計サイズの上限を申請ロック下で拒否する() throws Exception {
-        String countApplicationId = createDraft(member, "member", "添付件数上限テスト");
+    void 添付件数と合計サイズの上限を申請Lock下で拒否する() throws Exception {
+        String countApplicationId = createDraft(member, "member");
         insertAttachmentMetadata(UUID.fromString(countApplicationId), 10, 1);
         mockMvc.perform(multipart(
                         "/api/expense-applications/{id}/attachments", countApplicationId)
                         .file(pdf("eleventh.pdf"))
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_COUNT_EXCEEDED"));
         assertThat(storedAttachments).isEmpty();
 
-        String totalApplicationId = createDraft(member, "member", "添付合計上限テスト");
+        String totalApplicationId = createDraft(member, "member");
         insertAttachmentMetadata(UUID.fromString(totalApplicationId), 3, 10 * 1024 * 1024);
         mockMvc.perform(multipart(
                         "/api/expense-applications/{id}/attachments", totalApplicationId)
                         .file(pdf("over-total.pdf"))
-                        .with(validJwt(member, "member")))
+                        .with(jwt(member, "member")))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("EXPENSE_ATTACHMENT_TOTAL_SIZE_EXCEEDED"));
         assertThat(storedAttachments).isEmpty();
     }
 
     @Test
-    void 一般ユーザー申請を課長から経理へ順番に承認し監査を残す() throws Exception {
-        String applicationId = createAndSubmit(member, "member");
-        String submitAudit = jdbcTemplate.queryForObject("""
-                select after_data from audit_logs
-                where action_type = 'EXPENSE_APPLICATION_SUBMITTED'
-                  and target_id = ?
-                """, String.class, applicationId);
-        assertThat(submitAudit)
-                .contains("\"status\":\"PENDING_APPROVAL\"")
-                .doesNotContain("autoEntry", "autoEntryUnresolvedCount");
-
-        String managerDetail = mockMvc.perform(get("/api/expense-approvals/pending")
-                        .with(validJwt(sectionHead, "section-head")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].id").value(applicationId))
-                .andReturn().getResponse().getContentAsString();
-        assertThat(managerDetail).contains("交通費テスト");
-
-        String detail = mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(sectionHead, "section-head")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.approvalRun.steps[0].targetOrganizationUnitName").value("開発一課"))
-                .andExpect(jsonPath("$.approvalRun.steps[1].targetOrganizationUnitName").value("経理課"))
-                .andReturn().getResponse().getContentAsString();
-        String managerStepId = JsonTestSupport.stringValue(detail, "pendingStepId");
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", managerStepId)
-                        .with(validJwt(outsider, "outsider"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("APPROVAL_NOT_ALLOWED"));
-
-        String managerApproved = mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", managerStepId)
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"確認済み\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"))
-                .andExpect(jsonPath("$.approvalRun.steps[0].status").value("APPROVED"))
-                .andExpect(jsonPath("$.approvalRun.steps[1].status").value("PENDING"))
-                .andReturn().getResponse().getContentAsString();
-        String accountingStepId = JsonTestSupport.stringValue(managerApproved, "pendingStepId");
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", accountingStepId)
-                        .with(validJwt(accountingMember, "accounting-member"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
-                .andExpect(jsonPath("$.approvalRun.status").value("APPROVED"));
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", accountingStepId)
-                        .with(validJwt(accountingHead, "accounting-head"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("APPROVAL_STEP_NOT_PENDING"));
-
-        assertThat(auditLogRepository.findAll(
-                org.springframework.data.domain.PageRequest.of(0, 100)).getContent())
-                .extracting("actionType")
-                .contains("EXPENSE_APPLICATION_CREATED", "EXPENSE_APPLICATION_SUBMITTED",
-                        "EXPENSE_APPLICATION_APPROVED_STEP", "EXPENSE_APPLICATION_APPROVED");
-    }
-
-    @Test
-    void 差戻し後の再申請は新しいRunを作り旧Runを保持する() throws Exception {
-        String applicationId = createAndSubmit(member, "member");
-        String detail = mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(sectionHead, "section-head")))
-                .andReturn().getResponse().getContentAsString();
-        String stepId = JsonTestSupport.stringValue(detail, "pendingStepId");
-        String returned = mockMvc.perform(post("/api/expense-approvals/{stepId}/return", stepId)
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"comment\":\"領収内容を修正してください\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("RETURNED"))
-                .andExpect(jsonPath("$.returnReason").value("領収内容を修正してください"))
-                .andReturn().getResponse().getContentAsString();
-        long version = JsonTestSupport.longValue(returned, "version");
-
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                        "/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(member, "member"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestJson(version)))
+    void 添付は所有者と現在WorkflowCandidateだけが閲覧できる() throws Exception {
+        String applicationId = createDraft(member, "member");
+        String attachmentId = upload(applicationId, member, "member", "authorization.pdf");
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(jwt(member, "member")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(attachmentId));
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
+                        .with(jwt(member, "member")))
                 .andExpect(status().isOk());
-        mockMvc.perform(post("/api/expense-applications/{id}/resubmit", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.approvalRun.runNumber").value(2));
-
-        assertThat(runRepository.findAllByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId))).extracting("runNumber", "status")
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(2, jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.PENDING),
-                        org.assertj.core.groups.Tuple.tuple(1, jp.co.sdcj.workflow.domain.ExpenseApprovalRunStatus.RETURNED));
-    }
-
-    @Test
-    void 役職別の経路は課長が部長で部長が事業部長で事業部長は経理のみ() {
-        assertRoute(sectionHead, "開発部", "経理課");
-        assertRoute(departmentHead, "第一事業部", "経理課");
-        ResolvedApprovalRoute divisionRoute = routeResolver.resolve(divisionHead, Instant.now());
-        assertThat(divisionRoute.steps()).extracting(ResolvedApprovalRoute.ResolvedApprovalStep::type)
-                .containsExactly(ExpenseApprovalStepType.ACCOUNTING);
-    }
-
-    @Test
-    void プロジェクト経路と複数候補と上位探索を解決する() {
-        Instant now = Instant.now();
-        OrganizationUnit project = unit(
-                organization, department, "TEST_PROJECT", "顧客プロジェクト",
-                OrganizationUnitType.PROJECT);
-        AppUser projectMember = user("project.member@sdcj.co.jp", "プロジェクト担当", "project-member", now);
-        AppUser projectHead = user("project.head@sdcj.co.jp", "プロジェクト長", "project-head", now);
-        assign(projectMember, project, memberPosition);
-        assign(projectHead, project, sectionPosition);
-        assignRole(projectHead, approverRole, now);
-
-        assertRoute(projectMember, "顧客プロジェクト", "経理課");
-        assertRoute(projectHead, "開発部", "経理課");
-
-        AppUser secondHead = user("second.head@sdcj.co.jp", "副課長", "second-head", now);
-        assign(secondHead, section, sectionPosition);
-        assignRole(secondHead, approverRole, now);
-        assertThat(routeResolver.resolve(member, now).steps().getFirst().candidates())
-                .extracting(candidate -> candidate.user().getId())
-                .containsExactlyInAnyOrder(sectionHead.getId(), secondHead.getId());
-
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(departmentHead.getId()));
-        assertRoute(sectionHead, "第一事業部", "経理課");
-    }
-
-    @Test
-    void 承認Permissionのない所属候補を除外し上位候補を探索する() {
-        revokeRole(departmentHead, approverRole);
-
-        assertRoute(sectionHead, "第一事業部", "経理課");
-
-        revokeRole(divisionHead, approverRole);
-        assertRouteError(sectionHead, "DEPARTMENT_MANAGER_NOT_FOUND");
-    }
-
-    @Test
-    void 経理所属者が承認Permissionを持たない場合は業務エラーにする() {
-        revokeRole(accountingHead, approverRole);
-        revokeRole(accountingMember, approverRole);
-
-        assertRouteError(member, "ACCOUNTING_APPROVER_NOT_FOUND");
-    }
-
-    @Test
-    void 承認候補不足と主所属不足を業務エラーにする() {
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(departmentHead.getId()));
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(divisionHead.getId()));
-        assertRouteError(sectionHead, "DEPARTMENT_MANAGER_NOT_FOUND");
-
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(sectionHead.getId()));
-        assertRouteError(member, "DEPARTMENT_MANAGER_NOT_FOUND");
-
-        assign(sectionHead, section, sectionPosition);
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(accountingHead.getId()));
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(accountingMember.getId()));
-        assertRouteError(member, "ACCOUNTING_APPROVER_NOT_FOUND");
-
-        AppUser noAssignment = user(
-                "no.assignment@sdcj.co.jp", "所属なし", "no-assignment", Instant.now());
-        assertRouteError(noAssignment, "PRIMARY_ASSIGNMENT_NOT_FOUND");
-    }
-
-    @Test
-    void 経理候補が申請者本人だけの場合は申請を拒否する() {
-        Instant now = Instant.now();
-        AppUser selfAccounting = user(
-                "self.accounting@sdcj.co.jp", "経理本人", "self-accounting", now);
-        assign(selfAccounting, management, divisionPosition);
-        assignmentRepository.save(new UserOrganizationAssignment(
-                selfAccounting.getId(), accounting.getId(), memberPosition.getId(),
-                AssignmentType.ACTING, false, null, LocalDate.now().minusDays(1), null, SYSTEM));
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(accountingHead.getId()));
-        assignmentRepository.deleteAll(assignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(accountingMember.getId()));
-
-        assertRouteError(selfAccounting, "ACCOUNTING_APPROVER_NOT_FOUND");
-    }
-
-    @Test
-    void JWTなしは401でPermissionなしは403() throws Exception {
-        mockMvc.perform(get("/api/expense-applications")).andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/expense-applications").with(validJwt(outsider, "outsider")))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void 候補者でも承認Permissionが失効したら承認操作を許可しない() throws Exception {
-        String applicationId = createAndSubmit(member, "member");
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        UUID stepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
-                .getFirst().getId();
-
-        mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(sectionHead, "section-head")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pendingStepId").value(stepId.toString()))
-                .andExpect(jsonPath("$.canApprove").value(true));
-
-        assignRole(sectionHead, applicantRole, Instant.now());
-        roleAssignmentRepository.deleteAll(roleAssignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(sectionHead.getId()).stream()
-                .filter(assignment -> assignment.getRoleId().equals(approverRole.getId()))
-                .toList());
-        roleAssignmentRepository.flush();
-        assertThat(candidateRepository.existsByApprovalStepIdAndCandidateUserId(
-                stepId, sectionHead.getId())).isTrue();
-
-        mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(sectionHead, "section-head")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pendingStepId").value(stepId.toString()))
-                .andExpect(jsonPath("$.canApprove").value(false));
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", stepId)
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(jwt(sectionManager, "section-manager")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(attachmentId));
+        mockMvc.perform(get(
+                        "/api/expense-applications/{id}/attachments/{attachmentId}/content",
+                        applicationId, attachmentId)
+                        .with(jwt(sectionManager, "section-manager")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
+                        .with(jwt(departmentManager, "department-manager")))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -844,221 +685,104 @@ class ExpenseApplicationApiIntegrationTest {
                 """;
 
         mockMvc.perform(post("/api/expense-applications")
-                        .with(validJwt(member, "member"))
+                        .with(jwt(member, "member"))
                         .contentType(MediaType.APPLICATION_JSON).content(request))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code")
-                        .value("EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED"))
-                .andExpect(jsonPath("$.message")
-                        .value("明細合計は999,999,999,999円以下で入力してください。"));
-        assertThat(jdbcTemplate.queryForObject(
+                        .value("EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED"));
+        assertThat(jdbc.queryForObject(
                 "select count(*) from expense_applications", Integer.class)).isZero();
     }
 
-    @Test
-    void 下書き更新と所有者と承認順序と自己承認のAPI境界を守る() throws Exception {
-        String created = mockMvc.perform(post("/api/expense-applications")
-                        .with(validJwt(member, "member"))
-                        .contentType(MediaType.APPLICATION_JSON).content(requestJson(null)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.totalAmount").value(1500))
-                .andReturn().getResponse().getContentAsString();
-        String applicationId = JsonTestSupport.stringValue(created, "id");
-        long originalVersion = JsonTestSupport.longValue(created, "version");
-
-        assignRole(outsider, applicantRole, Instant.now());
-        mockMvc.perform(get("/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(outsider, "outsider")))
-                .andExpect(status().isNotFound());
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                        "/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(outsider, "outsider"))
-                        .contentType(MediaType.APPLICATION_JSON).content(requestJson(originalVersion)))
-                .andExpect(status().isNotFound());
-
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                        "/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(member, "member"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestJson(originalVersion)
-                                .replace("交通費テスト", "交通費更新")))
-                .andExpect(status().isOk());
-        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                        "/api/expense-applications/{id}", applicationId)
-                        .with(validJwt(member, "member"))
-                        .contentType(MediaType.APPLICATION_JSON).content(requestJson(originalVersion)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"));
-
-        mockMvc.perform(post("/api/expense-applications")
-                        .with(validJwt(member, "member"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestJson(null).replace("\"destination\":\"横浜\"", "\"destination\":\"\"")))
+    private UUID submit(AppUser user, String subject) throws Exception {
+        String id = createDraft(user, subject);
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", id).with(jwt(user, subject)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.cancellable").value(true));
+        return UUID.fromString(id);
+    }
+    private String createDraft(AppUser user, String subject) throws Exception {
+        String json = mockMvc.perform(post("/api/expense-applications").with(jwt(user, subject))
+                        .contentType(MediaType.APPLICATION_JSON).content(request()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        return json.substring(json.indexOf("\"id\":\"") + 6, json.indexOf('"', json.indexOf("\"id\":\"") + 6));
+    }
+    private jp.co.sdcj.workflow.engine.runtime.WorkflowInstance latest(UUID subjectId) {
+        return instances.findFirstBySubjectTypeAndSubjectIdOrderByRunNumberDesc(
+                "EXPENSE_APPLICATION", subjectId).orElseThrow();
+    }
+    private void assertSubmissionHasNoAssignee(AppUser user, String subject) throws Exception {
+        String draftId = createDraft(user, subject);
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", draftId).with(jwt(user, subject)))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.code").value("EXPENSE_APPLICATION_CATEGORY_FIELD_REQUIRED"));
-
-        mockMvc.perform(post("/api/expense-applications/{id}/submit", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk());
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        var steps = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
-
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.get(1).getId())
-                        .with(validJwt(accountingMember, "accounting-member"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("APPROVAL_STEP_NOT_PENDING"));
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/return", steps.getFirst().getId())
-                        .with(validJwt(sectionHead, "section-head"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"comment\":\"\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("RETURN_REASON_REQUIRED"));
-
-        assignRole(member, approverRole, Instant.now());
-        UserOrganizationAssignment memberAssignment = assignmentRepository
-                .findCurrentPrimaryByUserId(member.getId(), LocalDate.now()).orElseThrow();
-        candidateRepository.save(new ExpenseApprovalCandidate(
-                steps.getFirst().getId(), member, memberAssignment, memberPosition));
-        mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", steps.getFirst().getId())
-                        .with(validJwt(member, "member"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("SELF_APPROVAL_NOT_ALLOWED"));
-
-        mockMvc.perform(post("/api/expense-applications/{id}/cancel", applicationId)
-                        .with(validJwt(member, "member")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
+                .andExpect(jsonPath("$.code").value("WORKFLOW_ASSIGNEE_NOT_FOUND"));
+        assertRolledBack(draftId);
     }
-
-    @Test
-    void 同一Stepの複数候補による同時承認は1件だけ成功する() throws Exception {
-        Instant now = Instant.now();
-        AppUser secondHead = user("concurrent.head@sdcj.co.jp", "同時承認候補", "concurrent-head", now);
-        assign(secondHead, section, sectionPosition);
-        assignRole(secondHead, approverRole, now);
-        String applicationId = createAndSubmit(member, "member");
-        var run = runRepository.findFirstByExpenseApplicationIdOrderByRunNumberDesc(
-                UUID.fromString(applicationId)).orElseThrow();
-        UUID stepId = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId())
-                .getFirst().getId();
-        CountDownLatch ready = new CountDownLatch(2);
-        CountDownLatch start = new CountDownLatch(1);
-
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> concurrentApprove(
-                    stepId, sectionHead, "section-head", ready, start));
-            var second = executor.submit(() -> concurrentApprove(
-                    stepId, secondHead, "concurrent-head", ready, start));
-            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
-            start.countDown();
-            assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder(200, 409);
-        }
+    private void assertSubmissionDefinitionInvalid(AppUser user, String subject) throws Exception {
+        String draftId = createDraft(user, subject);
+        mockMvc.perform(post("/api/expense-applications/{id}/submit", draftId).with(jwt(user, subject)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("WORKFLOW_DEFINITION_INVALID"));
+        assertRolledBack(draftId);
     }
-
-    private String createAndSubmit(AppUser applicant, String subject) throws Exception {
-        String id = createDraft(applicant, subject, "交通費テスト");
-        mockMvc.perform(post("/api/expense-applications/{id}/submit", id)
-                        .with(validJwt(applicant, subject)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("PENDING_APPROVAL"));
-        return id;
+    private void assertRolledBack(String draftId) {
+        UUID id = UUID.fromString(draftId);
+        assertThat(instances.countBySubjectTypeAndSubjectId("EXPENSE_APPLICATION", id)).isZero();
+        assertThat(jdbc.queryForObject("select status from expense_applications where id = ?", String.class, id))
+                .isEqualTo("DRAFT");
     }
-
-    private String createDraft(AppUser applicant, String subject, String title) throws Exception {
-        String created = mockMvc.perform(post("/api/expense-applications")
-                        .with(validJwt(applicant, subject))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestJson(null).replace("交通費テスト", title)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.totalAmount").value(1500))
-                .andReturn().getResponse().getContentAsString();
-        return JsonTestSupport.stringValue(created, "id");
+    private WorkflowDefinitionVersion publishAccountingOnlyV2() {
+        var definition = workflowDefinitions.findByWorkflowCodeAndEnabledTrue("EXPENSE_APPROVAL").orElseThrow();
+        WorkflowDefinitionVersion version = workflowVersions.save(new WorkflowDefinitionVersion(
+                definition.getId(), 2, WorkflowDefinitionStatus.PUBLISHED, Instant.EPOCH, null));
+        WorkflowNode start = workflowNodes.save(new WorkflowNode(version.getId(), "START",
+                WorkflowNodeType.START, "開始", null));
+        WorkflowNode accountingNode = workflowNodes.save(new WorkflowNode(version.getId(), "ACCOUNTING",
+                WorkflowNodeType.APPROVAL, "経理承認", WorkflowApprovalMode.ANY_ONE));
+        WorkflowNode end = workflowNodes.save(new WorkflowNode(version.getId(), "END",
+                WorkflowNodeType.END, "完了", null));
+        workflowTransitions.save(new WorkflowTransition(version.getId(), "START_ACCOUNTING",
+                start.getId(), accountingNode.getId(), null));
+        workflowTransitions.save(new WorkflowTransition(version.getId(), "ACCOUNTING_END",
+                accountingNode.getId(), end.getId(), null));
+        workflowRules.save(new WorkflowAssigneeRule(accountingNode.getId(), "ORGANIZATION_UNIT_CODE",
+                "{\"organizationIdField\":\"applicant.organizationId\",\"unitCode\":\"ACCOUNTING_SECTION\"}",
+                PermissionCodes.EXPENSE_APPLICATION_APPROVE, true));
+        return version;
     }
-
-    private String upload(
-            String applicationId, AppUser user, String subject, String fileName) throws Exception {
-        String response = mockMvc.perform(multipart(
-                        "/api/expense-applications/{id}/attachments", applicationId)
-                        .file(pdf(fileName))
-                        .with(validJwt(user, subject)))
-                .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
-        return JsonTestSupport.stringValue(response, "id");
+    private OrganizationUnit unit(OrganizationUnit parent, String code, String name, OrganizationUnitType type) {
+        return units.save(new OrganizationUnit(organization.getId(), parent == null ? null : parent.getId(),
+                code, name, type, 10, LocalDate.now().minusYears(1), null, SYSTEM));
     }
-
-    private String requestJson(Long version) {
-        return """
-                {"category":"TRANSPORTATION","title":"交通費テスト","purpose":"顧客訪問",
-                 "expenseDate":"2026-08-02","remarks":"PoC",
-                 "items":[{"expenseDate":"2026-08-02","description":"電車往復",
-                 "amount":1500,"origin":"東京","destination":"横浜","transportationType":"TRAIN"}]%s}
-                """.formatted(version == null ? "" : ",\"version\":" + version);
-    }
-
-    private void assertRoute(AppUser user, String... targets) {
-        assertThat(routeResolver.resolve(user, Instant.now()).steps())
-                .extracting(step -> step.target().getUnitName()).containsExactly(targets);
-    }
-
-    private void assertRouteError(AppUser user, String code) {
-        assertThatThrownBy(() -> routeResolver.resolve(user, Instant.now()))
-                .isInstanceOfSatisfying(ApiException.class,
-                        exception -> assertThat(exception.getCode()).isEqualTo(code));
-    }
-
-    private OrganizationUnit unit(
-            Organization organization, OrganizationUnit parent, String code, String name,
-            OrganizationUnitType type) {
-        return unitRepository.save(new OrganizationUnit(
-                organization.getId(), parent == null ? null : parent.getId(), code, name,
-                type, 10, LocalDate.now().minusYears(1), null, SYSTEM));
-    }
-
     private AppUser user(String email, String name, String subject, Instant now) {
-        AppUser user = userRepository.save(new AppUser(
-                null, email, name, AccountStatus.ACTIVE,
+        AppUser user = users.save(new AppUser(null, email, name, AccountStatus.ACTIVE,
                 now.minus(30, ChronoUnit.DAYS), null, SYSTEM));
-        identityRepository.save(new UserExternalIdentity(
-                user.getId(), "keycloak", ISSUER, subject, email,
-                now.minus(1, ChronoUnit.DAYS), SYSTEM));
-        return user;
+        identities.save(new UserExternalIdentity(user.getId(), "keycloak", ISSUER, subject, email,
+                now.minus(1, ChronoUnit.DAYS), SYSTEM)); return user;
     }
-
-    private void assign(AppUser user, OrganizationUnit unit, Position position) {
-        assignmentRepository.save(new UserOrganizationAssignment(
-                user.getId(), unit.getId(), position.getId(), AssignmentType.PRIMARY, true,
-                null, LocalDate.now().minusDays(1), null, SYSTEM));
+    private void assign(AppUser user, OrganizationUnit unit, Position position, AssignmentType type) {
+        assignments.save(new UserOrganizationAssignment(user.getId(), unit.getId(), position.getId(), type,
+                type == AssignmentType.PRIMARY, null, LocalDate.now().minusDays(1), null, SYSTEM));
     }
-
     private Permission permission(String code, String action) {
-        return permissionRepository.save(new Permission(
-                code, code, "EXPENSE_APPLICATION", action, null, SYSTEM));
+        return permissions.save(new Permission(code, code, "EXPENSE_APPLICATION", action, null, SYSTEM));
     }
-
-    private void assignRole(AppUser user, Role role, Instant now) {
-        roleAssignmentRepository.save(new UserRoleAssignment(
-                user.getId(), role.getId(), null, now.minus(1, ChronoUnit.DAYS), null,
-                "test", SYSTEM, SYSTEM));
+    private void grant(AppUser user, Role role, Instant now) {
+        userRoles.save(new UserRoleAssignment(user.getId(), role.getId(), null,
+                now.minus(1, ChronoUnit.DAYS), null, "test", SYSTEM, SYSTEM));
     }
-
-    private void revokeRole(AppUser user, Role role) {
-        roleAssignmentRepository.deleteAll(roleAssignmentRepository
-                .findAllByUserIdOrderByValidFromDesc(user.getId()).stream()
-                .filter(assignment -> assignment.getRoleId().equals(role.getId()))
-                .toList());
-        roleAssignmentRepository.flush();
+    private void grant(AppUser user, Role role, OrganizationUnit scope, Instant now) {
+        userRoles.save(new UserRoleAssignment(user.getId(), role.getId(), scope.getId(),
+                now.minus(1, ChronoUnit.DAYS), null, "test", SYSTEM, SYSTEM));
     }
-
-    private JwtRequestPostProcessor validJwt(AppUser user, String subject) {
-        return jwt().jwt(builder -> builder.issuer(ISSUER).subject(subject)
-                .audience(List.of("account")).claim("email", user.getEmail())
-                .claim("email_verified", true).claim("name", user.getDisplayName())
-                .claim("azp", CLIENT_ID));
+    private JwtRequestPostProcessor jwt(AppUser user, String subject) {
+        return org.springframework.security.test.web.servlet.request
+                .SecurityMockMvcRequestPostProcessors.jwt().jwt(builder ->
+                builder.issuer(ISSUER).subject(subject).audience(List.of("account"))
+                .claim("email", user.getEmail()).claim("email_verified", true)
+                .claim("name", user.getDisplayName()).claim("azp", "workflow-web"));
     }
-
     private int concurrentApprove(
             UUID stepId, AppUser approver, String subject,
             CountDownLatch ready, CountDownLatch start) throws Exception {
@@ -1066,12 +790,99 @@ class ExpenseApplicationApiIntegrationTest {
         if (!start.await(5, TimeUnit.SECONDS)) {
             throw new IllegalStateException("Concurrent approval start timed out");
         }
-        return mockMvc.perform(post("/api/expense-approvals/{stepId}/approve", stepId)
-                        .with(validJwt(approver, subject))
+        return mockMvc.perform(post("/api/workflow/tasks/{id}/approve", stepId)
+                        .with(jwt(approver, subject))
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andReturn().getResponse().getStatus();
     }
+    private void assertConcurrentCancellationRace(String workflowAction) throws Exception {
+        UUID applicationId = submit(member, "member");
+        var instance = latest(applicationId);
+        var workflowSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        UUID currentStepId = workflowSteps.getFirst().getId();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
 
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var cancellation = executor.submit(() -> concurrentCancel(applicationId, ready, start));
+            var workflowMutation = executor.submit(() -> concurrentWorkflowMutation(
+                    workflowAction, currentStepId, ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(List.of(
+                    cancellation.get(10, TimeUnit.SECONDS),
+                    workflowMutation.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+
+        var persistedInstance = instances.findById(instance.getId()).orElseThrow();
+        var persistedSteps = steps.findAllByWorkflowInstanceIdOrderByStepOrder(instance.getId());
+        String applicationStatus = jdbc.queryForObject(
+                "select status from expense_applications where id = ?",
+                String.class, applicationId);
+        int cancelActions = actionCount(instance.getId(), "CANCEL");
+        int competingActions = actionCount(instance.getId(), workflowAction.toUpperCase());
+
+        if (persistedInstance.getStatus() == WorkflowInstanceStatus.CANCELLED) {
+            assertThat(applicationStatus).isEqualTo("CANCELLED");
+            assertThat(persistedSteps).extracting("status")
+                    .containsOnly(WorkflowStepStatus.CANCELLED);
+            assertThat(cancelActions).isEqualTo(1);
+            assertThat(competingActions).isZero();
+        } else if (workflowAction.equals("approve")) {
+            assertThat(persistedInstance.getStatus()).isEqualTo(WorkflowInstanceStatus.PENDING);
+            assertThat(applicationStatus).isEqualTo("PENDING_APPROVAL");
+            assertThat(persistedSteps).extracting("status")
+                    .containsExactly(WorkflowStepStatus.APPROVED, WorkflowStepStatus.PENDING);
+            assertThat(cancelActions).isZero();
+            assertThat(competingActions).isEqualTo(1);
+        } else {
+            assertThat(persistedInstance.getStatus()).isEqualTo(WorkflowInstanceStatus.RETURNED);
+            assertThat(applicationStatus).isEqualTo("RETURNED");
+            assertThat(persistedSteps).extracting("status")
+                    .containsExactly(WorkflowStepStatus.RETURNED, WorkflowStepStatus.CANCELLED);
+            assertThat(cancelActions).isZero();
+            assertThat(competingActions).isEqualTo(1);
+        }
+    }
+    private int concurrentCancel(
+            UUID applicationId, CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent cancellation start timed out");
+        }
+        return mockMvc.perform(post("/api/expense-applications/{id}/cancel", applicationId)
+                        .with(jwt(member, "member")))
+                .andReturn().getResponse().getStatus();
+    }
+    private int concurrentWorkflowMutation(
+            String action, UUID stepId, CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent workflow mutation start timed out");
+        }
+        String content = action.equals("return") ? "{\"comment\":\"修正してください\"}" : "{}";
+        return mockMvc.perform(post("/api/workflow/tasks/{id}/{action}", stepId, action)
+                        .with(jwt(sectionManager, "section-manager"))
+                        .contentType(MediaType.APPLICATION_JSON).content(content))
+                .andReturn().getResponse().getStatus();
+    }
+    private int actionCount(UUID instanceId, String actionType) {
+        return jdbc.queryForObject("""
+                select count(*) from workflow_instance_actions
+                where workflow_instance_id = ? and action_type = ?
+                """, Integer.class, instanceId, actionType);
+    }
+    private String upload(
+            String applicationId, AppUser user, String subject, String fileName) throws Exception {
+        String response = mockMvc.perform(multipart(
+                        "/api/expense-applications/{id}/attachments", applicationId)
+                        .file(pdf(fileName)).with(jwt(user, subject)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        int start = response.indexOf("\"id\":\"") + 6;
+        return response.substring(start, response.indexOf('"', start));
+    }
     @SuppressWarnings("unchecked")
     private void setUpAttachmentStorage() {
         reset(attachmentStorage);
@@ -1103,17 +914,14 @@ class ExpenseApplicationApiIntegrationTest {
             return null;
         }).when(attachmentStorage).delete(anyString());
     }
-
     private static MockMultipartFile pdf(String fileName) {
-        return new MockMultipartFile(
-                "file", fileName, "application/pdf",
+        return new MockMultipartFile("file", fileName, "application/pdf",
                 "%PDF-1.7\nfixture".getBytes(StandardCharsets.UTF_8));
     }
-
     private void insertAttachmentMetadata(UUID applicationId, int count, long fileSize) {
         for (int index = 0; index < count; index++) {
             UUID attachmentId = UUID.randomUUID();
-            jdbcTemplate.update("""
+            jdbc.update("""
                     insert into expense_application_attachments (
                         id, expense_application_id, original_file_name,
                         uploaded_by_name_snapshot, storage_object_name, content_type,
@@ -1121,49 +929,34 @@ class ExpenseApplicationApiIntegrationTest {
                     ) values (?, ?, ?, ?, ?, 'application/pdf', ?, ?, ?, current_timestamp,
                               ?, current_timestamp, 0)
                     """,
-                    attachmentId,
-                    applicationId,
-                    "existing-%d.pdf".formatted(index),
+                    attachmentId, applicationId, "existing-%d.pdf".formatted(index),
                     member.getDisplayName(),
                     "expense-evidence/%s/%s".formatted(applicationId, attachmentId),
-                    fileSize,
-                    "0".repeat(64),
-                    member.getId(),
-                    member.getId());
+                    fileSize, "0".repeat(64), member.getId(), member.getId());
         }
     }
-
-    private void clearDatabase() {
-        for (String table : List.of(
-                "notification_outbox",
-                "expense_application_attachments",
-                "expense_approval_candidates", "expense_approval_steps", "expense_approval_runs",
+    private static String request() { return """
+            {"category":"TRANSPORTATION","title":"交通費","purpose":"訪問",
+             "expenseDate":"2026-08-02","items":[{"expenseDate":"2026-08-02",
+             "description":"電車","amount":1500,"origin":"東京","destination":"横浜",
+             "transportationType":"TRAIN"}]}
+            """; }
+    private void clearBusinessData() {
+        jdbc.update("delete from workflow_assignee_rules where workflow_node_id in "
+                + "(select id from workflow_nodes where workflow_definition_version_id in "
+                + "(select id from workflow_definition_versions where version_number > 1))");
+        jdbc.update("delete from workflow_transitions where workflow_definition_version_id in "
+                + "(select id from workflow_definition_versions where version_number > 1)");
+        jdbc.update("delete from workflow_nodes where workflow_definition_version_id in "
+                + "(select id from workflow_definition_versions where version_number > 1)");
+        jdbc.update("delete from workflow_definition_versions where version_number > 1");
+        for (String table : List.of("notification_outbox", "workflow_instance_actions",
+                "workflow_instance_candidates", "workflow_instance_steps", "workflow_instances",
+                "expense_application_auto_entry_contexts", "expense_application_attachments",
                 "expense_application_items", "expense_applications", "role_permissions",
                 "user_role_change_histories", "user_role_assignments", "permissions", "roles",
                 "user_organization_assignments", "positions", "organization_units", "organizations",
                 "user_account_status_histories", "user_external_identities", "audit_logs",
-                "access_requests", "app_users")) {
-            jdbcTemplate.update("delete from " + table);
-        }
-    }
-
-    private static final class JsonTestSupport {
-        private static String stringValue(String json, String fieldName) {
-            String marker = "\"" + fieldName + "\":\"";
-            int start = json.indexOf(marker);
-            if (start < 0) throw new AssertionError("Missing JSON field: " + fieldName + " in " + json);
-            start += marker.length();
-            return json.substring(start, json.indexOf('"', start));
-        }
-
-        private static long longValue(String json, String fieldName) {
-            String marker = "\"" + fieldName + "\":";
-            int start = json.indexOf(marker);
-            if (start < 0) throw new AssertionError("Missing JSON field: " + fieldName + " in " + json);
-            start += marker.length();
-            int end = start;
-            while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
-            return Long.parseLong(json.substring(start, end));
-        }
+                "access_requests", "app_users")) jdbc.update("delete from " + table);
     }
 }

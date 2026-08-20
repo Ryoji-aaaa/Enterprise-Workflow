@@ -110,7 +110,7 @@ const rules: readonly BackendProxyPolicy[] = [
   },
   {
     methods: new Set(["GET"]),
-    path: /^\/expense-approvals\/pending$/,
+    path: /^\/workflow\/tasks$/,
     responseType: "json",
     timeoutMilliseconds: DEFAULT_BACKEND_PROXY_TIMEOUT_MILLISECONDS,
   },
@@ -131,8 +131,20 @@ const rules: readonly BackendProxyPolicy[] = [
   {
     methods: new Set(["POST"]),
     path: new RegExp(
-      `^/expense-approvals/${UUID_PATTERN}/(?:approve|return)$`,
+      `^/workflow/tasks/${UUID_PATTERN}/(?:approve|return)$`,
     ),
+    responseType: "json",
+    timeoutMilliseconds: DEFAULT_BACKEND_PROXY_TIMEOUT_MILLISECONDS,
+  },
+  {
+    methods: new Set(["GET"]),
+    path: new RegExp(`^/workflow/tasks/${UUID_PATTERN}$`),
+    responseType: "json",
+    timeoutMilliseconds: DEFAULT_BACKEND_PROXY_TIMEOUT_MILLISECONDS,
+  },
+  {
+    methods: new Set(["GET"]),
+    path: new RegExp(`^/workflow/subjects/[A-Z_]+/${UUID_PATTERN}/latest$`),
     responseType: "json",
     timeoutMilliseconds: DEFAULT_BACKEND_PROXY_TIMEOUT_MILLISECONDS,
   },

@@ -5,13 +5,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,19 +21,13 @@ import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.ExpenseApplication;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationItem;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationStatus;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalCandidate;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalRun;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalStep;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalStepStatus;
+import jp.co.sdcj.workflow.engine.WorkflowEngine;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowRuntimeService;
+import jp.co.sdcj.workflow.engine.subject.ApplicantOrganizationResolver;
+import jp.co.sdcj.workflow.engine.subject.ExpenseWorkflowContextProvider;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationItemRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationAutoEntryContextRepository;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalRunRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalStepRepository;
-import jp.co.sdcj.workflow.service.ResolvedApprovalRoute.ApplicantOrganizationSnapshot;
-import jp.co.sdcj.workflow.service.notification.NotificationMessageFactory;
-import jp.co.sdcj.workflow.service.notification.NotificationPublisher;
 
 @Service
 public class ExpenseApplicationService {
@@ -47,43 +37,31 @@ public class ExpenseApplicationService {
     private final ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository;
     private final ExpenseApplicationAccessService accessService;
     private final ExpenseApplicationItemRepository itemRepository;
-    private final ExpenseApprovalRunRepository runRepository;
-    private final ExpenseApprovalStepRepository stepRepository;
-    private final ExpenseApprovalCandidateRepository candidateRepository;
-    private final ExpenseApprovalRouteResolver routeResolver;
+    private final ApplicantOrganizationResolver organizationResolver;
+    private final WorkflowEngine workflowEngine;
+    private final WorkflowRuntimeService workflowRuntime;
     private final AuditLogService auditLogService;
-    private final NotificationPublisher notificationPublisher;
-    private final NotificationMessageFactory messageFactory;
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper objectMapper;
 
     public ExpenseApplicationService(
             ExpenseApplicationRepository applicationRepository,
             ExpenseApplicationAutoEntryContextRepository autoEntryContextRepository,
             ExpenseApplicationAccessService accessService,
             ExpenseApplicationItemRepository itemRepository,
-            ExpenseApprovalRunRepository runRepository,
-            ExpenseApprovalStepRepository stepRepository,
-            ExpenseApprovalCandidateRepository candidateRepository,
-            ExpenseApprovalRouteResolver routeResolver,
+            ApplicantOrganizationResolver organizationResolver,
+            WorkflowEngine workflowEngine,
+            WorkflowRuntimeService workflowRuntime,
             AuditLogService auditLogService,
-            NotificationPublisher notificationPublisher,
-            NotificationMessageFactory messageFactory,
-            JdbcTemplate jdbcTemplate,
-            ObjectMapper objectMapper) {
+            JdbcTemplate jdbcTemplate) {
         this.applicationRepository = applicationRepository;
         this.autoEntryContextRepository = autoEntryContextRepository;
         this.accessService = accessService;
         this.itemRepository = itemRepository;
-        this.runRepository = runRepository;
-        this.stepRepository = stepRepository;
-        this.candidateRepository = candidateRepository;
-        this.routeResolver = routeResolver;
+        this.organizationResolver = organizationResolver;
+        this.workflowEngine = workflowEngine;
+        this.workflowRuntime = workflowRuntime;
         this.auditLogService = auditLogService;
-        this.notificationPublisher = notificationPublisher;
-        this.messageFactory = messageFactory;
         this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -96,7 +74,7 @@ public class ExpenseApplicationService {
     public ExpenseApplicationDetails createDraftWithId(
             UUID applicationId, ExpenseApplicationInput input, AppUser applicant) {
         Instant now = Instant.now();
-        ApplicantOrganizationSnapshot organization = routeResolver.resolveOrganization(applicant, now);
+        var organization = organizationResolver.resolve(applicant, now);
         BigDecimal total = validateAndTotal(input);
         ExpenseApplication application = applicationRepository.save(new ExpenseApplication(
                 applicationId, nextApplicationNumber(), applicant,
@@ -109,7 +87,7 @@ public class ExpenseApplicationService {
                 application.getId().toString(), null,
                 Map.of("applicationNumber", application.getApplicationNumber(),
                         "status", application.getStatus().name()), null);
-        return new ExpenseApplicationDetails(application, items, null, List.of());
+        return details(application, items);
     }
 
     @Transactional
@@ -185,75 +163,24 @@ public class ExpenseApplicationService {
         }
 
         Instant now = Instant.now();
-        ResolvedApprovalRoute route = routeResolver.resolve(applicant, now);
+        var organization = organizationResolver.resolve(applicant, now);
         application.updateOrganizationSnapshot(
-                route.organization().unit().getOrganizationId(),
-                route.organization().unit(), route.organization().division());
-        int runNumber = Math.toIntExact(runRepository.countByExpenseApplicationId(applicationId) + 1);
-        ExpenseApprovalRun run = runRepository.save(new ExpenseApprovalRun(
-                applicationId, runNumber, organizationSnapshot(route), now, applicant.getId()));
-        ExpenseApprovalStep firstStep = null;
-        List<ExpenseApprovalCandidate> firstCandidates = List.of();
-        for (int index = 0; index < route.steps().size(); index++) {
-            var resolvedStep = route.steps().get(index);
-            ExpenseApprovalStep step = stepRepository.save(new ExpenseApprovalStep(
-                    run.getId(), index + 1, resolvedStep.type(), resolvedStep.target(),
-                    index == 0 ? ExpenseApprovalStepStatus.PENDING
-                            : ExpenseApprovalStepStatus.WAITING));
-            List<ExpenseApprovalCandidate> candidates = resolvedStep.candidates().stream()
-                    .map(candidate -> new ExpenseApprovalCandidate(
-                            step.getId(), candidate.user(), candidate.assignment(), candidate.position()))
-                    .toList();
-            candidates = candidateRepository.saveAll(candidates);
-            if (index == 0) {
-                firstStep = step;
-                firstCandidates = candidates;
-            }
-        }
-        application.submit(now, applicant.getId());
-        String action = resubmit
-                ? "EXPENSE_APPLICATION_RESUBMITTED" : "EXPENSE_APPLICATION_SUBMITTED";
-        auditLogService.recordSuccess(
-                AuditActor.user(applicant), action, "EXPENSE_APPLICATION",
-                applicationId.toString(), Map.of("status", required.name()),
-                submissionAuditData(application, runNumber), null);
-        if (firstStep == null) {
-            throw new IllegalStateException("Resolved approval route has no first step");
-        }
-        messageFactory.approvalRequests(application, run, firstStep, firstCandidates)
-                .forEach(notificationPublisher::publish);
-        return new ExpenseApplicationDetails(
-                application, items, run,
-                stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId()));
+                organization.unit().getOrganizationId(), organization.unit(), organization.division());
+        workflowEngine.start("EXPENSE_APPROVAL", ExpenseWorkflowContextProvider.SUBJECT_TYPE,
+                applicationId, applicant, now);
+        return details(application, items);
     }
 
     @Transactional
     public ExpenseApplicationDetails cancel(UUID applicationId, AppUser applicant) {
-        ExpenseApplication application = ownedForUpdate(applicationId, applicant);
+        ExpenseApplication application = accessService.owned(
+                applicationId, applicant, "EXPENSE_APPLICATION_UPDATE_DENIED");
         if (application.getStatus() != ExpenseApplicationStatus.PENDING_APPROVAL) {
             throw conflict("EXPENSE_APPLICATION_INVALID_STATUS", "現在の状態では取り下げできません。");
         }
-        ExpenseApprovalRun run = runRepository
-                .findFirstByExpenseApplicationIdOrderByRunNumberDesc(applicationId)
-                .orElseThrow(() -> new IllegalStateException("Pending application has no approval run"));
-        List<ExpenseApprovalStep> steps = stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
-        if (steps.stream().anyMatch(step -> step.getStatus() == ExpenseApprovalStepStatus.APPROVED)) {
-            throw conflict("EXPENSE_APPLICATION_ALREADY_PROCESSED", "承認済みのステップがあるため取り下げできません。");
-        }
-        steps.stream().filter(step -> step.getStatus() == ExpenseApprovalStepStatus.PENDING
-                        || step.getStatus() == ExpenseApprovalStepStatus.WAITING)
-                .forEach(ExpenseApprovalStep::cancel);
-        Instant now = Instant.now();
-        run.cancel(now);
-        application.cancel(now, applicant.getId());
-        auditLogService.recordSuccess(
-                AuditActor.user(applicant), "EXPENSE_APPLICATION_CANCELLED", "EXPENSE_APPLICATION",
-                applicationId.toString(), Map.of("status", "PENDING_APPROVAL"),
-                Map.of("applicationNumber", application.getApplicationNumber(),
-                        "status", "CANCELLED", "runNumber", run.getRunNumber()), null);
-        return new ExpenseApplicationDetails(application,
-                itemRepository.findAllByExpenseApplicationIdOrderByDisplayOrder(applicationId),
-                run, steps);
+        workflowRuntime.cancelLatest(ExpenseWorkflowContextProvider.SUBJECT_TYPE, applicationId, applicant);
+        return details(application,
+                itemRepository.findAllByExpenseApplicationIdOrderByDisplayOrder(applicationId));
     }
 
     @Transactional(readOnly = true)
@@ -274,11 +201,10 @@ public class ExpenseApplicationService {
         List<ExpenseApplicationItem> items = knownItems == null
                 ? itemRepository.findAllByExpenseApplicationIdOrderByDisplayOrder(application.getId())
                 : knownItems;
-        ExpenseApprovalRun run = runRepository
-                .findFirstByExpenseApplicationIdOrderByRunNumberDesc(application.getId()).orElse(null);
-        List<ExpenseApprovalStep> steps = run == null ? List.of()
-                : stepRepository.findAllByApprovalRunIdOrderByStepOrder(run.getId());
-        return new ExpenseApplicationDetails(application, items, run, steps);
+        boolean workflowCancellable = application.getStatus() == ExpenseApplicationStatus.PENDING_APPROVAL
+                && workflowRuntime.canCancelLatest(
+                        ExpenseWorkflowContextProvider.SUBJECT_TYPE, application.getId());
+        return new ExpenseApplicationDetails(application, items, workflowCancellable);
     }
 
     private ExpenseApplication ownedForUpdate(UUID id, AppUser user) {
@@ -341,56 +267,6 @@ public class ExpenseApplicationService {
                 "select nextval('expense_application_number_seq')", Long.class);
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         return "EXP-%s-%06d".formatted(today.format(DateTimeFormatter.BASIC_ISO_DATE), sequence);
-    }
-
-    private String organizationSnapshot(ResolvedApprovalRoute route) {
-        Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("applicantAssignmentId", route.organization().assignment().getId());
-        snapshot.put("applicantUnitId", route.organization().unit().getId());
-        snapshot.put("applicantUnitName", route.organization().unit().getUnitName());
-        snapshot.put("applicantPositionId", route.organization().position() == null
-                ? null : route.organization().position().getId());
-        snapshot.put("applicantPositionName", route.organization().position() == null
-                ? null : route.organization().position().getPositionName());
-        snapshot.put("divisionUnitId", route.organization().division().getId());
-        snapshot.put("divisionUnitName", route.organization().division().getUnitName());
-        snapshot.put("resolvedAt", route.resolvedAt());
-        try {
-            return objectMapper.writeValueAsString(snapshot);
-        } catch (JacksonException exception) {
-            throw new IllegalStateException("Could not serialize expense organization snapshot", exception);
-        }
-    }
-
-    private Map<String, Object> submissionAuditData(
-            ExpenseApplication application,
-            int runNumber) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("applicationNumber", application.getApplicationNumber());
-        data.put("status", application.getStatus().name());
-        data.put("runNumber", runNumber);
-        autoEntryContextRepository.findByExpenseApplicationId(application.getId())
-                .ifPresent(context -> {
-                    ExpenseAutoEntryHumanReviewState state = deserializeAutoEntryHumanState(
-                            context.getHumanReviewState());
-                    long unresolvedCount = state.fields().values().stream()
-                            .filter(field -> field.resolution()
-                                    == ExpenseAutoEntryHumanReviewState.HumanResolution.UNRESOLVED)
-                            .count();
-                    data.put("autoEntry", true);
-                    data.put("autoEntryUnresolvedCount", unresolvedCount);
-                    data.put("autoEntrySchemaVersion", context.getAutoEntrySchemaVersion());
-                });
-        return data;
-    }
-
-    private ExpenseAutoEntryHumanReviewState deserializeAutoEntryHumanState(String value) {
-        try {
-            return objectMapper.readValue(value, ExpenseAutoEntryHumanReviewState.class);
-        } catch (JacksonException exception) {
-            throw new IllegalStateException(
-                    "Could not read Expense AUTO_ENTRY human state for submission", exception);
-        }
     }
 
     private static ApiException conflict(String code, String message) {

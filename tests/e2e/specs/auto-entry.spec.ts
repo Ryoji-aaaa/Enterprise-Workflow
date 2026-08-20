@@ -1202,7 +1202,16 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
   const manager = await managerContext.newPage();
   try {
     await login(manager, managerPersona.email, seedUserPassword);
-    await manager.goto(`/approvals/${created.application.id}`);
+    const workflowResponse = await manager.request.get(
+      `/api/backend/workflow/subjects/EXPENSE_APPLICATION/${created.application.id}/latest`,
+    );
+    expect(workflowResponse.status()).toBe(200);
+    const workflow = await workflowResponse.json() as {
+      steps: Array<{ stepId: string; status: string }>;
+    };
+    const pendingStepId = workflow.steps.find((step) => step.status === "PENDING")?.stepId;
+    expect(pendingStepId).toBeDefined();
+    await manager.goto(`/approvals/${pendingStepId}`);
     await expect(manager.getByText("receipt.pdf", { exact: true })).toBeVisible();
     const attachmentsResponse = await manager.request.get(
       `/api/backend/expense-applications/${created.application.id}/attachments`,
@@ -1216,14 +1225,8 @@ test("請求/注文書申請（自動入力）は保存・申請・差戻し・�
     expect(sourceResponse.status()).toBe(200);
     expect(sourceResponse.headers()["content-type"]).toContain("application/pdf");
 
-    const detailResponse = await manager.request.get(
-      `/api/backend/expense-applications/${created.application.id}`,
-    );
-    expect(detailResponse.status()).toBe(200);
-    const detail = await detailResponse.json() as { pendingStepId: string | null };
-    expect(detail.pendingStepId).not.toBeNull();
     const returnedResponse = await manager.request.post(
-      `/api/backend/expense-approvals/${detail.pendingStepId}/return`,
+      `/api/backend/workflow/tasks/${pendingStepId}/return`,
       { data: { comment: "自動入力内容を再確認してください" } },
     );
     expect(returnedResponse.status()).toBe(200);

@@ -31,25 +31,36 @@ docker compose exec -T postgres \
     --set "pending_email=${DEV_PENDING_EMAIL}" <<'SQL'
 DELETE FROM access_requests WHERE email = :'pending_email';
 
-DELETE FROM expense_approval_candidates
-WHERE approval_step_id IN (
+DELETE FROM workflow_instance_actions
+WHERE workflow_instance_id IN (
+    SELECT instance.id
+    FROM workflow_instances instance
+    JOIN expense_applications application ON application.id = instance.subject_id
+    WHERE instance.subject_type = 'EXPENSE_APPLICATION'
+      AND application.title LIKE 'E2E%'
+);
+DELETE FROM workflow_instance_candidates
+WHERE workflow_instance_step_id IN (
     SELECT step.id
-    FROM expense_approval_steps step
-    JOIN expense_approval_runs run ON run.id = step.approval_run_id
-    JOIN expense_applications application ON application.id = run.expense_application_id
-    WHERE application.title LIKE 'E2E%'
+    FROM workflow_instance_steps step
+    JOIN workflow_instances instance ON instance.id = step.workflow_instance_id
+    JOIN expense_applications application ON application.id = instance.subject_id
+    WHERE instance.subject_type = 'EXPENSE_APPLICATION'
+      AND application.title LIKE 'E2E%'
 );
-DELETE FROM expense_approval_steps
-WHERE approval_run_id IN (
-    SELECT run.id
-    FROM expense_approval_runs run
-    JOIN expense_applications application ON application.id = run.expense_application_id
-    WHERE application.title LIKE 'E2E%'
+DELETE FROM workflow_instance_steps
+WHERE workflow_instance_id IN (
+    SELECT instance.id
+    FROM workflow_instances instance
+    JOIN expense_applications application ON application.id = instance.subject_id
+    WHERE instance.subject_type = 'EXPENSE_APPLICATION'
+      AND application.title LIKE 'E2E%'
 );
-DELETE FROM expense_approval_runs
-WHERE expense_application_id IN (
-    SELECT id FROM expense_applications WHERE title LIKE 'E2E%'
-);
+DELETE FROM workflow_instances instance
+USING expense_applications application
+WHERE application.id = instance.subject_id
+  AND instance.subject_type = 'EXPENSE_APPLICATION'
+  AND application.title LIKE 'E2E%';
 DELETE FROM expense_application_attachments
 WHERE expense_application_id IN (
     SELECT id FROM expense_applications WHERE title LIKE 'E2E%'

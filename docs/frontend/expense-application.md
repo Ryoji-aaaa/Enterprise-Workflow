@@ -6,12 +6,12 @@
 | --- | --- |
 | `/expenses` | 自分の申請一覧、状態絞込み、ページング |
 | `/expenses/new` | 新規申請、下書き保存、申請 |
-| `/expenses/{id}` | 申請内容、明細、申請時所属、承認経路、差戻し理由 |
+| `/expenses/{id}` | 申請内容、明細、申請時所属、汎用workflow timeline、差戻し理由 |
 | `/expenses/{id}/edit` | 下書き・差戻し申請の編集と再申請 |
 | `/expenses/auto-entry` | 請求書・注文書を分析して経費下書きを作成する補助入力 |
 | `/expenses/auto-entry/confirm/{applicationId}` | 保存済みAUTO_ENTRY下書きの最終確認・編集・保存・申請 |
-| `/approvals` | ログインユーザーが現在Candidateの承認待ち一覧 |
-| `/approvals/{id}` | 承認コメント、承認、理由必須の差戻し |
+| `/approvals` | ログインユーザーが現在Candidateの汎用タスク一覧 |
+| `/approvals/{stepId}` | 対象業務詳細、timeline、承認コメント、承認、理由必須の差戻し |
 
 `/api/me.permissions`に応じてトップの経費申請・承認待ちリンクを表示する。非表示はUI制御だけで、
 Backendも各APIでDB PermissionとCandidateを検証する。
@@ -158,10 +158,10 @@ submit/resubmitの503または先行要求が成立した可能性のある`EXPE
 POSTを再送せず現在申請を1回だけGETする。`PENDING_APPROVAL`、`APPROVED`、`CANCELLED`なら現在状態を正本として
 詳細へ遷移し、`DRAFT`なら利用者が再試行できるエラーに留める。最初のsubmit後に`RETURNED`なら、submitは
 成立後に差し戻されたものとして現在状態を正本に詳細へ遷移する。resubmit後の`RETURNED`は未実行と、
-再申請成立後に新しいRunも差し戻された状態を区別できないため、再試行可能と断定せず結果不明とする。
+再申請成立後に新しいInstanceも差し戻された状態を区別できないため、再試行可能と断定せず結果不明とする。
 GETも失敗した場合も結果不明と明示し、自動再申請しない。結果不明では「申請できなかった」と断定せず、
 通常編集画面とAUTO_ENTRY確認画面の申請・再申請操作を無効化して「申請詳細を確認」を表示する。利用者が
-詳細の現在状態と承認Run履歴を確認するまで、同じ画面からmutationを再実行させない。
+詳細の現在状態とworkflow timelineを確認するまで、同じ画面からmutationを再実行させない。
 通常経費の新規作成は、最初のDRAFT保存が成功した時点でそのApplication IDとversionを画面内に保持する。
 submitの照合結果が`DRAFT`で再試行可能な場合も、新しいDRAFTをPOSTせず、同じApplication IDへPUTしてから
 submitを再実行する。
@@ -183,12 +183,18 @@ previewでき、すべてdownloadできる。申請者本人の`DRAFT`または`
 
 詳細の承認候補者名は一般申請者へ列挙せず、組織名とStep種別、処理済みの場合だけ
 実処理者・日時・コメントを表示する。
+取下げ操作はBackend responseの`cancellable`がtrueの場合だけ表示する。取下げ成功後は申請responseで
+状態を更新したうえでlatest workflowを再取得し、page reloadなしで未処理Stepの取消をtimelineへ反映する。
 
 ## BFFとエラー
 
-Browserは`/api/backend/expense-applications...`と`/api/backend/expense-approvals...`だけを
+Browserは`/api/backend/expense-applications...`と`/api/backend/workflow...`だけを
 呼ぶ。catch-all Route Handlerのmethod/path allowlistに経費APIを明示し、server-sideで
 access tokenを付けてSpring Bootへ転送する。tokenをClient Componentへ渡さない。
+
+経費詳細responseには`pendingStepId`、`canApprove`、承認Runを含めない。承認待ち一覧・詳細・操作は
+`/workflow/tasks...`、経費詳細のtimelineは
+`/workflow/subjects/EXPENSE_APPLICATION/{applicationId}/latest`から独立して取得する。
 
 AUTO_ENTRYのFormal Handoffでは`POST /api/backend/expense-applications/from-auto-entry`だけを30秒timeoutで
 BFF allowlistへ追加する。確認画面用にはUUIDを固定した

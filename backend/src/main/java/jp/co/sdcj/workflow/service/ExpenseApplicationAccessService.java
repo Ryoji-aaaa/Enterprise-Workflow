@@ -9,21 +9,22 @@ import jp.co.sdcj.workflow.api.ApiException;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.ExpenseApplication;
 import jp.co.sdcj.workflow.repository.ExpenseApplicationRepository;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowAccessService;
+import jp.co.sdcj.workflow.engine.subject.ExpenseWorkflowContextProvider;
 
 @Service
 public class ExpenseApplicationAccessService {
 
     private final ExpenseApplicationRepository applicationRepository;
-    private final ExpenseApprovalCandidateRepository candidateRepository;
+    private final WorkflowAccessService workflowAccessService;
     private final AuditLogService auditLogService;
 
     public ExpenseApplicationAccessService(
             ExpenseApplicationRepository applicationRepository,
-            ExpenseApprovalCandidateRepository candidateRepository,
+            WorkflowAccessService workflowAccessService,
             AuditLogService auditLogService) {
         this.applicationRepository = applicationRepository;
-        this.candidateRepository = candidateRepository;
+        this.workflowAccessService = workflowAccessService;
         this.auditLogService = auditLogService;
     }
 
@@ -31,7 +32,8 @@ public class ExpenseApplicationAccessService {
         ExpenseApplication application = applicationRepository.findById(id)
                 .orElseThrow(ExpenseApplicationAccessService::notFound);
         if (!application.getApplicantUserId().equals(user.getId())
-                && !candidateRepository.existsForApplication(id, user.getId())) {
+                && !workflowAccessService.isCurrentCandidate(
+                        ExpenseWorkflowContextProvider.SUBJECT_TYPE, id, user.getId())) {
             deny(user, deniedAction, id, "NOT_OWNER_OR_CURRENT_CANDIDATE");
         }
         return application;

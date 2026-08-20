@@ -128,12 +128,12 @@ test("read-backも失敗した場合は結果不明を明示しPOSTを再送し�
 
 test("非ambiguousエラーはread-backせずそのまま表示する", async () => {
   const request = sequence([
-    Response.json({ code: "ACCOUNTING_APPROVER_NOT_FOUND" }, { status: 422 }),
+    Response.json({ code: "WORKFLOW_ASSIGNEE_NOT_FOUND" }, { status: 422 }),
   ]);
 
   await assert.rejects(
     submitExpenseApplicationWithReconciliation(ID, "submit", request.fetchImplementation),
-    /経理承認者/,
+    /承認候補者/,
   );
   assert.deepEqual(request.calls.map((call) => call.method), ["POST"]);
 });

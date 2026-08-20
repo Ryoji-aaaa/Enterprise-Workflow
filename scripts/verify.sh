@@ -229,9 +229,15 @@ WHERE table_schema = 'public'
     'audit_logs',
     'expense_applications',
     'expense_application_items',
-    'expense_approval_runs',
-    'expense_approval_steps',
-    'expense_approval_candidates',
+    'workflow_definitions',
+    'workflow_definition_versions',
+    'workflow_nodes',
+    'workflow_transitions',
+    'workflow_assignee_rules',
+    'workflow_instances',
+    'workflow_instance_steps',
+    'workflow_instance_candidates',
+    'workflow_instance_actions',
     'expense_application_attachments',
     'expense_application_auto_entry_contexts',
     'notification_outbox',
@@ -239,9 +245,9 @@ WHERE table_schema = 'public'
   );
 SQL
   )"
-  [[ "${schema_table_count}" == "24" ]] || {
+  [[ "${schema_table_count}" == "30" ]] || {
     fail_check "Flyway history and workflow schema tables were not initialized." \
-      "24 tables" "${schema_table_count} tables"
+      "30 tables" "${schema_table_count} tables"
   }
 
   migration_summary="$(
@@ -270,7 +276,10 @@ SELECT count(*) || ':' || count(*) FILTER (
     'V015__promote_document_analysis_to_application_user.sql',
     'V016__add_document_analysis_profiles.sql',
     'V017__create_expense_auto_entry_context.sql',
-    'V018__enforce_expense_auto_entry_source_attachment_provenance.sql'
+    'V018__enforce_expense_auto_entry_source_attachment_provenance.sql',
+    'V019__replace_expense_approval_with_workflow_engine.sql',
+    'V020__seed_expense_workflow_definition.sql',
+    'V021__snapshot_workflow_candidate_permission_scope.sql'
   )
     AND type = 'SQL'
     AND checksum IS NOT NULL
@@ -279,9 +288,9 @@ SELECT count(*) || ':' || count(*) FILTER (
 FROM flyway_schema_history;
 SQL
   )"
-  [[ "${migration_summary}" == "18:18" ]] || {
+  [[ "${migration_summary}" == "21:21" ]] || {
     fail_check "Flyway migration history is incomplete or invalid." \
-      "18 total migrations:18 successful checksummed migrations" "${migration_summary}"
+      "21 total migrations:21 successful checksummed migrations" "${migration_summary}"
   }
 
   extension_count="$(

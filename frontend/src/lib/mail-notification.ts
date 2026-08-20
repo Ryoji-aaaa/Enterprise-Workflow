@@ -51,8 +51,8 @@ export type MailNotification = {
 
 export type MailNotificationDetail = MailNotification & {
   bodyText: string;
-  approvalRunId: string | null;
-  approvalStepId: string | null;
+  workflowInstanceId: string | null;
+  workflowStepId: string | null;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
 };

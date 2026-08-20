@@ -10,27 +10,26 @@ import org.springframework.stereotype.Component;
 import jp.co.sdcj.workflow.domain.AccessRequest;
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.ExpenseApplication;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalCandidate;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalRun;
-import jp.co.sdcj.workflow.domain.ExpenseApprovalStep;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstance;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceCandidate;
+import jp.co.sdcj.workflow.engine.runtime.WorkflowInstanceStep;
 import jp.co.sdcj.workflow.domain.NotificationType;
 
 @Component
 public class NotificationMessageFactory {
     public List<NotificationRequest> approvalRequests(
             ExpenseApplication application,
-            ExpenseApprovalRun run,
-            ExpenseApprovalStep step,
-            Collection<ExpenseApprovalCandidate> candidates) {
+            WorkflowInstance instance,
+            WorkflowInstanceStep step,
+            Collection<WorkflowInstanceCandidate> candidates) {
         return candidates.stream().map(candidate -> new NotificationRequest(
                 NotificationType.EXPENSE_APPROVAL_REQUIRED,
                 "EXPENSE_APPLICATION",
                 application.getId(),
                 application.getId(),
-                run.getId(),
+                instance.getId(),
                 step.getId(),
-                candidate.getCandidateUserId(),
-                candidate.getCandidateNameSnapshot(),
+                candidate.getCandidateUserId(), candidate.getCandidateNameSnapshot(),
                 candidate.getCandidateEmailSnapshot(),
                 "[Workflow] 経費申請の承認依頼",
                 "%s（%s）の承認をお願いします。".formatted(
@@ -41,25 +40,25 @@ public class NotificationMessageFactory {
     }
 
     public NotificationRequest approvedApplicant(
-            ExpenseApplication application, ExpenseApprovalRun run) {
+            ExpenseApplication application, WorkflowInstance instance) {
         return applicantRequest(
                 NotificationType.EXPENSE_APPROVED,
                 application,
-                run,
+                instance,
                 "承認が完了しました。",
                 "EXPENSE_APPROVED:%s:%s".formatted(
-                        run.getId(), application.getApplicantUserId()));
+                        instance.getId(), application.getApplicantUserId()));
     }
 
     public NotificationRequest returnedApplicant(
-            ExpenseApplication application, ExpenseApprovalRun run, String reason) {
+            ExpenseApplication application, WorkflowInstance instance, String reason) {
         return applicantRequest(
                 NotificationType.EXPENSE_RETURNED,
                 application,
-                run,
+                instance,
                 "差し戻されました: " + reason,
                 "EXPENSE_RETURNED:%s:%s".formatted(
-                        run.getId(), application.getApplicantUserId()));
+                        instance.getId(), application.getApplicantUserId()));
     }
 
     public List<NotificationRequest> accessRequests(
@@ -105,7 +104,7 @@ public class NotificationMessageFactory {
     private static NotificationRequest applicantRequest(
             NotificationType type,
             ExpenseApplication application,
-            ExpenseApprovalRun run,
+            WorkflowInstance instance,
             String message,
             String deduplicationKey) {
         return new NotificationRequest(
@@ -113,7 +112,7 @@ public class NotificationMessageFactory {
                 "EXPENSE_APPLICATION",
                 application.getId(),
                 application.getId(),
-                run.getId(),
+                instance.getId(),
                 null,
                 application.getApplicantUserId(),
                 application.getApplicantNameSnapshot(),

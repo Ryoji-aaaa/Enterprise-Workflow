@@ -29,7 +29,10 @@ backend/src/main/resources/db/migration/
 ├── V015__promote_document_analysis_to_application_user.sql
 ├── V016__add_document_analysis_profiles.sql
 ├── V017__create_expense_auto_entry_context.sql
-└── V018__enforce_expense_auto_entry_source_attachment_provenance.sql
+├── V018__enforce_expense_auto_entry_source_attachment_provenance.sql
+├── V019__replace_expense_approval_with_workflow_engine.sql
+├── V020__seed_expense_workflow_definition.sql
+└── V021__snapshot_workflow_candidate_permission_scope.sql
 ```
 
 V001は従来の`app_users`と`access_requests`、V002からV005は新しい管理基盤、V006は
@@ -48,7 +51,9 @@ Document Analysis Jobへ`analysis_profile`と自動入力用のmodel deployment 
 PostgreSQLへ保存しない。V017はAUTO_ENTRYから経費下書きへ正式引継ぎしたときのReview snapshot、
 人の確認状態、原本経費添付との対応を保存するcontextテーブルを追加する。
 V018は原本経費添付IDと申請IDの複合外部キーを追加し、AUTO_ENTRY contextと原本添付が同じ申請に
-属することをDBで保証する。
+属することをDBで保証する。V019は経費専用承認実行テーブルを削除し、汎用workflowの定義・実行・
+候補者・操作履歴テーブルを追加する。V020は経費承認定義version 1を公開状態で投入する。V021は
+Candidate選定時のglobalまたはOrganization Unit Permission scope snapshot列と整合性制約を追加する。
 適用履歴、ファイル名、checksum、成功状態はPostgreSQLの
 `flyway_schema_history`に記録される。
 
@@ -57,7 +62,8 @@ contract済みであり、GitHub Environment `staging`の
 `CONTRACT_LEGACY_USER_COLUMNS`は以後`true`を維持する。通常Backendは最新migrationまでを
 適用し、V009の経費申請schema・Permission、V010の添付metadata schema、V011からV013の
 通知Outbox・queue backfill・履歴Permission、V014のDocument Analysis永続化基盤、V015の正式機能向け認可、
-V016のprofile/snapshot schema、V017のAUTO_ENTRY経費context、V018の原本添付provenance制約を
+V016のprofile/snapshot schema、V017のAUTO_ENTRY経費context、V018の原本添付provenance制約、
+V019の汎用workflow schema、V020の経費承認定義、V021のCandidate Permission scope snapshotを
 利用できる状態を前提とする。
 
 V003の期間重複排他制約は`btree_gist`を使用する。Azure Database for PostgreSQL
@@ -96,10 +102,11 @@ make verify
 
 `make test SUITES=backend`はH2上のサービス/APIテストに加え、一時PostgreSQL 18コンテナで次を自動確認する。
 
-- 空DBへのV001からV018とHibernate schema validation
-- V001既存ユーザーからV018までの実データ移行
-- 既存V014 DBからV018への権限昇格、旧Role割当終了、V016の`GENERAL` backfill、
-  V017のAUTO_ENTRY経費context、V018の原本添付provenance制約、追記専用履歴保持
+- 空DBへのV001からV021とHibernate schema validation
+- V001既存ユーザーからV021までの実データ移行
+- 既存V014 DBからV021への権限昇格、旧Role割当終了、V016の`GENERAL` backfill、
+  V017のAUTO_ENTRY経費context、V018の原本添付provenance制約、V019/V020のworkflow基盤、
+  V021のCandidate Permission scope snapshot、追記専用履歴保持
 - V017適用済みDBからV018へのupgradeと、異なる申請の原本添付をcontextへ関連付けられないこと
 - email正規化の事前検査、排他制約、追記専用trigger
 - 二回目起動時のFlyway・基盤seedの冪等性
@@ -148,7 +155,7 @@ make restart
 make verify
 ```
 
-最初の検証ではV001からV018が1回ずつ成功していること、再起動後も履歴行とseedが
+最初の検証ではV001からV021が1回ずつ成功していること、再起動後も履歴行とseedが
 重複しないことを確認する。
 
 ## マイグレーション失敗時の確認方法

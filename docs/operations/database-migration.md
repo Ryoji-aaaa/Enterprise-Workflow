@@ -19,10 +19,11 @@ stagingではV001からV008がchecksum付きで1回ずつ成功しているこ�
 `ORGANIZATION_CHART_VIEWER`、`USER_INFORMATION_MANAGER`、`WORKFLOW_APPROVER`を追加する。
 手動DB seed JobはFlywayを無効化するため、V008確認より先に実行しない。
 
-経費申請PoCを含むrevisionではV009を適用し、経費申請5テーブル、申請番号sequence、3つの
-業務Permissionと既存Roleへの割当を追加する。V009は既存データを削除・変更せず、通常Backendの
-Flyway起動で適用する。適用後は`expense_applications`から`expense_approval_candidates`までの
-5テーブルと`expense_application_number_seq`、`EXPENSE_APPLICATION_CREATE`、
+経費申請PoCを含むrevisionではV009を適用し、経費申請と当時の専用承認を含む5テーブル、申請番号sequence、3つの
+業務Permissionと既存Roleへの割当を追加する。V009単独は既存データを削除・変更せず、通常Backendの
+Flyway起動で適用する。最新schemaではV019が経費専用承認3テーブルを汎用workflowへ置換するため、
+`expense_applications`、`expense_application_items`と`expense_application_number_seq`、
+`EXPENSE_APPLICATION_CREATE`、
 `EXPENSE_APPLICATION_READ_OWN`、`EXPENSE_APPLICATION_APPROVE`を確認する。手動seed Jobは不要である。
 
 経費証憑を含むrevisionでは続けてV010を適用する。V010は既存行を更新せず、
@@ -74,6 +75,22 @@ AUTO_ENTRY原本添付のprovenance強化を含むrevisionでは続けてV018を
 `(source_attachment_id, expense_application_id)`からの複合外部キーを追加する。データやBlobを移動せず、
 既存V017データが同一申請に対応していない場合はmigrationを安全に失敗させる。適用後はFlyway V018成功、
 両制約の存在、同一申請の関連付け成功、異なる申請の関連付けが外部キー違反になることを確認する。
+
+汎用ワークフロー化を含むrevisionではV019、V020を順に適用する。V019は
+`expense_approval_runs`、`expense_approval_steps`、`expense_approval_candidates`を削除し、
+5つの定義tableと4つの実行tableを作成する。旧PoCの承認実行データは移行しない破壊的変更である。
+共有環境では適用前に進行中申請がなく、旧履歴を保持する必要がないことを業務責任者と確認し、必要な
+backupを取得する。条件を満たさない環境へ通常revisionをdeployしてはならない。
+
+V020は`EXPENSE_APPROVAL` version 1とnode、transition、assignee ruleをFlyway履歴で一度だけ投入する。
+適用後はFlyway V020成功、定義版が`PUBLISHED`、STARTとENDが各1件、公開版がBackendの定義検証を
+通ることを確認する。V019適用後は旧binaryへ戻せないため、切戻しは承認済みbackup restoreまたは
+新migrationによる前進修正とする。`flyway repair`や旧テーブルの手作業再作成は行わない。
+
+V021は`workflow_instance_candidates.permission_scope_snapshot`を追加する。V019/V020適用済みの
+開発DBに既存Candidateがある場合は、既存の組織resolver snapshotからOrganization Unit scopeをbackfillし、
+新規CandidateはBackendがglobalまたはOrganization Unit scopeを明示保存する。適用後はFlyway V021成功、
+列のNOT NULLと`ck_workflow_instance_candidates_permission_scope`を確認する。
 
 V006からV007への切替では、GitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=false`によりTerraformが通常Backendへ

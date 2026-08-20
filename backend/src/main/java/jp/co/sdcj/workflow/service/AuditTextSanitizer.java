@@ -3,7 +3,7 @@ package jp.co.sdcj.workflow.service;
 import java.util.regex.Pattern;
 
 /** Shared last-line credential redaction for audit text and request metadata. */
-final class AuditTextSanitizer {
+public final class AuditTextSanitizer {
 
     private static final Pattern SENSITIVE_TEXT_PATTERN = Pattern.compile(
             "(?:\\bbearer\\s+\\S+"
@@ -17,7 +17,7 @@ final class AuditTextSanitizer {
     private AuditTextSanitizer() {
     }
 
-    static String sanitizeFreeText(String value, int maxLength) {
+    public static String sanitizeFreeText(String value, int maxLength) {
         String normalized = limited(value, maxLength);
         if (normalized == null) {
             return null;

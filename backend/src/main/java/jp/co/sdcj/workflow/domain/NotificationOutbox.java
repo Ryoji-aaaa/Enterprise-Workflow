@@ -24,8 +24,8 @@ public class NotificationOutbox {
     @Column(name = "source_type", nullable = false, length = 100) private String sourceType;
     @Column(name = "source_id", nullable = false) private UUID sourceId;
     @Column(name = "expense_application_id") private UUID expenseApplicationId;
-    @Column(name = "approval_run_id") private UUID approvalRunId;
-    @Column(name = "approval_step_id") private UUID approvalStepId;
+    @Column(name = "workflow_instance_id") private UUID workflowInstanceId;
+    @Column(name = "workflow_step_id") private UUID workflowStepId;
     @Column(name = "recipient_user_id") private UUID recipientUserId;
     @Column(name = "recipient_name_snapshot", length = 255) private String recipientNameSnapshot;
     @Column(name = "recipient_email_snapshot", nullable = false, length = 320)
@@ -52,8 +52,8 @@ public class NotificationOutbox {
             String sourceType,
             UUID sourceId,
             UUID expenseApplicationId,
-            UUID approvalRunId,
-            UUID approvalStepId,
+            UUID workflowInstanceId,
+            UUID workflowStepId,
             UUID recipientUserId,
             String recipientNameSnapshot,
             String recipientEmailSnapshot,
@@ -66,8 +66,8 @@ public class NotificationOutbox {
         this.sourceType = required(sourceType, "sourceType");
         this.sourceId = Objects.requireNonNull(sourceId);
         this.expenseApplicationId = expenseApplicationId;
-        this.approvalRunId = approvalRunId;
-        this.approvalStepId = approvalStepId;
+        this.workflowInstanceId = workflowInstanceId;
+        this.workflowStepId = workflowStepId;
         this.recipientUserId = recipientUserId;
         this.recipientNameSnapshot = recipientNameSnapshot;
         this.recipientEmailSnapshot = required(recipientEmailSnapshot, "recipientEmailSnapshot");
@@ -153,8 +153,8 @@ public class NotificationOutbox {
     public String getSourceType() { return sourceType; }
     public UUID getSourceId() { return sourceId; }
     public UUID getExpenseApplicationId() { return expenseApplicationId; }
-    public UUID getApprovalRunId() { return approvalRunId; }
-    public UUID getApprovalStepId() { return approvalStepId; }
+    public UUID getWorkflowInstanceId() { return workflowInstanceId; }
+    public UUID getWorkflowStepId() { return workflowStepId; }
     public UUID getRecipientUserId() { return recipientUserId; }
     public String getRecipientNameSnapshot() { return recipientNameSnapshot; }
     public String getRecipientEmailSnapshot() { return recipientEmailSnapshot; }

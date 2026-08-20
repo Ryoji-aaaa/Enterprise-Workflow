@@ -21,28 +21,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jp.co.sdcj.workflow.domain.AppUser;
 import jp.co.sdcj.workflow.domain.ExpenseApplicationStatus;
-import jp.co.sdcj.workflow.repository.ExpenseApprovalCandidateRepository;
 import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.ExpenseApplicationService;
-import jp.co.sdcj.workflow.service.PermissionService;
 
 @RestController
 @RequestMapping("/api/expense-applications")
 public class ExpenseApplicationController {
     private final ExpenseApplicationService applicationService;
     private final CurrentUserProvider currentUserProvider;
-    private final ExpenseApprovalCandidateRepository candidateRepository;
-    private final PermissionService permissionService;
 
     public ExpenseApplicationController(
             ExpenseApplicationService applicationService,
-            CurrentUserProvider currentUserProvider,
-            ExpenseApprovalCandidateRepository candidateRepository,
-            PermissionService permissionService) {
+            CurrentUserProvider currentUserProvider) {
         this.applicationService = applicationService;
         this.currentUserProvider = currentUserProvider;
-        this.candidateRepository = candidateRepository;
-        this.permissionService = permissionService;
     }
 
     @PostMapping
@@ -52,9 +44,7 @@ public class ExpenseApplicationController {
             @Valid @RequestBody ExpenseApplicationRequest request,
             Authentication authentication) {
         AppUser user = current(authentication);
-        return ExpenseApplicationResponse.from(
-                applicationService.createDraft(request.toInput(), user), user, candidateRepository,
-                permissionService);
+        return ExpenseApplicationResponse.from(applicationService.createDraft(request.toInput(), user), user);
     }
 
     @GetMapping
@@ -72,9 +62,7 @@ public class ExpenseApplicationController {
     public ExpenseApplicationResponse detail(
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
-        return ExpenseApplicationResponse.from(
-                applicationService.getAccessible(applicationId, user), user, candidateRepository,
-                permissionService);
+        return ExpenseApplicationResponse.from(applicationService.getAccessible(applicationId, user), user);
     }
 
     @PutMapping("/{applicationId}")
@@ -88,8 +76,7 @@ public class ExpenseApplicationController {
         }
         AppUser user = current(authentication);
         return ExpenseApplicationResponse.from(applicationService.update(
-                applicationId, request.toInput(), request.version(), user), user, candidateRepository,
-                permissionService);
+                applicationId, request.toInput(), request.version(), user), user);
     }
 
     @PostMapping("/{applicationId}/submit")
@@ -97,9 +84,7 @@ public class ExpenseApplicationController {
     public ExpenseApplicationResponse submit(
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
-        return ExpenseApplicationResponse.from(
-                applicationService.submit(applicationId, user, false), user, candidateRepository,
-                permissionService);
+        return ExpenseApplicationResponse.from(applicationService.submit(applicationId, user, false), user);
     }
 
     @PostMapping("/{applicationId}/resubmit")
@@ -107,9 +92,7 @@ public class ExpenseApplicationController {
     public ExpenseApplicationResponse resubmit(
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
-        return ExpenseApplicationResponse.from(
-                applicationService.submit(applicationId, user, true), user, candidateRepository,
-                permissionService);
+        return ExpenseApplicationResponse.from(applicationService.submit(applicationId, user, true), user);
     }
 
     @PostMapping("/{applicationId}/cancel")
@@ -117,9 +100,7 @@ public class ExpenseApplicationController {
     public ExpenseApplicationResponse cancel(
             @PathVariable UUID applicationId, Authentication authentication) {
         AppUser user = current(authentication);
-        return ExpenseApplicationResponse.from(
-                applicationService.cancel(applicationId, user), user, candidateRepository,
-                permissionService);
+        return ExpenseApplicationResponse.from(applicationService.cancel(applicationId, user), user);
     }
 
     private AppUser current(Authentication authentication) {

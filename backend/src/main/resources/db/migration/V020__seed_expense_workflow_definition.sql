@@ -1,0 +1,69 @@
+INSERT INTO workflow_definitions (
+    id, workflow_code, workflow_name, subject_type, enabled
+) VALUES (
+    '70000000-0000-0000-0000-000000000001',
+    'EXPENSE_APPROVAL', '経費承認', 'EXPENSE_APPLICATION', TRUE
+);
+
+INSERT INTO workflow_definition_versions (
+    id, workflow_definition_id, version_number, status,
+    effective_from, created_at, published_at
+) VALUES (
+    '71000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000001', 1, 'PUBLISHED',
+    '2000-01-01T00:00:00Z', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+
+INSERT INTO workflow_nodes (
+    id, workflow_definition_version_id, node_key, node_type, display_name, approval_mode
+) VALUES
+    ('72000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001',
+     'START', 'START', '開始', NULL),
+    ('72000000-0000-0000-0000-000000000002', '71000000-0000-0000-0000-000000000001',
+     'SAME_UNIT_MANAGER', 'APPROVAL', '所属部門長承認', 'ANY_ONE'),
+    ('72000000-0000-0000-0000-000000000003', '71000000-0000-0000-0000-000000000001',
+     'PARENT_UNIT_MANAGER', 'APPROVAL', '上位部門長承認', 'ANY_ONE'),
+    ('72000000-0000-0000-0000-000000000004', '71000000-0000-0000-0000-000000000001',
+     'ACCOUNTING', 'APPROVAL', '経理承認', 'ANY_ONE'),
+    ('72000000-0000-0000-0000-000000000005', '71000000-0000-0000-0000-000000000001',
+     'END', 'END', '完了', NULL);
+
+INSERT INTO workflow_transitions (
+    id, workflow_definition_version_id, transition_key, from_node_id, to_node_id, condition_json
+) VALUES
+    ('73000000-0000-0000-0000-000000000001', '71000000-0000-0000-0000-000000000001',
+     'START_TO_SAME_UNIT_MANAGER', '72000000-0000-0000-0000-000000000001',
+     '72000000-0000-0000-0000-000000000002',
+     '{"field":"applicant.isManager","operator":"EQ","value":false}'),
+    ('73000000-0000-0000-0000-000000000002', '71000000-0000-0000-0000-000000000001',
+     'START_TO_PARENT_UNIT_MANAGER', '72000000-0000-0000-0000-000000000001',
+     '72000000-0000-0000-0000-000000000003',
+     '{"all":[{"field":"applicant.isManager","operator":"EQ","value":true},{"field":"applicant.parentOrganizationUnitId","operator":"IS_NOT_NULL"}]}'),
+    ('73000000-0000-0000-0000-000000000003', '71000000-0000-0000-0000-000000000001',
+     'START_TO_ACCOUNTING', '72000000-0000-0000-0000-000000000001',
+     '72000000-0000-0000-0000-000000000004',
+     '{"all":[{"field":"applicant.isManager","operator":"EQ","value":true},{"field":"applicant.parentOrganizationUnitId","operator":"IS_NULL"}]}'),
+    ('73000000-0000-0000-0000-000000000004', '71000000-0000-0000-0000-000000000001',
+     'SAME_MANAGER_TO_ACCOUNTING', '72000000-0000-0000-0000-000000000002',
+     '72000000-0000-0000-0000-000000000004', NULL),
+    ('73000000-0000-0000-0000-000000000005', '71000000-0000-0000-0000-000000000001',
+     'PARENT_MANAGER_TO_ACCOUNTING', '72000000-0000-0000-0000-000000000003',
+     '72000000-0000-0000-0000-000000000004', NULL),
+    ('73000000-0000-0000-0000-000000000006', '71000000-0000-0000-0000-000000000001',
+     'ACCOUNTING_TO_END', '72000000-0000-0000-0000-000000000004',
+     '72000000-0000-0000-0000-000000000005', NULL);
+
+INSERT INTO workflow_assignee_rules (
+    id, workflow_node_id, resolver_type, parameters_json,
+    required_permission_code, exclude_requester
+) VALUES
+    ('74000000-0000-0000-0000-000000000001', '72000000-0000-0000-0000-000000000002',
+     'ORGANIZATION_MANAGER', '{"organizationUnitIdField":"applicant.organizationUnitId"}',
+     'EXPENSE_APPLICATION_APPROVE', TRUE),
+    ('74000000-0000-0000-0000-000000000002', '72000000-0000-0000-0000-000000000003',
+     'ORGANIZATION_MANAGER', '{"organizationUnitIdField":"applicant.parentOrganizationUnitId"}',
+     'EXPENSE_APPLICATION_APPROVE', TRUE),
+    ('74000000-0000-0000-0000-000000000003', '72000000-0000-0000-0000-000000000004',
+     'ORGANIZATION_UNIT_CODE',
+     '{"organizationIdField":"applicant.organizationId","unitCode":"ACCOUNTING_SECTION"}',
+     'EXPENSE_APPLICATION_APPROVE', TRUE);

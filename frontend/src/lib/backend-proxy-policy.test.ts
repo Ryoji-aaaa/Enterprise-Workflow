@@ -38,11 +38,15 @@ test("経費申請と承認に必要なパスだけを許可する", () => {
     isAllowedBackendProxyRequest("POST", `/expense-applications/${USER_ID}/submit`),
     true,
   );
-  assert.equal(isAllowedBackendProxyRequest("GET", "/expense-approvals/pending"), true);
+  assert.equal(isAllowedBackendProxyRequest("GET", "/workflow/tasks"), true);
   assert.equal(
-    isAllowedBackendProxyRequest("POST", `/expense-approvals/${ASSIGNMENT_ID}/approve`),
+    isAllowedBackendProxyRequest("POST", `/workflow/tasks/${ASSIGNMENT_ID}/approve`),
     true,
   );
+  assert.equal(isAllowedBackendProxyRequest("GET", `/workflow/tasks/${ASSIGNMENT_ID}`), true);
+  assert.equal(isAllowedBackendProxyRequest(
+    "GET", `/workflow/subjects/EXPENSE_APPLICATION/${ASSIGNMENT_ID}/latest`,
+  ), true);
   assert.equal(isAllowedBackendProxyRequest("DELETE", `/expense-applications/${USER_ID}`), false);
 });
 
