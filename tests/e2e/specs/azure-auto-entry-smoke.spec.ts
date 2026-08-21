@@ -93,6 +93,10 @@ function requireCondition(
   if (!condition) throw new Error(message);
 }
 
+function attentionFilterSwitch(page: Page) {
+  return page.getByRole("switch", { name: "表示フィルター" });
+}
+
 function updateDiagnostic(
   stage: SafeDiagnostic["stage"],
   job?: AutoEntryJob,
@@ -322,7 +326,7 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
     ).toBeVisible();
 
     const runLabel = `STAGING AUTO_ENTRY ACCEPTANCE ${Date.now()}`;
-    await page.getByRole("button", { name: "すべて", exact: true }).click();
+    await expect(attentionFilterSwitch(page)).not.toBeChecked();
     await page.getByRole("textbox", { name: "件名", exact: true }).fill(runLabel);
     await page
       .getByRole("textbox", { name: "利用目的", exact: true })
@@ -400,7 +404,7 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
       page.getByTestId("expense-auto-entry-adjustments"),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: "すべて", exact: true }).click();
+    await expect(attentionFilterSwitch(page)).not.toBeChecked();
     await page
       .getByLabel("請求社 / 発行元", { exact: true })
       .fill("Staging confirmation update");
@@ -419,7 +423,7 @@ test.describe("Azure AUTO_ENTRY staging smoke", () => {
       "AUTO_ENTRY draft save failed.",
     );
     await page.reload();
-    await page.getByRole("button", { name: "すべて", exact: true }).click();
+    await expect(attentionFilterSwitch(page)).not.toBeChecked();
     await expect(
       page.getByLabel("請求社 / 発行元", { exact: true }),
     ).toHaveValue("Staging confirmation update");
