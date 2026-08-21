@@ -22,6 +22,10 @@ Backendも各APIでDB PermissionとCandidateを検証する。
 通常申請と推測せず安全にエラー表示する。これにより`DRAFT`と`RETURNED`のAUTO_ENTRY申請は専用PUTだけで
 編集し、通常の経費PUTを使わない。
 
+`/expenses`では承認済みを緑、差戻しをdestructiveのBadgeで区別し、各行の「詳細を表示」から詳細へ遷移する。
+`/expenses/{id}`では長い詳細を確認する前後のどちらからでも同じ操作を行えるよう、編集、取下げ、一覧へ戻る操作を
+画面上部と下部に表示する。上下の操作可否は同一の`editable`と`cancellable`を使用し、Backend認可を代替しない。
+
 ## 請求書申請(自動入力)
 
 `/expenses/auto-entry`は、請求書または注文書の値を確認しながら経費下書きを作成する業務画面である。

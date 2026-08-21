@@ -23,6 +23,49 @@ import {
 } from "@/lib/expense-application";
 import type { WorkflowInstance } from "@/lib/workflow";
 
+function ExpenseApplicationActions({
+  applicationId,
+  backHref,
+  cancellable,
+  editable,
+  placement,
+  processing,
+  onCancel,
+}: {
+  applicationId: string;
+  backHref: string;
+  cancellable: boolean;
+  editable: boolean;
+  placement: "上部" | "下部";
+  processing: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      aria-label={`申請操作（${placement}）`}
+      className="flex flex-wrap justify-end gap-3"
+      role="group"
+    >
+      {editable && (
+        <LinkButton
+          href={`/expenses/${applicationId}/edit`}
+          variant="outline"
+        >
+          編集
+        </LinkButton>
+      )}
+      {cancellable && (
+        <Button disabled={processing} onClick={onCancel} variant="outline">
+          取下げ
+        </Button>
+      )}
+      <LinkButton href={backHref} variant="outline">
+        一覧へ戻る
+      </LinkButton>
+    </div>
+  );
+}
+
 export function ExpenseApplicationDetail({
   applicationId,
   showWorkflow = true,
@@ -114,6 +157,14 @@ export function ExpenseApplicationDetail({
     }
   }
 
+  function cancelApplication() {
+    if (window.confirm("この申請を取り下げますか？")) {
+      void action(
+        `/api/backend/expense-applications/${applicationId}/cancel`,
+      );
+    }
+  }
+
   if (!application && !error)
     return (
       <Card>
@@ -142,33 +193,15 @@ export function ExpenseApplicationDetail({
           <CardContent>{application.returnReason}</CardContent>
         </Card>
       )}
-      <div className="flex flex-wrap justify-end gap-3">
-        {application.editable && (
-          <LinkButton
-            href={`/expenses/${application.id}/edit`}
-            variant="outline"
-          >
-            編集
-          </LinkButton>
-        )}
-        {application.cancellable && (
-          <Button
-            disabled={processing}
-            onClick={() => {
-              if (window.confirm("この申請を取り下げますか？"))
-                void action(
-                  `/api/backend/expense-applications/${application.id}/cancel`,
-                );
-            }}
-            variant="outline"
-          >
-            取下げ
-          </Button>
-        )}
-        <LinkButton href={backHref} variant="outline">
-          一覧へ戻る
-        </LinkButton>
-      </div>
+      <ExpenseApplicationActions
+        applicationId={application.id}
+        backHref={backHref}
+        cancellable={application.cancellable}
+        editable={application.editable}
+        onCancel={cancelApplication}
+        placement="上部"
+        processing={processing}
+      />
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>{application.title}</CardTitle>
@@ -266,33 +299,15 @@ export function ExpenseApplicationDetail({
           steps={workflow.steps}
         />
       )}
-      <div className="flex flex-wrap justify-end gap-3">
-        {application.editable && (
-          <LinkButton
-            href={`/expenses/${application.id}/edit`}
-            variant="outline"
-          >
-            編集
-          </LinkButton>
-        )}
-        {application.cancellable && (
-          <Button
-            disabled={processing}
-            onClick={() => {
-              if (window.confirm("この申請を取り下げますか？"))
-                void action(
-                  `/api/backend/expense-applications/${application.id}/cancel`,
-                );
-            }}
-            variant="outline"
-          >
-            取下げ
-          </Button>
-        )}
-        <LinkButton href={backHref} variant="outline">
-          一覧へ戻る
-        </LinkButton>
-      </div>
+      <ExpenseApplicationActions
+        applicationId={application.id}
+        backHref={backHref}
+        cancellable={application.cancellable}
+        editable={application.editable}
+        onCancel={cancelApplication}
+        placement="下部"
+        processing={processing}
+      />
     </div>
   );
 }
