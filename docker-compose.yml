@@ -211,7 +211,7 @@ services:
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-example.user1@sdcj.co.jp}
       DEV_PENDING_EMAIL: ${DEV_PENDING_EMAIL:-example.pending1@sdcj.co.jp}
       DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-password}
-      GUEST_SEED_PASSWORD: ${GUEST_SEED_PASSWORD:-guest-password}
+      GUEST_SEED_PASSWORD: ${GUEST_SEED_PASSWORD:-password}
     volumes:
       - ./keycloak/scripts/configure-keycloak.sh:/opt/workflow/configure-keycloak.sh:ro
       - ./keycloak/scripts/check-keycloak.sh:/opt/workflow/check-keycloak.sh:ro

@@ -65,8 +65,11 @@ last nameを設定し、初回ログイン時のプロフィール補完画面�
 
 ## 認証画面
 
-`/login`にはKeycloakログインを開始するボタンだけを配置し、メールアドレスやパスワードの
-入力欄を置かない。認証後は`/top`へ遷移する。
+`/login`には通常のKeycloakログインに加えて、一時的なPoC用Guest Loginを配置する。
+Guest Loginは同じ`keycloak` ProviderとAuthorization Code Flow + PKCEを使用し、Better Authが
+生成したAuthorization URLへ`login_hint=guest00@example.com`だけを追加する。Guest passwordは
+Guest Loginボタンの下に平文表示するが、Keycloakへ自動入力せず、利用者が認証画面で入力して
+`Sign In`を実行する。どちらのログインも認証後は`/top`へ遷移する。
 `/login?reason=session-expired`では「セッションの有効期限が切れました。再度ログインしてください。」
 と表示する。このURLでは残存sessionがあっても`/top`へ自動redirectせず、期限切れ時の
 redirect loopを防ぐ。
