@@ -114,7 +114,18 @@ export default function ExpensesPage() {
                         <td className="p-3">{categoryLabels[item.category]}</td>
                         <td className="p-3">{yen(item.totalAmount)}</td>
                         <td className="p-3">
-                          <Badge variant="secondary">
+                          <Badge
+                            className={
+                              item.status === "APPROVED"
+                                ? "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400"
+                                : undefined
+                            }
+                            variant={
+                              item.status === "RETURNED"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                          >
                             {statusLabels[item.status]}
                           </Badge>
                         </td>
@@ -123,7 +134,7 @@ export default function ExpensesPage() {
                             href={`/expenses/${item.id}`}
                             variant="outline"
                           >
-                            詳細
+                            詳細を表示
                           </LinkButton>
                         </td>
                       </tr>
