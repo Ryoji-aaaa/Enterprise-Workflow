@@ -1236,7 +1236,14 @@ test("請求書申請(自動入力)は保存・申請・差戻し・再編集・
 
   await page.goto(`/expenses/${created.application.id}`);
   await expect(page.getByText("差戻し", { exact: true }).first()).toBeVisible();
-  await page.getByRole("link", { name: "編集", exact: true }).click();
+  const upperActions = page.getByRole("group", { name: "申請操作（上部）", exact: true });
+  const lowerActions = page.getByRole("group", { name: "申請操作（下部）", exact: true });
+  const expectedEditHref = `/expenses/${created.application.id}/edit`;
+  await expect(upperActions.getByRole("link", { name: "編集", exact: true }))
+    .toHaveAttribute("href", expectedEditHref);
+  await expect(lowerActions.getByRole("link", { name: "編集", exact: true }))
+    .toHaveAttribute("href", expectedEditHref);
+  await upperActions.getByRole("link", { name: "編集", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(
     `/expenses/auto-entry/confirm/${created.application.id}$`,
   ));
@@ -1270,7 +1277,9 @@ test("請求書申請(自動入力)は保存・申請・差戻し・再編集・
 
   await page.getByRole("link", { name: "申請詳細を確認", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/expenses/${created.application.id}$`));
-  await page.getByRole("link", { name: "編集", exact: true }).click();
+  await page.getByRole("group", { name: "申請操作（下部）", exact: true })
+    .getByRole("link", { name: "編集", exact: true })
+    .click();
   await expect(page).toHaveURL(new RegExp(
     `/expenses/auto-entry/confirm/${created.application.id}$`,
   ));
