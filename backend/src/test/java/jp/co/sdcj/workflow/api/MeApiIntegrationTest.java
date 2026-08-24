@@ -20,7 +20,10 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -68,6 +71,7 @@ import jp.co.sdcj.workflow.service.notification.MailpitNotificationDispatcher;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class MeApiIntegrationTest {
 
     private static final String ISSUER = "http://localhost:8180/realms/workflow";
@@ -242,10 +246,17 @@ class MeApiIntegrationTest {
     }
 
     @Test
-    void jwtがなければ401を返す() throws Exception {
-        mockMvc.perform(get("/api/me"))
+    void jwtがなければ401を返す(CapturedOutput output) throws Exception {
+        UUID requestId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/me")
+                        .header("X-Request-Id", requestId.toString()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        org.assertj.core.api.Assertions.assertThat(output)
+                .contains("event=http_access requestId=" + requestId
+                        + " method=GET path=/api/me status=401 durationMs=");
     }
 
     @Test
@@ -262,14 +273,22 @@ class MeApiIntegrationTest {
     }
 
     @Test
-    void emailクレームがなければ403を返す() throws Exception {
-        mockMvc.perform(get("/api/me").with(jwt().jwt(builder -> builder
+    void emailクレームがなければ403を返す(CapturedOutput output) throws Exception {
+        UUID requestId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/me")
+                        .header("X-Request-Id", requestId.toString())
+                        .with(jwt().jwt(builder -> builder
                         .issuer(ISSUER)
                         .subject("user-subject")
                         .claim("email_verified", true)
                         .claim("azp", CLIENT_ID))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("EMAIL_CLAIM_MISSING"));
+
+        org.assertj.core.api.Assertions.assertThat(output)
+                .contains("event=http_access requestId=" + requestId
+                        + " method=GET path=/api/me status=403 durationMs=");
     }
 
     @Test
@@ -323,8 +342,12 @@ class MeApiIntegrationTest {
     }
 
     @Test
-    void 登録済みユーザーなら業務ユーザー情報を返す() throws Exception {
-        mockMvc.perform(get("/api/me").with(validJwt("user-subject", USER_EMAIL)))
+    void 登録済みユーザーなら業務ユーザー情報を返す(CapturedOutput output) throws Exception {
+        UUID requestId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/me")
+                        .header("X-Request-Id", requestId.toString())
+                        .with(validJwt("user-subject", USER_EMAIL)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(user.getId().toString()))
                 .andExpect(jsonPath("$.externalSubject").value("user-subject"))
@@ -341,6 +364,25 @@ class MeApiIntegrationTest {
                 .andExpect(jsonPath("$.features.mailNotificationHistory").value(true))
                 .andExpect(jsonPath("$.features.documentIntelligence").doesNotExist())
                 .andExpect(jsonPath("$.features.contentUnderstanding").doesNotExist());
+
+        org.assertj.core.api.Assertions.assertThat(output)
+                .contains("event=http_access requestId=" + requestId
+                        + " method=GET path=/api/me status=200 durationMs=");
+    }
+
+    @Test
+    void 存在しない認証済みApiは404をアクセスログへ記録する(
+            CapturedOutput output) throws Exception {
+        UUID requestId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/not-found")
+                        .header("X-Request-Id", requestId.toString())
+                        .with(validJwt("user-subject", USER_EMAIL)))
+                .andExpect(status().isNotFound());
+
+        org.assertj.core.api.Assertions.assertThat(output)
+                .contains("event=http_access requestId=" + requestId
+                        + " method=GET path=/api/not-found status=404 durationMs=");
     }
 
     @Test

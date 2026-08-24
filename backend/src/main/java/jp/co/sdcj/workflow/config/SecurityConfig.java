@@ -18,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import jakarta.servlet.http.HttpServletResponse;
 import jp.co.sdcj.workflow.service.CurrentUserProvider;
 import jp.co.sdcj.workflow.service.ManagementFailureAuditService;
+import jp.co.sdcj.workflow.service.RequestAuditMetadataProvider;
 
 @Configuration
 @Profile("!manual-seed")
@@ -28,7 +29,8 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             CurrentUserProvider currentUserProvider,
-            ManagementFailureAuditService managementFailureAuditService) throws Exception {
+            ManagementFailureAuditService managementFailureAuditService,
+            RequestAuditMetadataProvider requestAuditMetadataProvider) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
@@ -45,6 +47,9 @@ public class SecurityConfig {
                                 writeUnauthorized(response))
                         .accessDeniedHandler((request, response, exception) ->
                                 writeForbidden(response)))
+                .addFilterBefore(
+                        new ApiAccessLogFilter(requestAuditMetadataProvider),
+                        BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(
                         new AdminRequestAuditFilter(
                                 currentUserProvider, managementFailureAuditService),

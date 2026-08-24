@@ -707,9 +707,11 @@ class ExpenseApplicationApiIntegrationTest {
     }
 
     @Test
-    void 添付は所有者と現在WorkflowCandidateだけが閲覧できる() throws Exception {
+    void 添付は所有者と現在WorkflowCandidateだけが閲覧できる(
+            CapturedOutput output) throws Exception {
         String applicationId = createDraft(member, "member");
         String attachmentId = upload(applicationId, member, "member", "authorization.pdf");
+        UUID contentRequestId = UUID.randomUUID();
         mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
                         .with(jwt(member, "member")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(attachmentId));
@@ -722,8 +724,13 @@ class ExpenseApplicationApiIntegrationTest {
         mockMvc.perform(get(
                         "/api/expense-applications/{id}/attachments/{attachmentId}/content",
                         applicationId, attachmentId)
+                        .header("X-Request-Id", contentRequestId.toString())
                         .with(jwt(sectionManager, "section-manager")))
                 .andExpect(status().isOk());
+        assertThat(output).contains(
+                "event=http_access requestId=" + contentRequestId,
+                "method=GET path=/api/expense-applications/" + applicationId
+                        + "/attachments/" + attachmentId + "/content status=200 durationMs=");
         mockMvc.perform(get("/api/expense-applications/{id}/attachments", applicationId)
                         .with(jwt(departmentManager, "department-manager")))
                 .andExpect(status().isNotFound());
