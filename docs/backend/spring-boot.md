@@ -68,6 +68,25 @@ Keycloak RoleではなくPostgreSQLのロール・権限テーブルから取得
 
 認証なしで利用できる。公開するActuator endpointはhealthだけとし、詳細情報は返さない。
 
+## APIアクセスログ
+
+Backendは全環境で`/api`と`/api/**`へのアクセスを標準出力へ1リクエスト1行で記録する。
+FilterをBearer認証より前に適用するため、認証済みの正常応答だけでなく401、403、404、500も
+同じ形式で確認できる。statusが500未満の場合はINFO、500以上の場合はERRORで出力する。
+
+```text
+event=http_access requestId=8ec2f945-9e3c-4ab4-b9e8-7e891388b4aa method=GET path=/api/me status=200 durationMs=18
+```
+
+`requestId`は有効なUUID形式の`X-Request-Id`を受け取った場合はその値を使い、それ以外は
+Backendで生成する。同じrequest内の監査ログも同じIDを使用する。`path`にはquery stringを含めず、
+method、pathともに長さを制限し、制御文字とcredential形式を除去する。
+
+Authorization、Cookieを含むrequest／response header、query string、request／response body、JWT、
+ユーザー情報、例外内容、multipart情報はアクセスログへ出力しない。health probeによるログ増加を
+避けるため、`/actuator/health/**`は対象外とする。アクセスログは運用ログであり、PostgreSQLの
+業務監査ログを代替しない。
+
 ## 業務データ
 
 PostgreSQLのschemaは`db/migration`内のFlyway Versioned Migrationで管理する。

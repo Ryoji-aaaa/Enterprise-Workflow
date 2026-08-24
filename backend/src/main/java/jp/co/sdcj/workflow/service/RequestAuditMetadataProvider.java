@@ -1,5 +1,6 @@
 package jp.co.sdcj.workflow.service;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +22,12 @@ public class RequestAuditMetadataProvider {
             return RequestAuditMetadata.system();
         }
 
-        HttpServletRequest request = attributes.getRequest();
+        return current(attributes.getRequest());
+    }
+
+    public RequestAuditMetadata current(HttpServletRequest request) {
+        Objects.requireNonNull(request, "request");
+
         Object cached = request.getAttribute(REQUEST_ATTRIBUTE);
         if (cached instanceof RequestAuditMetadata metadata) {
             return metadata;

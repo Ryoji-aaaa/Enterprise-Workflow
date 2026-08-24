@@ -22,7 +22,10 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -73,6 +76,7 @@ import jp.co.sdcj.workflow.service.RoleCodes;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(AdminApiIntegrationTest.InternalFailureController.class)
+@ExtendWith(OutputCaptureExtension.class)
 class AdminApiIntegrationTest {
 
     private static final String ISSUER = "http://localhost:8180/realms/workflow";
@@ -422,12 +426,15 @@ class AdminApiIntegrationTest {
     }
 
     @Test
-    void BeanValidationの400でも管理者actor付き失敗監査を1件残す() throws Exception {
+    void BeanValidationの400でも管理者actor付き失敗監査を1件残す(
+            CapturedOutput output) throws Exception {
         String endpoint = "/api/admin/users/" + user.getId() + "/status";
+        UUID requestId = UUID.randomUUID();
 
         mockMvc.perform(patch(endpoint)
                         .with(validJwt("api-admin-subject", ADMIN_EMAIL))
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", requestId.toString())
                         .header("X-Correlation-Id", "Authorization=correlation-secret")
                         .header("User-Agent", "Bearer user-agent-secret")
                         .content("""
@@ -441,10 +448,14 @@ class AdminApiIntegrationTest {
 
         jp.co.sdcj.workflow.domain.AuditLog log =
                 assertSingleManagementFailure(endpoint, "INVALID_REQUEST");
+        org.assertj.core.api.Assertions.assertThat(log.getRequestId()).isEqualTo(requestId);
         org.assertj.core.api.Assertions.assertThat(log.getCorrelationId())
                 .isEqualTo("[REDACTED]");
         org.assertj.core.api.Assertions.assertThat(log.getUserAgent())
                 .isEqualTo("[REDACTED]");
+        org.assertj.core.api.Assertions.assertThat(output)
+                .contains("event=http_access requestId=" + requestId
+                        + " method=PATCH path=" + endpoint + " status=400 durationMs=");
     }
 
     @Test
@@ -532,14 +543,20 @@ class AdminApiIntegrationTest {
     }
 
     @Test
-    void filterChainが5xxを返すと内部エラー失敗監査を1件だけ残す() throws Exception {
+    void filterChainが5xxを返すと内部エラー失敗監査を1件だけ残す(
+            CapturedOutput output) throws Exception {
         String endpoint = "/api/admin/test/http-500";
+        UUID requestId = UUID.randomUUID();
 
         mockMvc.perform(get(endpoint)
+                        .header("X-Request-Id", requestId.toString())
                         .with(validJwt("api-admin-subject", ADMIN_EMAIL)))
                 .andExpect(status().isInternalServerError());
 
         assertSingleManagementFailure(endpoint, "INTERNAL_SERVER_ERROR");
+        org.assertj.core.api.Assertions.assertThat(output)
+                .contains("event=http_access requestId=" + requestId
+                        + " method=GET path=" + endpoint + " status=500 durationMs=");
     }
 
     @Test

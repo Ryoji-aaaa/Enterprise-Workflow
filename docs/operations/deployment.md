@@ -20,6 +20,9 @@ ACRに3 imageが存在することを確認してから同じtagを適用する�
 smoke testはfrontend、OIDC discovery、login入口を匿名で確認する。Backend Actuatorは
 external URLを持たないため、Container Apps revisionのprobeとLog Analyticsで確認する。
 本番でテストユーザーを使う完全E2Eは行わない。
+Backend業務APIへの到達と応答statusは、Log Analyticsで`event=http_access`を含むConsole logを
+対象Container App、revision、時刻で絞り込んで確認する。アクセスログにはquery、header、body、
+JWT、ユーザー情報を出力しないため、これらを調査目的で追加出力しない。
 
 staging開発データはdeployから投入しない。必要な期間だけ、
 [`development-seed-data.md`](../backend/development-seed-data.md)の手動Container Apps Jobを
