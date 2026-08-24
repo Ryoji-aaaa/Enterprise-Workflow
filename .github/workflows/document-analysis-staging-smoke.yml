@@ -96,7 +96,7 @@ jobs:
             TF_VAR_backend_container_app_name TF_VAR_key_vault_name; do
             [[ -n "${!name}" ]] || { echo "Missing staging Environment variable: ${name}" >&2; exit 1; }
           done
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.18.0
           cache: npm
