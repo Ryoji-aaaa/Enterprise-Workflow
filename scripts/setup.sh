@@ -25,7 +25,17 @@ fi
 
 docker compose version >/dev/null
 docker buildx version >/dev/null
-docker info >/dev/null
+if ! docker info >/dev/null 2>&1; then
+  current_user="$(id -un)"
+  if id -nG "${current_user}" 2>/dev/null | tr ' ' '\n' | grep -qx docker \
+    && ! id -nG | tr ' ' '\n' | grep -qx docker; then
+    echo "Docker access is not available in this shell because the docker group membership has not been refreshed." >&2
+    echo "Run \"newgrp docker\" or restart the WSL/terminal session, then retry \"make setup\"." >&2
+  else
+    echo "Docker daemon access failed. Check that Docker is running and that the current user can access /var/run/docker.sock." >&2
+  fi
+  exit 1
+fi
 
 if [[ ! -e .env ]]; then
   cp .env.example .env
