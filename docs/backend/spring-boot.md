@@ -20,6 +20,9 @@ Spring Bootコンテナの8080番ポートはホストへ公開しない。
 
 ## Resource Server
 
+BrowserからBFF、access token、外部ID連携、Workflow DB認可までの詳細は
+[OAuth 2.0・OpenID Connect認証と業務認可フロー](../architecture/authentication-flow.md)を参照する。
+
 `/api/**`はBearer JWTを必須とする。署名鍵はDocker内部のKeycloak JWK Set endpoint
 から取得し、tokenのissuerはブラウザが受け取る外部issuer
 `http://localhost:8180/realms/workflow`と照合する。
