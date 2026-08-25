@@ -43,6 +43,14 @@ Better Auth sessionが有効でもKeycloak tokenを更新できない状態は�
 
 Better AuthのGeneric OAuth provider IDは`keycloak`とする。要求scopeは
 `openid profile email`で、Authorization Code FlowとPKCE S256を使用する。
+OAuth 2.0・OIDC上の各構成要素の役割、Keycloak User IDと`app_users.id`の対応、Spring Bootと
+Workflow DBによる業務認可までの正本は
+[OAuth 2.0・OpenID Connect認証と業務認可フロー](../architecture/authentication-flow.md)とする。
+
+Next.js / Better Authはconfidential OIDC ClientかつRelying Partyであり、Browserは
+Authorization Requestとcallbackを運ぶUser Agentである。Browser自身をaccess tokenを保持する
+業務API Clientにはしない。Spring BootはOAuth 2.0 Resource Serverであり、Keycloakが発行した
+access tokenをNext.js BFFから受け取る。
 
 callback URIは次のとおり。
 
@@ -52,12 +60,70 @@ http://localhost:3000/api/auth/oauth2/callback/keycloak
 
 Docker構成では、ブラウザとNext.jsサーバーで到達可能なURLが異なる。
 
-- authorization endpoint: `KEYCLOAK_ISSUER`を基準とする外部URL
-- token/userinfo endpoint: `KEYCLOAK_INTERNAL_URL`と`KEYCLOAK_REALM`を基準とする内部URL
+| 処理 | 実行主体 | 基準URL | ローカルendpoint |
+| --- | --- | --- | --- |
+| authorization | Browser | `KEYCLOAK_ISSUER` | `http://localhost:8180/realms/workflow/protocol/openid-connect/auth` |
+| token交換 | Next.jsサーバー | `KEYCLOAK_INTERNAL_URL`と`KEYCLOAK_REALM` | `http://keycloak:8080/realms/workflow/protocol/openid-connect/token` |
+| userinfo取得 | Next.jsサーバー | `KEYCLOAK_INTERNAL_URL`と`KEYCLOAK_REALM` | `http://keycloak:8080/realms/workflow/protocol/openid-connect/userinfo` |
 
 この分離により、ブラウザは`localhost:8180`へ遷移し、Next.jsコンテナは
 `keycloak:8080`でcode交換とuser info取得を行う。Client Secretはサーバー専用環境変数であり、
 ブラウザへ渡さない。
+
+### ログイン開始時のデータ
+
+通常ログインではClient ComponentがBetter Authへ次を指定する。
+
+```text
+providerId = keycloak
+callbackURL = /top
+errorCallbackURL = /login?error=oauth
+```
+
+Better AuthはOAuth stateとPKCE用`code_verifier`を生成してCookieへ保護し、Browserへ
+authorization URLを返す。主要parameterは次のとおりである。
+
+```text
+client_id=workflow-web
+response_type=code
+redirect_uri=http://localhost:3000/api/auth/oauth2/callback/keycloak
+scope=openid profile email
+state=<推測困難な値>
+code_challenge=<code_verifierのS256 hash>
+code_challenge_method=S256
+```
+
+BrowserはこのURLへ遷移し、Keycloakの画面へemailとpasswordを送る。credentialを受け取るのは
+Keycloakであり、Next.jsとSpring Bootへpasswordは渡らない。認証成功後、Browserは
+`code`と`state`をcallbackへ運ぶ。access token、ID token、refresh tokenをcallback URLへ含めない。
+
+### callbackとtoken交換
+
+Next.jsサーバーはcallbackのstateを開始時のstateと照合した後、内部token endpointへ概ね次を送る。
+
+```text
+grant_type=authorization_code
+code=<authorization-code>
+redirect_uri=http://localhost:3000/api/auth/oauth2/callback/keycloak
+client_id=workflow-web
+client_secret=<サーバー専用secret>
+code_verifier=<ログイン開始時に生成した値>
+```
+
+Client認証はGeneric OAuth設定の`authentication=post`を使う。Keycloakがcode、redirect URI、
+Client認証、PKCEを検証すると、Better Authはaccess token、ID token、refresh tokenとuserinfoを
+provider accountへ取り込む。各tokenの利用境界は次のとおりである。
+
+| token | Next.jsでの用途 | Spring Bootへ送信 | Browser JavaScriptへ公開 |
+| --- | --- | --- | --- |
+| access token | BFFから業務APIを呼ぶ | Bearer headerで送る | しない |
+| ID token | OIDC provider accountの情報 | 送らない | しない |
+| refresh token | access tokenのサーバー側更新 | 送らない | しない |
+
+KeycloakがSpring Bootへtokenを直接送ることはない。ログイン後の各業務APIで、Next.jsが
+Better Authからaccess tokenをサーバー側取得し、`Authorization: Bearer`としてSpring Bootへ渡す。
+Spring Bootはtokenの署名とclaimを検証した後、JWTの`issuer + sub`をWorkflow DBの
+`user_external_identities`へ照合する。Keycloakログイン成功と業務アプリ利用許可は別判定である。
 
 Keycloakの既存Realmは削除・再importしない。`configure-keycloak.sh`がAdmin REST APIで
 既存Clientのredirect URIとweb originを冪等に更新する。開発ユーザーにはfirst nameと

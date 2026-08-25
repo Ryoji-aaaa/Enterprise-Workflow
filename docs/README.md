@@ -6,7 +6,7 @@
 ## アーキテクチャ
 
 - [システム概要](architecture/system-overview.md)
-- [認証フロー](architecture/authentication-flow.md)
+- [OAuth 2.0・OpenID Connect認証と業務認可フロー](architecture/authentication-flow.md)
 - [ネットワーク境界](architecture/network-boundaries.md)
 
 ## 実装仕様

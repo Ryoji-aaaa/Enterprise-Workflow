@@ -1,5 +1,8 @@
 # Keycloak / OpenID Connect仕様
 
+Browser、Next.js、Spring Boot、Keycloak DB、Workflow DB間のデータ受渡しと認証・認可の詳細は
+[OAuth 2.0・OpenID Connect認証と業務認可フロー](../architecture/authentication-flow.md)を参照する。
+
 ## 採用バージョンとURL
 
 - Keycloak 26.7.0
