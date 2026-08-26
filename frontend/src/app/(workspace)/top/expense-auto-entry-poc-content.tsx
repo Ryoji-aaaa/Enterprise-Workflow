@@ -49,10 +49,6 @@ const sampleInvoices = [
     href: "/poc/expense-auto-entry/invoice-sample-01.png",
     download: "請求書サンプル_01.png",
   },
-  {
-    href: "/poc/expense-auto-entry/invoice-sample-02.jpg",
-    download: "請求書サンプル_02.jpg",
-  },
 ] as const;
 
 const pocPoints = [

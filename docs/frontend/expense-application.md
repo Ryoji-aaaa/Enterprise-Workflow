@@ -77,6 +77,11 @@ manual Pan位置を変更せず、drag Panning中にも自動追従を割り込�
 画像 / canvas、Overlayと共通のPreview scroll containerだけを移動する。この追従位置はFrontend UI stateであり
 Backendへ永続化しない。
 
+ローカルFake Providerは`invoice-sample-01.png`と同じpage寸法を返し、追跡対象ごとに異なるpolygonを
+header、明細、合計欄へ配置する。Fakeの抽出値と帳票上の原文も一致するため、focusした枠の青から赤への
+切替、原文との照合、追従scrollを確認できる。動作確認用データとして案内する帳票は、このFake結果と
+対応する`invoice-sample-01.png`だけである。
+
 Desktopの入力画面では左Previewカードを最大36remとして共通header下へsticky表示し、viewport高さが不足する
 場合はheaderと上下余白を除いた利用可能高さまで縮小する。右側FormをBrowser pageで縦scrollしてもPreview全体を
 viewport内へ維持し、Preview内部のdocument scrollとは独立させる。Mobileの縦積みlayoutでは高さ36remのまま
