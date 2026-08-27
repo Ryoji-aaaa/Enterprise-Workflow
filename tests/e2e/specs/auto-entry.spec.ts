@@ -317,8 +317,8 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
     naturalWidth: element.naturalWidth,
   }));
   expect(imageState.complete).toBe(true);
-  expect(imageState.naturalHeight).toBeGreaterThan(0);
-  expect(imageState.naturalWidth).toBeGreaterThan(0);
+  expect(imageState.naturalHeight).toBe(1754);
+  expect(imageState.naturalWidth).toBe(1240);
 
   await expect(page.getByLabel("現在の分析状態").first()).toHaveText("Succeeded", {
     timeout: 60_000,
@@ -380,9 +380,33 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
   const lineDescriptionEvidence = preview.locator(
     'polygon[data-field-path="document.lineItems[0].itemDescription"]',
   );
+  const lineAmountEvidence = preview.locator(
+    'polygon[data-field-path="document.lineItems[0].lineAmount"]',
+  );
+  await expect(totalEvidence).toHaveCount(1);
+  await expect(lineDescriptionEvidence).toHaveCount(1);
+  await expect(lineAmountEvidence).toHaveCount(1);
+  const trackedEvidence = [
+    issuerEvidence,
+    totalEvidence,
+    lineDescriptionEvidence,
+    lineAmountEvidence,
+  ];
+  const trackedPoints = await Promise.all(
+    trackedEvidence.map((evidence) => evidence.getAttribute("points")),
+  );
+  expect(new Set(trackedPoints).size).toBe(trackedEvidence.length);
+  for (const evidence of trackedEvidence) {
+    await expect(evidence).toHaveAttribute("stroke", "#2563eb");
+  }
   const issuerName = page.getByLabel("請求社 / 発行元", { exact: true });
   const invoiceTotal = page.getByLabel("総請求額（円）", { exact: true });
   const lineDescription = page.getByRole("textbox", { name: "内容", exact: true }).first();
+  const lineAmount = page.getByRole("spinbutton", { name: "金額（円）", exact: true }).first();
+  await expect(issuerName).toHaveValue("サンプル商事株式会社");
+  await expect(invoiceTotal).toHaveValue("10500");
+  await expect(lineDescription).toHaveValue("業務用備品");
+  await expect(lineAmount).toHaveValue("10000");
 
   const previewCard = page.getByTestId("expense-auto-entry-preview-card");
   const previewCardBeforePageScroll = await previewCard.boundingBox();
@@ -443,10 +467,16 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
       if (!container) return false;
       const containerBounds = container.getBoundingClientRect();
       const evidenceBounds = element.getBoundingClientRect();
-      return evidenceBounds.right < containerBounds.left + 24
-        || evidenceBounds.left > containerBounds.left + container.clientWidth - 24
-        || evidenceBounds.bottom < containerBounds.top + 24
-        || evidenceBounds.top > containerBounds.top + container.clientHeight - 24;
+      const visibleLeft = containerBounds.left + container.clientLeft + 24;
+      const visibleTop = containerBounds.top + container.clientTop + 24;
+      const visibleRight = containerBounds.left + container.clientLeft
+        + container.clientWidth - 24;
+      const visibleBottom = containerBounds.top + container.clientTop
+        + container.clientHeight - 24;
+      return evidenceBounds.left < visibleLeft
+        || evidenceBounds.right > visibleRight
+        || evidenceBounds.top < visibleTop
+        || evidenceBounds.bottom > visibleBottom;
     },
   );
   expect(lineDescriptionIsOutsideLowHeightPreview).toBe(true);
@@ -468,16 +498,28 @@ test("AUTO_ENTRY画像Previewはsource polygonを原本上へoverlay表示する
 
   await issuerName.focus();
   await expect(issuerEvidence).toHaveAttribute("data-active", "true");
+  await expect(issuerEvidence).toHaveAttribute("stroke", "#dc2626");
   await expect(totalEvidence).toHaveAttribute("data-active", "false");
+  await expect(totalEvidence).toHaveAttribute("stroke", "#2563eb");
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "false");
+  await expect(lineDescriptionEvidence).toHaveAttribute("stroke", "#2563eb");
 
   await invoiceTotal.focus();
   await expect(issuerEvidence).toHaveAttribute("data-active", "false");
   await expect(totalEvidence).toHaveAttribute("data-active", "true");
+  await expect(totalEvidence).toHaveAttribute("stroke", "#dc2626");
 
   await lineDescription.focus();
   await expect(totalEvidence).toHaveAttribute("data-active", "false");
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
+  await expect(lineDescriptionEvidence).toHaveAttribute("stroke", "#dc2626");
+
+  await lineAmount.focus();
+  await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "false");
+  await expect(lineDescriptionEvidence).toHaveAttribute("stroke", "#2563eb");
+  await expect(lineAmountEvidence).toHaveAttribute("data-active", "true");
+  await expect(lineAmountEvidence).toHaveAttribute("stroke", "#dc2626");
+  await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(1);
 
   await page.getByLabel("インボイス登録番号", { exact: true }).focus();
   await expect(preview.locator('polygon[data-active="true"]')).toHaveCount(0);
@@ -750,6 +792,7 @@ test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描�
   await expect(lineDescriptionEvidence).toHaveCount(1);
   await page.getByLabel("総請求額（円）", { exact: true }).focus();
   await expect(totalEvidence).toHaveAttribute("data-active", "true");
+  await expectEvidenceInsidePreview(totalEvidence);
   const samePagePan = await lineDescriptionEvidence.evaluate((element) => {
     const container = element.closest<HTMLElement>(
       '[data-testid="expense-auto-entry-preview-content"]',
@@ -770,26 +813,43 @@ test("AUTO_ENTRY PDF Previewは全pageとsource overlayを同じ倍率で再描�
     ));
     return { left: container.scrollLeft, top: container.scrollTop };
   });
-  const lineDescriptionIsOutsideHorizontally = await lineDescriptionEvidence.evaluate((element) => {
+  const lineDescriptionVisibilityBeforeFocus = await lineDescriptionEvidence.evaluate((element) => {
     const container = element.closest<HTMLElement>(
       '[data-testid="expense-auto-entry-preview-content"]',
     );
-    if (!container) return false;
+    if (!container) return { insideVertically: false, outsideHorizontally: false };
     const containerBounds = container.getBoundingClientRect();
     const evidenceBounds = element.getBoundingClientRect();
-    return evidenceBounds.right < containerBounds.left + 24
-      || evidenceBounds.left > containerBounds.left + container.clientWidth - 24;
+    const visibleLeft = containerBounds.left + container.clientLeft + 24;
+    const visibleTop = containerBounds.top + container.clientTop + 24;
+    const visibleRight = containerBounds.left + container.clientLeft
+      + container.clientWidth - 24;
+    const visibleBottom = containerBounds.top + container.clientTop
+      + container.clientHeight - 24;
+    return {
+      insideVertically: evidenceBounds.top >= visibleTop - 1
+        && evidenceBounds.bottom <= visibleBottom + 1,
+      outsideHorizontally: evidenceBounds.left < visibleLeft
+        || evidenceBounds.right > visibleRight,
+    };
   });
-  expect(lineDescriptionIsOutsideHorizontally).toBe(true);
+  expect(lineDescriptionVisibilityBeforeFocus).toEqual({
+    insideVertically: true,
+    outsideHorizontally: true,
+  });
   const browserScrollBeforeSamePageFocus = await page.evaluate(() => window.scrollY);
   await page.getByRole("textbox", { name: "内容", exact: true }).first()
     .evaluate((element: HTMLInputElement) => element.focus({ preventScroll: true }));
   await expect(lineDescriptionEvidence).toHaveAttribute("data-active", "true");
   await expectEvidenceInsidePreview(lineDescriptionEvidence);
-  const samePageFollow = await preview.evaluate((element) => ({
-    left: element.scrollLeft,
-    top: element.scrollTop,
-  }));
+  const samePageFollow = await preview.evaluate((element) => (
+    new Promise<{ left: number; top: number }>((resolveFollow) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolveFollow({
+        left: element.scrollLeft,
+        top: element.scrollTop,
+      })));
+    })
+  ));
   expect(samePageFollow.left).not.toBe(samePagePan.left);
   expect(samePageFollow.top).toBeCloseTo(samePagePan.top, 0);
   expect(await page.evaluate(() => window.scrollY)).toBe(browserScrollBeforeSamePageFocus);

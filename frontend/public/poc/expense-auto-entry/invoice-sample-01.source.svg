@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1754" viewBox="0 0 1240 1754">
+  <rect width="1240" height="1754" fill="#ffffff"/>
+  <style>
+    text { fill: #111827; font-family: "IPA Pゴシック", "IPAGothic", sans-serif; }
+    .muted { fill: #4b5563; }
+    .label { font-size: 18px; font-weight: 700; }
+    .body { font-size: 22px; }
+    .small { font-size: 17px; }
+    .amount { font-size: 22px; font-weight: 700; text-anchor: end; }
+    .rule { stroke: #374151; stroke-width: 2; }
+    .thin-rule { stroke: #9ca3af; stroke-width: 1; }
+    .panel { fill: #f3f4f6; stroke: #9ca3af; stroke-width: 1; }
+  </style>
+
+  <rect x="70" y="55" width="1100" height="58" fill="#f3f4f6"/>
+  <text x="620" y="98" font-size="38" font-weight="700" text-anchor="middle" letter-spacing="14">請 求 書</text>
+
+  <text x="930" y="114" class="small">発行日: 2026-08-01</text>
+  <text x="930" y="150" class="small">請求書番号: INV-2026-0001</text>
+
+  <text x="210" y="270" font-size="29" font-weight="700">ワークフロー株式会社 御中</text>
+  <text x="215" y="318" class="body">経理部</text>
+  <line x1="210" y1="335" x2="615" y2="335" class="rule"/>
+
+  <text x="1170" y="224" font-size="27" font-weight="700" text-anchor="end">サンプル商事株式会社</text>
+  <text x="1170" y="274" class="small" text-anchor="end">〒100-0001 東京都千代田区1-2-3</text>
+  <text x="1170" y="302" class="small" text-anchor="end">TEL 03-1234-5678</text>
+
+  <text x="72" y="405" class="body">平素は格別のご高配を賜り、厚く御礼申し上げます。</text>
+  <text x="72" y="438" class="body">下記の通りご請求申し上げます。</text>
+
+  <rect x="70" y="465" width="550" height="105" class="panel"/>
+  <line x1="70" y1="517" x2="620" y2="517" class="thin-rule"/>
+  <line x1="285" y1="465" x2="285" y2="570" class="thin-rule"/>
+  <text x="88" y="500" class="label">お支払条件</text>
+  <text x="350" y="500" class="body">銀行振込</text>
+  <text x="88" y="550" class="label">お支払期限</text>
+  <text x="350" y="535" class="body">2026-08-31</text>
+
+  <rect x="730" y="450" width="440" height="165" fill="#ffffff" stroke="#9ca3af" stroke-width="1.5"/>
+  <text x="950" y="482" class="label" text-anchor="middle">振込先</text>
+  <text x="835" y="525" class="small">サンプル銀行</text>
+  <text x="990" y="525" class="small">本店</text>
+  <text x="835" y="558" class="small">普通</text>
+  <text x="930" y="558" class="small">1234567</text>
+  <text x="815" y="596" class="small">サンプルショウジ</text>
+  <text x="1125" y="596" class="small">JPY</text>
+
+  <rect x="70" y="600" width="550" height="105" class="panel"/>
+  <line x1="285" y1="600" x2="285" y2="705" class="thin-rule"/>
+  <text x="88" y="642" font-size="25" font-weight="700">ご請求金額</text>
+  <text x="590" y="642" font-size="34" font-weight="700" text-anchor="end">¥10,500</text>
+  <text x="590" y="680" class="small" text-anchor="end">消費税 ¥1,000 / 値引き ¥500</text>
+
+  <rect x="70" y="775" width="1100" height="450" fill="#ffffff" stroke="#374151" stroke-width="2"/>
+  <rect x="70" y="775" width="1100" height="40" fill="#e5e7eb"/>
+  <line x1="550" y1="775" x2="550" y2="1225" class="thin-rule"/>
+  <line x1="660" y1="775" x2="660" y2="1225" class="thin-rule"/>
+  <line x1="780" y1="775" x2="780" y2="1225" class="thin-rule"/>
+  <line x1="990" y1="775" x2="990" y2="1225" class="thin-rule"/>
+  <line x1="70" y1="815" x2="1170" y2="815" class="rule"/>
+  <line x1="70" y1="885" x2="1170" y2="885" class="thin-rule"/>
+  <line x1="70" y1="955" x2="1170" y2="955" class="thin-rule"/>
+  <line x1="70" y1="1025" x2="1170" y2="1025" class="thin-rule"/>
+  <line x1="70" y1="1095" x2="1170" y2="1095" class="thin-rule"/>
+  <line x1="70" y1="1165" x2="1170" y2="1165" class="thin-rule"/>
+  <text x="310" y="804" class="label" text-anchor="middle">品名</text>
+  <text x="605" y="804" class="label" text-anchor="middle">数量</text>
+  <text x="720" y="804" class="label" text-anchor="middle">単位</text>
+  <text x="885" y="804" class="label" text-anchor="middle">単価</text>
+  <text x="1080" y="804" class="label" text-anchor="middle">金額</text>
+  <text x="85" y="862" font-size="25">業務用備品</text>
+  <text x="610" y="862" class="body" text-anchor="middle">2</text>
+  <text x="720" y="862" class="body" text-anchor="middle">個</text>
+  <text x="955" y="862" class="amount">5,000</text>
+  <text x="1155" y="862" class="amount">10,000</text>
+
+  <text x="935" y="1250" class="label" text-anchor="end">小計</text>
+  <text x="1155" y="1250" class="amount">10,000</text>
+  <line x1="770" y1="1265" x2="1170" y2="1265" class="thin-rule"/>
+  <text x="935" y="1307" class="label" text-anchor="end">消費税</text>
+  <text x="1155" y="1307" class="amount">1,000</text>
+  <line x1="770" y1="1325" x2="1170" y2="1325" class="thin-rule"/>
+  <text x="935" y="1370" font-size="25" font-weight="700" text-anchor="end">合計</text>
+  <text x="1155" y="1370" font-size="28" font-weight="700" text-anchor="end">10,500</text>
+
+  <rect x="770" y="1390" width="400" height="85" class="panel"/>
+  <text x="785" y="1438" class="small">税抜 10%対象 / STANDARD</text>
+  <text x="1155" y="1422" class="small" text-anchor="end">対象額 10,000</text>
+  <text x="1155" y="1460" class="small" text-anchor="end">税額 1,000</text>
+
+  <rect x="770" y="1480" width="400" height="105" fill="#ffffff" stroke="#9ca3af" stroke-width="1"/>
+  <text x="780" y="1518" class="small">DISCOUNT</text>
+  <text x="885" y="1518" class="small">DEDUCTION</text>
+  <text x="1155" y="1518" class="amount">500</text>
+  <text x="780" y="1562" class="small">値引き</text>
+
+  <line x1="70" y1="1635" x2="1170" y2="1635" class="thin-rule"/>
+  <text x="70" y="1675" class="small muted">備考: 振込手数料はご負担くださいますようお願いいたします。</text>
+  <text x="1170" y="1710" class="small muted" text-anchor="end">サンプル帳票 / ローカルFake Provider用</text>
+</svg>

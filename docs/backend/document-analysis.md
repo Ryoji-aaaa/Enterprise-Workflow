@@ -222,6 +222,11 @@ polygon、明細、税内訳`CategoryNotation`、控除、支払期限、振込�
 confidenceを`0.55`にして、ローカルreviewで`LOW_CONFIDENCE`を確認できる。production codeはtest fixtureを
 読み込まず、従来の`GENERAL` Fake resultは変更しない。
 
+AUTO_ENTRYのFake pageは、動作確認用`invoice-sample-01.png`と同じ`1240 x 1754 pixel`の座標系を使う。
+経費入力で追跡する発行元、総額、明細名、明細金額は、header、明細、合計欄に対応する互いに異なる
+polygonを持ち、Fakeの抽出値と帳票上の原文も一致する。入力項目へfocusしたとき、対象の赤枠が他項目の
+青枠に完全に重ならず、枠色の切替とPreview内の追従scrollをローカルで確認できる。
+
 ## Azure AI Document Intelligence Adapter
 
 `execution-mode=azure`かつ`document-intelligence.enabled=true`の場合だけ、

@@ -284,10 +284,6 @@ test("一般ユーザーがログインしてPoC案内とUIサンプルを表示
       filename: "請求書サンプル_01.png",
       href: "/poc/expense-auto-entry/invoice-sample-01.png",
     },
-    {
-      filename: "請求書サンプル_02.jpg",
-      href: "/poc/expense-auto-entry/invoice-sample-02.jpg",
-    },
   ]) {
     const sampleLink = page.getByRole("link", { name: sample.filename, exact: true });
     await expect(sampleLink).toBeVisible();
@@ -298,6 +294,8 @@ test("一般ユーザーがログインしてPoC案内とUIサンプルを表示
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe(sample.filename);
   }
+  await expect(page.getByRole("link", { name: "請求書サンプル_02.jpg", exact: true }))
+    .toHaveCount(0);
 
   const authenticationCookies = (await page.context().cookies()).filter((cookie) =>
     /better-auth.*(?:session|account_data)/.test(cookie.name),
