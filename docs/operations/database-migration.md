@@ -38,7 +38,7 @@ ORDER BY installed_rank;
 
 - 対象imageに含まれる全migrationがversion順に1回ずつ成功している
 - checksum error、failed row、version欠落がない
-- Hibernate schema validationとBackend readinessが成功している
+- DB healthを含むBackend readinessが成功している
 - migration固有のdata/constraint検証が成功している
 - active revisionとtrafficが意図した状態である
 
