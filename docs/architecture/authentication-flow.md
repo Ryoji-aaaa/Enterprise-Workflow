@@ -315,7 +315,7 @@ Next.jsは成功レスポンスを`CurrentUserContext`へ保持し、Role、Perm
 
 ### 組織図画面
 
-この利用者が`/organization-chart`へ遷移すると、Browserは次を呼ぶ。
+`ORGANIZATION_CHART_READ`を持つ利用者が`/organization-chart`へ遷移すると、Browserは次を呼ぶ。
 
 ```http
 GET /api/backend/organization-chart
@@ -348,10 +348,10 @@ Spring BootはHTTP sessionを持たない。同じServlet request内では解決
 
 ### 管理画面への直接アクセス
 
-この利用者は`USER_READ`や`USER_UPDATE`などの管理Permissionを持たないため、Frontendは管理メニューを
-表示しない。URLやBFF APIを直接呼んでもSpring BootのPermission判定がHTTP 403を返し、認可拒否を
-既存の監査方針に従って記録する。Keycloakでログイン済みであることや`APPLICATION_USER` Roleは、
-管理Permissionを代替しない。
+`USER_READ`や`USER_UPDATE`などの管理Permissionを持たない利用者には、Frontendは管理メニューを
+表示しない。その利用者がURLやBFF APIを直接呼んでもSpring BootのPermission判定がHTTP 403を返し、
+認可拒否を既存の監査方針に従って記録する。Keycloakでログイン済みであることや
+`APPLICATION_USER` Roleは、管理Permissionを代替しない。
 
 ## 利用拒否とHTTP status
 

@@ -72,9 +72,9 @@ Document AnalysisのHTTP APIは`DOCUMENT_ANALYSIS_READ_OWN`でowner scopeの参�
 `CONTENT_UNDERSTANDING_ANALYZE`をService層で再確認する。ローカル開発ではFake Provider、
 Azure runtimeではManaged Identityを使うAzure AI Providerを使用する。
 
-基盤データでは`SYSTEM_ADMIN`に全権限、`APPLICATION_USER`に`WORKFLOW_SUBMIT`とDocument Analysisの
-3 Permission、`AUDITOR`に`AUDIT_LOG_READ`を付与する。その他の対応は明示的なseedまたは管理操作で
-追加する。
+RoleとPermissionの標準対応はVersioned Migrationが登録し、fresh databaseにも適用する。具体的な対応は
+migrationとmigration検証テストを正本とし、この文書へ手動一覧を複製しない。現行運用で個々のユーザーへ
+付与するRole割当は、環境別seedまたは管理操作で登録する。
 
 ### ロール割当
 

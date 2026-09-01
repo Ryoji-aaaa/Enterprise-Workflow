@@ -323,13 +323,14 @@ Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Job
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、
 3つの通常Container Apps、3つの手動seed JobがTerraform
-stateと一致することを確認する。対象imageに含まれる全migrationが適用済みであることを
-`flyway_schema_history`と照合し、contract migration適用済みの環境ではGitHub Environmentの
+stateと一致することを確認する。対象revisionに設定されたFlyway targetまでが適用済みであることを
+`flyway_schema_history`と照合する。targetが設定されていない場合は、対象image内の最新migrationまでを
+確認する。contract migration適用済みの環境ではGitHub Environmentの
 `CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象imageに含まれる全Flyway migrationとreadinessが成功している。
+3. BackendのConsole logで実効Flyway targetまでのmigrationとreadinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
 

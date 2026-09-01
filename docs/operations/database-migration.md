@@ -8,11 +8,15 @@ Azureの業務DB schemaは、Backend imageに含まれるFlyway Versioned Migrat
 
 migrationファイルと順序は`backend/src/main/resources/db/migration/`、環境へ実際に適用された状態は
 各DBの`flyway_schema_history`を正本とする。stagingやproductionの適用済みversionを文書へ固定しない。
+以下でいう実効Flyway targetは、Backend revisionに`SPRING_FLYWAY_TARGET`が設定されていればそのversion、
+設定されていなければ対象imageに含まれる最新versionとする。
 
 ## デプロイ前確認
 
-1. 対象image SHAに含まれるmigrationと、対象DBの`flyway_schema_history`を比較する。
-2. 未適用migrationのDDL、data migration、lock、所要時間、旧revisionとの互換性を確認する。
+1. 対象image SHAに含まれるmigrationのうち、実効Flyway targetまでを対象DBの
+   `flyway_schema_history`と比較する。
+2. 実効Flyway targetまでに未適用となるmigrationのDDL、data migration、lock、所要時間、
+   旧revisionとの互換性を確認する。
 3. `DROP`、列型変更、必須列追加、既存行の書換えなどがあれば、backup、write drain、切戻し不能点を
    含む環境別計画を承認する。
 4. migrationが必要とするAzure resource、extension、Managed Identity、application設定を先に確認する。
@@ -36,7 +40,7 @@ ORDER BY installed_rank;
 
 次を確認する。
 
-- 対象imageに含まれる全migrationがversion順に1回ずつ成功している
+- 実効Flyway targetまでのmigrationがversion順に1回ずつ成功している
 - checksum error、failed row、version欠落がない
 - DB healthを含むBackend readinessが成功している
 - migration固有のdata/constraint検証が成功している
