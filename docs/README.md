@@ -70,8 +70,3 @@
 - [ADR-0017: Document AnalysisをBFF境界と非同期Jobで実装](decisions/ADR-0017-document-analysis-architecture.md)
 - [ADR-0018: AUTO_ENTRYから経費下書きへの正式引継ぎ](decisions/ADR-0018-auto-entry-expense-draft-handoff.md)
 - [ADR-0019: 版管理された汎用ワークフローエンジン](decisions/ADR-0019-generic-workflow-engine.md)
-
-## 履歴資料
-
-[初期プロトタイプ構築Plan](archive/prototype-implementation-plan.md)は履歴資料であり、
-現在の仕様や操作方法の正本ではありません。
