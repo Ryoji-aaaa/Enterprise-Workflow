@@ -114,13 +114,11 @@ JWT issuer + subject
   -> account_statusと有効期間
 ```
 
-有効な対応がない場合に限り、検証済みJWTのemailと
-`PRE_REGISTERED`ユーザーを照合する。V001から`enabled = true`で移行した外部ID未連携の
-`ACTIVE`ユーザーも後方互換のため同じメール連携対象とする。候補が一意で利用可能期間内なら、同一トランザクションで
-外部IDを追加し、ユーザーを`ACTIVE`へ変更し、状態変更履歴と監査ログを追記する。
-`external_subject`がない事前登録ユーザーには、移行時点で外部ID行を作らない。
-段階移行中に旧revisionが先に外部IDを連携し、正規化済み外部IDと`PRE_REGISTERED`ユーザーが
-一時的に共存した場合も、既存外部IDの解決経路で同じ有効化・履歴・監査処理を実行する。
+有効な対応がない場合に限り、検証済みJWTのemailと`PRE_REGISTERED`ユーザーを照合する。
+外部ID未連携の`ACTIVE`ユーザーも後方互換のため同じメール連携対象とする。候補が一意で
+利用可能期間内なら、同一トランザクションで外部IDを追加し、ユーザーを`ACTIVE`へ変更し、
+状態変更履歴と監査ログを追記する。外部IDがない事前登録ユーザーには、連携が成立するまで
+`user_external_identities`を作成しない。
 
 `SUSPENDED`、`DISABLED`、`RETIRED`または有効期間外のユーザーは、IdPで認証済みでも
 業務APIを利用できない。未登録利用者については、既存の`access_requests`の冪等記録と、
@@ -154,23 +152,6 @@ SYSTEMユーザーは固定UUID `00000000-0000-0000-0000-000000000001`を持つ�
 状態変更の`reasonCode`と`reasonText`に一般的なcredential形式が含まれる場合は、現在値、状態履歴、
 監査ログへ保存する前に`[REDACTED]`へ統一する。
 詳細は[監査ログ](audit-logging.md)を参照する。
-
-## 既存データの移行
-
-既存の`app_users`は失わず、次の対応で新構造へ移す。
-
-```text
-enabled = true   -> account_status = ACTIVE
-enabled = false  -> account_status = DISABLED
-identity_provider / issuer / external_subject -> user_external_identities
-email -> user_external_identities.external_email（外部IDがある場合）
-```
-
-旧`department_name`は組織所属へ、旧`business_role`はロール割当へ移す。
-移行とアプリケーション切替が完了して参照がなくなった後にだけ旧列を削除する。
-V001で許容されていた大文字・小文字だけが異なるemailは自動統合しない。V002の事前検査で
-対象emailを示して停止するため、同一人物か別人かを運用者が確認してから名称変更または統合を
-行い、Flywayを再実行する。
 
 ## APIと実装境界
 

@@ -10,32 +10,31 @@ Document Analysis `AUTO_ENTRY`からの下書き確定を提供し、汎用OCR�
 
 ## データモデル
 
-V009は`expense_applications`、`expense_application_items`と申請番号用sequenceを追加する。
-申請番号は`EXP-YYYYMMDD-000001`形式で、明細合計をBackendが再計算する。通貨はJPYだけを
+`expense_applications`と`expense_application_items`に申請と明細を保存し、sequenceから
+`EXP-YYYYMMDD-000001`形式の申請番号を生成する。明細合計はBackendが再計算する。通貨はJPYだけを
 許可する。各明細と明細合計は1円以上999,999,999,999円以下の整数とし、合計超過は
 `EXPENSE_APPLICATION_TOTAL_AMOUNT_EXCEEDED`の422業務エラーとして保存前に拒否する。
 
-V010は`expense_application_attachments`を追加する。PostgreSQLには元ファイル名、正規化した
+`expense_application_attachments`には元ファイル名、正規化した
 Content-Type、サイズ、SHA-256、Blob object名、登録者、論理削除情報だけを保存し、ファイル本体は
 Blob Storageへ保存する。1申請につき有効な添付は10件、合計30 MiB、1ファイル10 MiBまでで、
 PDF、JPEG、PNGだけを許可する。拡張子、申告Content-Type、magic numberを一致させ、空ファイル、
 制御文字やpath separatorを含むファイル名、255文字を超えるファイル名を拒否する。
 
-V017は`expense_application_auto_entry_contexts`を追加する。1つの経費申請、1つのDocument
+`expense_application_auto_entry_contexts`は、1つの経費申請、1つのDocument
 Analysis Job、原本文書から複製した1つの経費添付にそれぞれ最大1行だけ対応させる。
 `analysis_id`の一意制約を最終的な冪等性境界とし、同じAUTO_ENTRY分析から複数の経費下書きを
 作成しない。Backendで生成した`AutoEntryReviewResponse`のsnapshotと、人間の現在値・確認状態を
 別々のJSONBへ保存する。Azure Raw response、Blob URL、credentialは保存しない。
 
-V018は`expense_application_attachments (id, expense_application_id)`へ一意制約を追加し、
-AUTO_ENTRY contextの`(source_attachment_id, expense_application_id)`から複合外部キーで参照する。
-これにより原本添付が同じ経費申請に属することをDBでも保証し、異なる申請の添付をcontextへ対応付けない。
+`expense_application_attachments (id, expense_application_id)`の一意制約を、AUTO_ENTRY contextの
+`(source_attachment_id, expense_application_id)`から複合外部キーで参照する。これにより原本添付が
+同じ経費申請に属することをDBでも保証し、異なる申請の添付をcontextへ対応付けない。
 
-V019はV009で作成した経費専用の承認Run、Step、Candidateを削除し、版管理された汎用
-`workflow_instances`、`workflow_instance_steps`、`workflow_instance_candidates`、
-`workflow_instance_actions`へ置き換える。V020は経費承認定義`EXPENSE_APPROVAL` version 1を公開する。
-V021はCandidate選定時のglobalまたはOrganization Unit Permission scopeを、候補者の選定元とは別の
-runtime snapshotとして追加する。
+承認実行は版管理された汎用`workflow_instances`、`workflow_instance_steps`、
+`workflow_instance_candidates`、`workflow_instance_actions`へ保存し、公開済みの経費承認定義
+`EXPENSE_APPROVAL` version 1を使用する。Candidate選定時のglobalまたはOrganization Unit Permission
+scopeは、候補者の選定元とは別のruntime snapshotとして保存する。
 申請・再申請ごとに新しいInstanceを作り、旧Instanceとその履歴は更新しない。ApplicationとStepはversionを
 持ち、承認時にはStepを悲観lockしてCandidateの最初の1名だけが確定できる。詳細は
 [汎用ワークフローエンジン](workflow-engine.md)を参照する。
@@ -54,7 +53,7 @@ DRAFT -> PENDING_APPROVAL -> APPROVED
 
 ## 承認経路
 
-経路はV020の公開定義を型付き条件DSLで評価する。基準時点の有効な`PRIMARY`所属を起点とし、
+経路は公開済みの経費承認定義を型付き条件DSLで評価する。基準時点の有効な`PRIMARY`所属を起点とし、
 親方向で最初の`DIVISION`を事業部とする。
 部門長は有効な所属・ユーザー・役職のうち`positions.approval_level > 0`で判定し、ACTINGを
 含む。同じ組織に複数候補がいる場合は全員をCandidateへ保存し、誰か1名の処理でStepを完了する。

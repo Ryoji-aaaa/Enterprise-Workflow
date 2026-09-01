@@ -323,14 +323,14 @@ Storage container、Job metadataを削除せず、`FAILED_RECOVERY_REQUIRED` Job
 
 stagingではPostgreSQL、Key Vault、経費証憑Storage Account・container、Blob専用identity、
 3つの通常Container Apps、3つの手動seed JobがTerraform
-stateと一致することを確認する。Flywayの最新migrationが適用済みであること（AUTO_ENTRY原本添付、
-汎用workflow定義、Candidate Permission scope snapshotを含む現在はV021）を確認し、GitHub
-Environment `staging`の`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
+stateと一致することを確認する。対象revisionに設定されたFlyway targetまでが適用済みであることを
+`flyway_schema_history`と照合する。targetが設定されていない場合は、対象image内の最新migrationまでを
+確認する。contract migration適用済みの環境ではGitHub Environmentの
+`CONTRACT_LEGACY_USER_COLUMNS=true`を維持する。deploy後は次を確認する。
 
 1. workflow summaryのimage tagが対象の40文字commit SHAである。
 2. Frontend、Backend、Keycloakの最新revisionがRunningで、必要なtrafficを受けている。
-3. BackendのConsole logで対象revisionの最新Flyway（現在はV021）まで成功し、
-   readinessが成功している。
+3. BackendのConsole logで実効Flyway targetまでのmigrationとreadinessが成功している。
 4. Keycloak realm/client設定とpublic smoke testが成功している。
 5. seedが必要な場合だけ、[seed手順](../backend/development-seed-data.md)に従ってJobを手動実行する。
 
@@ -363,7 +363,7 @@ System log、Log Analytics、依存先の順に調べる。代表例は次のと
 | --- | --- |
 | `development-seed-password`を参照できない | staging Key Vaultに有効なsecret versionがあることと、JobのUser Assigned Managed Identityに`Key Vault Secrets User`があることを確認する。値はログへ出さない。 |
 | `guest-seed-password`を参照できない、または`GUEST_SEED_PASSWORD is required` | staging Key Vaultに有効なsecret versionがあること、Jobが既存runtime identityでversionless secret URIを参照することを確認する。`DEV_SEED_PASSWORD`へfallbackさせず、Guest専用IdentityやRBACを追加しない。 |
-| `employment_type does not exist` | 通常Backendが`SPRING_FLYWAY_TARGET=006`で止まっていないか、`CONTRACT_LEGACY_USER_COLUMNS=true`か、`flyway_schema_history`がV008まで成功しているかを確認する。DB seed Job自身はFlywayを無効化している。 |
+| `employment_type does not exist` | 通常Backendが意図しないFlyway targetで止まっていないか、対象imageに含まれるmigrationが`flyway_schema_history`ですべて成功しているかを確認する。DB seed Job自身はFlywayを無効化している。 |
 | Docker build中のDocker Hub `i/o timeout` | base image取得時だけの一時通信障害ならworkflowを再実行する。コード、migration、Terraformの失敗と混同しない。 |
 | Container Apps Jobが`Failed` | System logだけで判断せず、対象executionのConsole logでSpring例外と`manual_seed_result ... failed=...`を確認する。部分成功後は原因を直し、冪等な対象Jobを再実行する。 |
 | Flyway V007が失敗 | 旧revisionの停止とwrite drain、reconciliation対象データ、Console log、履歴を確認する。`flyway repair`は使用せず、原因を解消してcontract deployを再試行する。 |

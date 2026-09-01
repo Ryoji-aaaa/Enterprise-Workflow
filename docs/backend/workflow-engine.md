@@ -8,7 +8,7 @@ Spring BootだけがPostgreSQLへ保存する。Keycloakは認証だけを担当
 
 ## 永続モデルと版管理
 
-V019は旧経費専用のRun、Step、Candidateを削除し、次の汎用テーブルへ置き換える。
+ワークフローの定義と実行状態には次の汎用テーブルを使用する。
 
 - `workflow_definitions`: 業務コードと対象種別を持つ定義の入口
 - `workflow_definition_versions`: `DRAFT`、`PUBLISHED`、`RETIRED`の版とcontext schema
@@ -22,9 +22,9 @@ V019は旧経費専用のRun、Step、Candidateを削除し、次の汎用テー
 
 公開済みの定義版は実行時に更新せず、新しい要件は新しい版として追加する。Instanceは使用した
 definition version IDを保持するため、定義の新版公開後も進行中・完了済み経路を再現できる。
-V020は`EXPENSE_APPROVAL` version 1を`PUBLISHED`として投入する。
-V021はCandidate選定時に使用したPermission scopeを`permission_scope_snapshot`へ保存し、
-候補者の選定根拠である`candidate_source_snapshot`と操作時認可のscopeを分離する。
+経費承認には`PUBLISHED`状態の`EXPENSE_APPROVAL` version 1を使用する。Candidate選定時に使用した
+Permission scopeは`permission_scope_snapshot`へ保存し、候補者の選定根拠である
+`candidate_source_snapshot`と操作時認可のscopeを分離する。
 
 ## 条件DSL
 

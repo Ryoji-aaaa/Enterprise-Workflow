@@ -254,7 +254,7 @@ AuthenticatedIdentity
 確認する。
 
 外部ID対応がない初回アクセスだけ、検証済みJWTのemailで`PRE_REGISTERED`ユーザーを検索する。
-V001から移行した外部ID未連携の`ACTIVE`ユーザーも後方互換のため候補に含む。候補が一意かつ
+外部ID未連携の`ACTIVE`ユーザーも後方互換のため候補に含む。候補が一意かつ
 利用可能期間内なら、同じトランザクションで次を行う。
 
 1. `user_external_identities`へ`issuer + subject -> app_users.id`を登録する。
@@ -279,50 +279,25 @@ app_users
                  └─ permissions
 ```
 
-`system-solution-project-1.user@sdcj.co.jp`はdevelopment seed上、正社員として
-`SYSTEM_SOLUTION_PROJECT_1`へ`MEMBER`で主所属し、全体scopeの次のRoleを持つ。
-
-```text
-APPLICATION_USER
-ORGANIZATION_CHART_VIEWER
-```
-
-現在のmigrationとseedから、次のPermissionが解決される。
-
-```text
-CONTENT_UNDERSTANDING_ANALYZE
-DOCUMENT_ANALYSIS_READ_OWN
-DOCUMENT_INTELLIGENCE_ANALYZE
-EXPENSE_APPLICATION_CREATE
-EXPENSE_APPLICATION_READ_OWN
-ORGANIZATION_CHART_READ
-WORKFLOW_SUBMIT
-```
-
-`GET /api/me`は概ね次を返す。UUIDは環境依存である。
+`GET /api/me`は業務ユーザー、現在の主所属、Role、Permission、Frontendが利用する機能可否を返す。
+具体的なseedユーザーとRole・Permissionの対応は、migration、seed定義、テストを正本とし、この文書へ
+複製しない。responseの概形は次のとおりである。
 
 ```json
 {
   "id": "<app-user-uuid>",
   "externalSubject": "<keycloak-user-uuid>",
-  "email": "system-solution-project-1.user@sdcj.co.jp",
-  "displayName": "仮 仮プロジェクト1一般",
-  "employmentType": "REGULAR_EMPLOYEE",
+  "email": "<email>",
+  "displayName": "<display-name>",
+  "employmentType": "<employment-type>",
   "department": {
-    "name": "仮プロジェクト1"
+    "name": "<organization-unit-name>"
   },
   "roles": [
-    "APPLICATION_USER",
-    "ORGANIZATION_CHART_VIEWER"
+    "<role-code>"
   ],
   "permissions": [
-    "CONTENT_UNDERSTANDING_ANALYZE",
-    "DOCUMENT_ANALYSIS_READ_OWN",
-    "DOCUMENT_INTELLIGENCE_ANALYZE",
-    "EXPENSE_APPLICATION_CREATE",
-    "EXPENSE_APPLICATION_READ_OWN",
-    "ORGANIZATION_CHART_READ",
-    "WORKFLOW_SUBMIT"
+    "<permission-code>"
   ],
   "features": {
     "mailNotificationHistory": true
@@ -331,8 +306,7 @@ WORKFLOW_SUBMIT
 ```
 
 `features.mailNotificationHistory`はローカルのdelivery modeが`local-mailpit`の場合に`true`となり、
-環境名自体は返さない。メニュー表示にはさらに`MAIL_NOTIFICATION_READ`が必要であるため、
-この一般ユーザーにはメール履歴メニューを表示しない。
+環境名自体は返さない。メール履歴メニューの表示にはさらに`MAIL_NOTIFICATION_READ`が必要である。
 
 Next.jsは成功レスポンスを`CurrentUserContext`へ保持し、Role、Permission、雇用区分、機能可否から
 共通ナビゲーションを描画する。
@@ -341,7 +315,7 @@ Next.jsは成功レスポンスを`CurrentUserContext`へ保持し、Role、Perm
 
 ### 組織図画面
 
-この利用者が`/organization-chart`へ遷移すると、Browserは次を呼ぶ。
+`ORGANIZATION_CHART_READ`を持つ利用者が`/organization-chart`へ遷移すると、Browserは次を呼ぶ。
 
 ```http
 GET /api/backend/organization-chart
@@ -374,10 +348,10 @@ Spring BootはHTTP sessionを持たない。同じServlet request内では解決
 
 ### 管理画面への直接アクセス
 
-この利用者は`USER_READ`や`USER_UPDATE`などの管理Permissionを持たないため、Frontendは管理メニューを
-表示しない。URLやBFF APIを直接呼んでもSpring BootのPermission判定がHTTP 403を返し、認可拒否を
-既存の監査方針に従って記録する。Keycloakでログイン済みであることや`APPLICATION_USER` Roleは、
-管理Permissionを代替しない。
+`USER_READ`や`USER_UPDATE`などの管理Permissionを持たない利用者には、Frontendは管理メニューを
+表示しない。その利用者がURLやBFF APIを直接呼んでもSpring BootのPermission判定がHTTP 403を返し、
+認可拒否を既存の監査方針に従って記録する。Keycloakでログイン済みであることや
+`APPLICATION_USER` Roleは、管理Permissionを代替しない。
 
 ## 利用拒否とHTTP status
 

@@ -9,7 +9,7 @@
 
 ## Transactional Outbox
 
-V011で`notification_outbox`を追加し、通知種別、発生元、申請・workflow Instance/Step ID、宛先snapshot、件名、本文、
+`notification_outbox`は通知種別、発生元、申請・workflow Instance/Step ID、宛先snapshot、件名、本文、
 重複排除key、状態、試行回数、次回試行日時、送付日時とsanitized errorを保存する。業務処理は同じ
 transaction内でOutbox行を作成するため、業務更新だけがcommitされて通知要求が失われる状態を防ぐ。
 `disabled`ではNo-op publisherを使用し、Outbox行も作成しない。
@@ -20,9 +20,8 @@ transaction内でOutbox行を作成するため、業務更新だけがcommitさ
 `FOR UPDATE SKIP LOCKED`でbatchを取得し、多重送信を抑制する。deliveryはat-least-onceであり、
 重複排除keyは同一業務event・宛先のOutbox二重登録を防ぐ。
 
-V012は既存`access_requests.notification_sent_at`を
-`notification_queued_at`へbackfillする。利用申請のcooldownは配送完了時刻ではなくqueue時刻で判定し、
-Dispatcherが送付成功した場合だけ互換列`notification_sent_at`を更新する。
+利用申請のcooldownは`access_requests.notification_queued_at`のqueue時刻で判定する。
+Dispatcherが送付成功した場合だけ`notification_sent_at`を更新する。
 
 ## 通知対象
 
@@ -33,8 +32,8 @@ Dispatcherが送付成功した場合だけ互換列`notification_sent_at`を更
 Candidateが複数いる場合は宛先ごとにOutbox行を作る。承認、差戻し、利用申請記録がrollbackした場合は
 対応するOutbox行もrollbackする。
 
-V019は`approval_run_id`と`approval_step_id`を`workflow_instance_id`と`workflow_step_id`へrenameする。
-通知の宛先は申請時に保存したCandidate snapshotを使用し、操作時に現在組織から再解決しない。
+通知は`workflow_instance_id`と`workflow_step_id`で対象Workflowを参照する。宛先は申請時に保存した
+Candidate snapshotを使用し、操作時に現在組織から再解決しない。
 
 ## 履歴APIと認可
 
@@ -45,7 +44,7 @@ GET /api/admin/mail-notifications
 GET /api/admin/mail-notifications/{notificationId}
 ```
 
-DB Permission `MAIL_NOTIFICATION_READ`を必須とし、V013で`SYSTEM_ADMIN`へ割り当てる。一覧は状態、
+DB Permission `MAIL_NOTIFICATION_READ`を必須とし、基盤データで`SYSTEM_ADMIN`へ割り当てる。一覧は状態、
 通知種別、宛先email、申請ID・番号、期間、page、sizeで検索できる。既定は50件で、送付日時、作成日時、
 IDの降順である。本文とerror詳細は詳細APIだけが返す。不明IDは404、権限なしは403、未認証は401とする。
 一覧と詳細の成功読取はそれぞれ`MAIL_NOTIFICATION_HISTORY_READ`、

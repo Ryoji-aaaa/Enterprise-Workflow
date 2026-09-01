@@ -3,7 +3,7 @@
 `/admin/users`はページング一覧、`/admin/users/{userId}/edit`は基本情報、状態、所属、役職、
 直属上司、ロールを管理する。emailは読取専用で外部ID属性を更新しない。
 
-V008で追加した`USER_INFORMATION_MANAGER`は`USER_READ`、`USER_UPDATE`、
+`USER_INFORMATION_MANAGER`は`USER_READ`、`USER_UPDATE`、
 `USER_STATUS_CHANGE`、ロール参照・付与・剥奪、組織参照・管理の権限をまとめた業務ロールである。
 開発・staging用データでは社長と管理本部長へ全社スコープで付与する。このロールを持つ利用者は
 一覧、組織図の編集ボタン、ワークスペースのDrawerナビゲーションから同じ編集画面へ移動できる。
