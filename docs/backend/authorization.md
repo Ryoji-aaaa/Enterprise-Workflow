@@ -67,20 +67,14 @@ Document Intelligence分析要求、Content Understanding分析要求のPermissi
 `WORKFLOW_APPROVER`は経費承認Permissionを持つ。ただし個別申請の承認には申請時に保存された
 Candidateとの一致も必要である。
 
-V014で導入した`DOCUMENT_ANALYSIS_USER`はV015で廃止した。V015はDocument Analysisの3 Permissionを
-`APPLICATION_USER`へ付与し、旧RoleのPermissionと有効な割当を除去する。追記専用の
-`user_role_change_histories`が旧Roleを参照する環境では、履歴を破壊せず参照を維持するため、
-DBに限って`enabled=false`のtombstoneを残す。これは通常Role一覧へ表示せず、新規付与、再有効化、
-認可判定、seedには使用しない。参照がない環境では旧Role rowを物理削除する。
-
 Document AnalysisのHTTP APIは`DOCUMENT_ANALYSIS_READ_OWN`でowner scopeの参照を許可し、
 分析要求ではProviderごとに`DOCUMENT_INTELLIGENCE_ANALYZE`または
 `CONTENT_UNDERSTANDING_ANALYZE`をService層で再確認する。ローカル開発ではFake Provider、
 Azure runtimeではManaged Identityを使うAzure AI Providerを使用する。
 
-初期対応では`SYSTEM_ADMIN`に全権限、`APPLICATION_USER`に`WORKFLOW_SUBMIT`とDocument Analysisの
-3 Permission、
-`AUDITOR`に`AUDIT_LOG_READ`を付与する。その他の対応は明示的なseedまたは管理操作で追加する。
+基盤データでは`SYSTEM_ADMIN`に全権限、`APPLICATION_USER`に`WORKFLOW_SUBMIT`とDocument Analysisの
+3 Permission、`AUDITOR`に`AUDIT_LOG_READ`を付与する。その他の対応は明示的なseedまたは管理操作で
+追加する。
 
 ### ロール割当
 
@@ -160,23 +154,6 @@ JWTは署名済みの外部IDを伝えるだけである。認証処理が
 監査データにはtoken、Cookie、Authorizationヘッダー、client secretを含めない。
 詳細は[監査ログ](audit-logging.md)を参照する。
 
-## 既存ロールの移行
-
-既存の単一`business_role`は次の割当へ移す。
-
-```text
-USER  -> APPLICATION_USER
-ADMIN -> SYSTEM_ADMIN
-```
-
-V006の旧binary向け互換投影は、組織scopeを表現できる新modelから権限を拡大しないよう、
-`organization_unit_id IS NULL`の全体scope割当だけを旧`ADMIN`/`USER`へ投影する。
-組織scope付き割当だけを持つユーザーは旧binary上で`enabled=false`となる。
-
-移行後の認可は`app_users.business_role`を参照しない。旧列はV007で削除し、旧`UserRole`も
-認証・通知・テストから除去した。未登録アクセス通知の宛先は、旧`ADMIN`列ではなく必要な
-権限を持つ有効なユーザーから解決する。
-
 ## APIと実装境界
 
 ユーザーのロール割当には次の管理APIを提供する。
@@ -190,7 +167,7 @@ V006の旧binary向け互換投影は、組織scopeを表現できる新modelか
 `AUDIT_LOG_READ`などを要求する。request/response DTOとエラーコードは実際のControllerと
 結合テストを正本とし、ここにないendpointの存在を前提にしない。
 
-ローカル開発のメール通知履歴は`MAIL_NOTIFICATION_READ`を要求し、V013で
+ローカル開発のメール通知履歴は`MAIL_NOTIFICATION_READ`を要求し、基盤データで
 `SYSTEM_ADMIN`へ割り当てる。Frontendの機能フラグやメニュー非表示だけでは許可せず、一覧と
 UUID詳細のBackend APIで同じPermissionを評価する。Azureではdelivery modeが`disabled`のため
 Controller自体を登録しない。

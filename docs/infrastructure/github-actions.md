@@ -73,7 +73,8 @@ TF_STATE_KEY
 `Settings > Environments > <environment> > Environment variables`で設定する。
 `false`ではTerraformが通常Backendへ`SPRING_FLYWAY_TARGET=006`を渡し、`true`ではtargetを
 渡さずV007以降のlatestまで進める。一度V007を適用したstagingまたはproductionでは
-`true`を維持する。stagingはV008適用済みのため`true`が現在値である。
+`true`を維持する。現在値の妥当性は、文書上の環境状態ではなく対象DBの
+`flyway_schema_history`とGitHub Environment設定を照合して判断する。
 
 Azure識別子はsecretではなくEnvironment variableとする。DB、Keycloak、Better Authの
 秘密値をGitHub Secretsへ複製しない。`production-plan`は常に
